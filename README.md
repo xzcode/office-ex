@@ -1,44 +1,29 @@
 # Office EX
 
-面向个人及开发者的本地优先、跨平台开源办公套件。目标为 DOCX、XLSX、PPTX 的创建、编辑、保存与兼容交换，并提供 PDF 阅读和后续编辑。
+自主研发、跨平台、离线优先的开源办公套件。Office EX 自己实现编辑器、排版、公式计算、幻灯片与用户界面，通用开源组件只承担桌面运行时、ZIP/XML、字体和渲染等基础设施。**不基于其他 Office 套件进行二次开发。**
 
-## 当前阶段
+## 状态
 
-M0 技术基线：首选 ONLYOFFICE Desktop Editors 10.0.0，尚未完成源码构建或实际编辑器验收。当前仓库没有可安装的 Office EX。
+M0-R2：自主路线已确定。原创 TypeScript OOXML 写入原型可以生成基础 DOCX/XLSX XML 部件，经测试工具封装 ZIP 后由独立解析库读取。尚无桌面可安装包，不宣称完整 Office 兼容性。
 
-- [M0 技术决策与验收门槛](docs/M0.md)
-- [许可证与第三方声明](docs/LICENSING.md)
-- [上游源码锁定清单](upstream/lock.json)
-- [兼容性用例与操作方法](docs/COMPATIBILITY.md)
-- [M0 实际验证记录](docs/M0_VERIFICATION.md)
-- [后续交接](docs/HANDOFF.md)
+- [技术方案、阶段和验收门槛](docs/M0.md)
+- [许可证与依赖规则](docs/LICENSING.md)
+- [验证记录](docs/M0_VERIFICATION.md)
+- [兼容性基线](docs/COMPATIBILITY.md)
+- [交接](docs/HANDOFF.md)
 
-## 开发工具
+## M0 开发验证
 
-需要 Python 3.10+。执行以下命令检查 Linux 构建环境（不安装任何依赖）：
-
-```sh
-python3 scripts/preflight.py
-python3 scripts/preflight.py --network
-```
-
-在具备网络、磁盘条件的专用环境，获取并核对上游源码快照（不是完整的构建工作区，prepare 需要全新路径）：
-
-```sh
-python3 scripts/prepare_sources.py prepare .work/upstream
-python3 scripts/prepare_sources.py verify .work/upstream
-```
-
-生成兼容性基线（虚拟环境内安装测试依赖）：
+Node.js 22.13+、TypeScript 5.8.3（开发环境）、Python 3.10+（仅测试）。执行：
 
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r tests/requirements.txt
-python tests/compat.py generate .work/fixtures
-python tests/compat.py check .work/fixtures
+tsc -p tsconfig.json
+npm test
 ```
 
-## License
+另可运行 tests/compat.py generate .work/fixtures 和 tests/compat.py check .work/fixtures；这些是扩展兼容性夹具，暂非自研编辑器通过记录。
 
-现阶段独立开发工具及文档采用根目录 MIT 许可证。未来引入的 ONLYOFFICE 代码及与其组成的衍生程序必须遵守其 AGPLv3 与适用附加条款，不能以 MIT 代替。参见 docs/LICENSING.md。
+MIT license. 保留原仓库许可证；第三方依赖进入生产构建前须进行许可证与安全审计。

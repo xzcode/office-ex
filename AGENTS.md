@@ -1,10 +1,8 @@
 # Office EX development rules
 
-- Read docs/HANDOFF.md, docs/M0.md and docs/LICENSING.md before implementing.
-- Scope: offline-first desktop suite; M0 is research, reproducible source preparation and compatibility baseline; do not claim a build passed without artifacts and logs.
-- Do not rewrite the document engine or substitute a web-only mock for the editor.
-- Maintain upstream commit IDs; never silently mix versions or pull moving upstream branches for a release.
-- Keep independent MIT tooling separate from AGPL-covered derived code. Keep upstream notices; audit fonts, icons, dictionaries, CEF/Qt and other dependencies. Do not ship unreviewed assets or commercial extensions.
-- Never enable cloud/AI/telemetry/automatic upstream updates by default. Do not send real user documents to external services. Treat document macros and embedded/external content as untrusted.
-- Test only meaningful changes: round-trip semantic integrity, visual fidelity and native build/launch. Preserve original documents and test on copies.
-- No Release until the M0 source build and licensing gates are satisfied, then follow M1-M5 roadmap.
+- Read docs/HANDOFF.md, docs/M0.md, docs/LICENSING.md.
+- The user chose independent development on 2026-11-24. Never fork, embed or wrap another Office suite/editor engine. Do not introduce ONLYOFFICE, LibreOffice or a ready-made office editing suite as the production engine. Independent readers may be used for tests only.
+- Original code owns models, commands, undo/redo, pagination, layout, formula evaluation, slide scene and format adapters. Generic desktop/runtime, XML, ZIP, font and rendering libraries are permitted; prefer MIT/BSD/Apache-2.0, audit transitive dependencies and bundled assets.
+- Desktop first; offline by default. No telemetry, external content, macros or cloud by default. Renderer must be sandboxed, context-isolated, with narrowly scoped IPC.
+- Never silently discard unsupported imported parts or overwrite the original. Use capability reporting, safe Save As, atomic writes and format preservation.
+- Report actual tests and limitations. No mock editor marketed as compatibility, no release without real platform builds and interoperability evidence. Do not run unnecessary tests.
