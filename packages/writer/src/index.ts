@@ -36,3 +36,6 @@ export function insertBlocks(snapshot: DocumentSnapshot, sectionId: string, inde
 export * from './paragraphs.js';
 
 export * from './tables.js';
+
+export * from './images.js';
+export * from './page.js';

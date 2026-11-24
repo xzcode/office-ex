@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, EMU_PER_TWIP, graphemeBoundaries, OfficeError } from '@office-ex/contracts';
-import { resolveTextStyle, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterBlock, type Paragraph, type Table } from '@office-ex/core';
-import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation } from '@office-ex/writer';
+import { resolveTextStyle, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterBlock, type Paragraph, type Table, type ImageResource } from '@office-ex/core';
+import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation, insertImageAfter, resizeInlineImage, removeInlineImage, setWriterPage, setParagraphMetrics } from '@office-ex/writer';
 import { layoutWriter, hitTestWriterPage, writerCaretBox, writerSelectionBoxes, type WriterLayout } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
@@ -16,6 +16,8 @@ export interface WriterHost{
   setComposing(value:boolean):void;
   t(key:MessageKey,args?:Readonly<Record<string,string|number>>):string;
   number(value:number):string;
+  prepareImage(bytes:Uint8Array):Promise<ImageResource>;
+  isCurrent():boolean;
 }
 function node<K extends keyof HTMLElementTagNameMap>(tag:K,value='',className?:string):HTMLElementTagNameMap[K]{
   const n=document.createElement(tag);n.textContent=value;if(className)n.className=className;return n;
@@ -52,6 +54,12 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   previous.disabled=true;next.disabled=true;pageBar.append(previous,pageText,next);preview.append(pageBar,canvas,layoutNote);
   let layout:DeepReadonly<WriterLayout>|undefined, timer:ReturnType<typeof setTimeout>|undefined;
   const provider=new CanvasFontMetrics();
+  const decodedImages=new Map<string,HTMLImageElement>();
+  function raster(resourceId:string):HTMLImageElement|undefined{
+    const prior=decodedImages.get(resourceId);if(prior)return prior;
+    const r=modelOf(host.snapshot()).resources[resourceId];if(!r?.dataBase64||!(r.mimeType==='image/png'||r.mimeType==='image/jpeg'))return undefined;
+    const image=new Image();decodedImages.set(resourceId,image);image.onload=()=>paint();image.onerror=()=>{if(root.isConnected)layoutNote.textContent=t('writerPreviewUnavailable');};image.src='data:'+r.mimeType+';base64,'+r.dataBase64;return image;
+  }
   function activeParagraph(){return state.paragraphId?inputs.get(state.paragraphId):undefined;}
   function select(id:string,start:number,end=start,focus=false):void{
     const input=inputs.get(id);if(!input)return;
@@ -87,6 +95,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
       const border=cell.border;
       if(border){ctx.strokeStyle=safeColor({color:border.color});ctx.lineWidth=Math.max(0.35,px(border.width));ctx.strokeRect(px(cell.x),px(cell.y),px(cell.width),px(cell.height));}
     }
+    for(const item of page.images){const img=raster(item.resourceId);if(img?.complete&&img.naturalWidth)ctx.drawImage(img,px(item.x),px(item.y),px(item.width),px(item.height));else{ctx.fillStyle='#eef1f5';ctx.fillRect(px(item.x),px(item.y),px(item.width),px(item.height));}}
     ctx.textBaseline='alphabetic';ctx.textAlign='left';ctx.direction='ltr';
     for(const line of page.lines)for(const fragment of line.fragments){
       const r=fragment.request,family=/^(sans-serif|serif|monospace|system-ui)$/.test(r.family)?r.family:JSON.stringify(r.family);
@@ -131,6 +140,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   function safe(fn:()=>void):void{try{fn();}catch(e){host.error(e);}}
   const actions:{button:HTMLButtonElement;range?:boolean;enabled?:()=>boolean}[]=[];
   const tableInputs:HTMLInputElement[]=[];
+  const metricFields:HTMLInputElement[]=[];
   function contextTable(){const id=state.paragraphId;if(!id)return undefined;const location=tableCellLocation(host.snapshot(),id);if(!location)return undefined;const table=modelOf(host.snapshot()).sections.flatMap(s=>s.blocks).find(b=>b.id===location.tableId);return table?.type==='table'?{...location,table}:undefined;}
   const formatFields:{element:HTMLInputElement|HTMLSelectElement;range:boolean}[]=[];
   function tool(key:MessageKey,id:string,fn:()=>void,range=false,enabled?:()=>boolean,parent:HTMLElement=controls):void{
@@ -174,6 +184,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     const border=root.querySelector<HTMLButtonElement>('#writer-table-border');if(border)border.setAttribute('aria-pressed',String(!!tableContext?.table.border));
     for(const field of formatFields)field.element.disabled=!selection||host.composing()||field.range&&selection.start===selection.end;
     const style=effectiveSelectedStyle(),p=selectedParagraph();
+    for(const field of metricFields){field.disabled=!selection||host.composing();const key=field.dataset.metric as 'indent'|'spaceBefore'|'spaceAfter'|'lineHeight';if(document.activeElement!==field)field.value=String((style?.[key]??0)/EMU_PER_POINT);}
     // The first selected run supplies the displayed value; mixed selections are
     // not represented as uniform. A field change applies only that one property.
     if(style){
@@ -285,6 +296,49 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     if(host.execute(deleteTable(host.snapshot(),c.tableId))){state.paragraphId=undefined;state.start=0;state.end=0;host.render();}
   },false,()=>!!contextTable(),tableBar);
   root.insertBefore(tableBar,note);
+  const pictureBar=node('div','','writer-table-controls');
+  const imagePicker=node('input');imagePicker.type='file';imagePicker.accept='image/png,image/jpeg,.png,.jpg,.jpeg';imagePicker.id='writer-image-file';imagePicker.hidden=true;
+  pictureBar.append(imagePicker);
+  tool('writerInsertImage','writer-insert-image',()=>imagePicker.click(),false,()=>!contextTable(),pictureBar);
+  imagePicker.onchange=()=>{const file=imagePicker.files?.[0],sel=currentSelection(),revision=host.snapshot().revision;imagePicker.value='';
+    if(!file||!sel||host.composing()||contextTable())return;
+    void(async()=>{
+      if(file.size>8*1024*1024)throw new OfficeError('limit','Image exceeds byte budget');
+      const resource=await host.prepareImage(new Uint8Array(await file.arrayBuffer()));
+      if(!root.isConnected||!host.isCurrent()||host.composing()||host.snapshot().revision!==revision)throw new OfficeError('conflict','Document changed during image selection');
+      if(host.execute(insertImageAfter(host.snapshot(),sel.id,resource,crypto.randomUUID())))host.render();
+    })().catch(host.error);
+  };
+  root.insertBefore(pictureBar,note);
+  const pageBarControls=node('div','','writer-table-controls');
+  const docSection=modelOf(host.snapshot()).sections[0]!,pg=docSection.page;
+  function setting(key:MessageKey,id:string,value:number):HTMLInputElement{
+    const label=node('label','','writer-format-field'),input=node('input');input.type='number';input.id=id;input.step='0.05';input.min='0';input.max='1584';input.value=String(Math.round(value/EMU_PER_TWIP)/20);input.setAttribute('aria-label',t(key));label.append(node('span',t(key)),input);pageBarControls.append(label);return input;
+  }
+  const paper= node('select');paper.id='writer-paper';paper.setAttribute('aria-label',t('writerPaper'));
+  for(const [value,label] of [['custom','writerCustomPaper'],['a4','writerA4'],['letter','writerLetter'],['a3','writerA3']] as const){const option=node('option',t(label));option.value=value;paper.append(option);}
+  const orientation=node('select');orientation.id='writer-orientation';orientation.setAttribute('aria-label',t('writerOrientation'));
+  for(const [value,key] of [['portrait','writerPortrait'],['landscape','writerLandscape']] as const){const option=node('option',t(key));option.value=value;orientation.append(option);}orientation.value=pg.width>pg.height?'landscape':'portrait';
+  pageBarControls.append(paper,orientation);
+  const pw=setting('writerPageWidth','writer-page-width',pg.width),ph=setting('writerPageHeight','writer-page-height',pg.height);
+  const top=setting('writerMarginTop','writer-margin-top',pg.margins.top),right=setting('writerMarginRight','writer-margin-right',pg.margins.right),bottom=setting('writerMarginBottom','writer-margin-bottom',pg.margins.bottom),left=setting('writerMarginLeft','writer-margin-left',pg.margins.left);
+  const presets:Readonly<Record<string,readonly [number,number]>>={a4:[11906,16838],letter:[12240,15840],a3:[16838,23811]};
+  paper.onchange=()=>{const pair=presets[paper.value];if(pair){const [w,h]=orientation.value==='landscape'?[pair[1],pair[0]]:pair;pw.value=String(w/20);ph.value=String(h/20);}};
+  orientation.onchange=()=>{if((pw.valueAsNumber>ph.valueAsNumber)!==(orientation.value==='landscape')){const v=pw.value;pw.value=ph.value;ph.value=v;}};
+  const emu=(input:HTMLInputElement)=>Math.round(input.valueAsNumber*20)*EMU_PER_TWIP;
+  const apply=button(t('writerApplyPage'),()=>safe(()=>{
+    if(host.composing())return;
+    const values={width:emu(pw),height:emu(ph),margins:{top:emu(top),right:emu(right),bottom:emu(bottom),left:emu(left)}};
+    if(host.execute(setWriterPage(host.snapshot(),docSection.id,values)))host.render();
+  }),'writer-apply-page');pageBarControls.append(apply);
+  root.insertBefore(pageBarControls,note);
+  const metricsBar=node('div','','writer-table-controls');
+  for(const [key,label] of [['indent','writerIndent'],['spaceBefore','writerSpaceBefore'],['spaceAfter','writerSpaceAfter'],['lineHeight','writerLineHeight']] as const){
+    const wrapper=node('label','','writer-format-field'),input=node('input');input.type='number';input.min=key==='indent'?'-1584':'0';input.max='1584';input.step='0.05';input.dataset.metric=key;input.id='writer-'+key;input.setAttribute('aria-label',t(label));
+    wrapper.append(node('span',t(label)),input);metricsBar.append(wrapper);metricFields.push(input);
+    input.onchange=()=>safe(()=>{const sel=currentSelection();if(sel&&!host.composing()&&host.execute(setParagraphMetrics(host.snapshot(),sel.id,{[key]:emu(input)}))){select(sel.id,sel.start,sel.end,true);scheduleLayout();}});
+  }
+  root.insertBefore(metricsBar,note);
   function join(id:string,direction:'previous'|'next'):void{
     const d=modelOf(host.snapshot());
     const groups:DeepReadonly<WriterBlock[]>[]=[];
@@ -302,6 +356,15 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   }
   let index=0;
   function renderParagraph(p:DeepReadonly<WriterBlock>,parent:HTMLElement,cell?:{row:number;column:number}):void{
+    if(p.type==='paragraph'&&!cell&&p.runs.length===1&&p.runs[0]?.type==='image'){
+      const image=p.runs[0],r=modelOf(host.snapshot()).resources[image.resourceId],card=node('div','','writer-image-card');card.dataset.imageId=image.id;
+      if(r?.dataBase64&&(r.mimeType==='image/png'||r.mimeType==='image/jpeg')){const preview=node('img');preview.alt=t('writerImage');preview.src='data:'+r.mimeType+';base64,'+r.dataBase64;preview.width=Math.max(1,Math.min(480,Math.round(image.width/EMU_PER_CSS_PIXEL)));card.append(preview);}
+      const label=node('label','','writer-format-field'),width=node('input');width.type='number';width.min='1';width.max='1584';width.step='0.05';width.value=String(Math.round(image.width/EMU_PER_TWIP)/20);width.setAttribute('aria-label',t('writerImageWidth'));width.className='writer-image-width';
+      label.append(node('span',t('writerImageWidth')),width);
+      width.onchange=()=>safe(()=>{if(host.composing())return;const n=Math.round(width.valueAsNumber*20)*EMU_PER_TWIP;if(host.execute(resizeInlineImage(host.snapshot(),image.id,n)))host.render();});
+      const remove=button(t('writerRemoveImage'),()=>safe(()=>{if(!host.composing()&&host.execute(removeInlineImage(host.snapshot(),image.id)))host.render();}),'writer-remove-image');
+      const actions=node('div','','writer-table-controls');actions.append(label,remove);card.append(actions);parent.append(card);return;
+    }
     if(p.type!=='paragraph'||p.runs.some(r=>r.type!=='text')){
       const indicator=node('p',t(p.type==='page-break'?'writerPageBreak':'writerUnsupportedBlock'),'writer-block-note');parent.append(indicator);return;
     }

@@ -1,3 +1,4 @@
+import { validateImageResource } from './images.js';
 import { OfficeError, assert, assertCellAddress, assertId, assertUnicode, isRecord, type DocumentKind } from '@office-ex/contracts';
 
 export type Color = { kind: 'rgba'; red: number; green: number; blue: number; alpha: number } | { kind: 'theme'; name: string; tint?: number };
@@ -7,13 +8,13 @@ export interface TextStyle {
   indent?: number; spaceBefore?: number; spaceAfter?: number; lineHeight?: number;
 }
 export interface NamedStyle { id: string; name: string; basedOn?: string; kind?: 'paragraph' | 'character'; toggles?: readonly ('bold' | 'italic')[]; properties: TextStyle }
-export interface ResourceRef { id: string; sha256: string; mimeType: string; byteLength: number }
+export interface ResourceRef { id: string; sha256: string; mimeType: string; byteLength: number; dataBase64?:string; pixelWidth?:number; pixelHeight?:number }
 export interface DocumentBase {
   schemaVersion: 1; documentId: string; title: string;
   resources: Record<string, ResourceRef>; styles: Record<string, NamedStyle>; defaultTextStyle: TextStyle;
 }
 export interface TextRun { id: string; type: 'text'; text: string; styleId?: string; style?: TextStyle }
-export type Inline = TextRun | { id: string; type: 'tab' | 'line-break' } | { id: string; type: 'image'; resourceId: string; width: number; height: number };
+export type Inline = TextRun | { id: string; type: 'tab' | 'line-break' } | { id: string; type: 'image'; resourceId: string; width: number; height: number; drawingName?:string; pictureName?:string };
 export interface Paragraph { id: string; type: 'paragraph'; styleId?: string; style?: TextStyle; runs: Inline[] }
 export interface TableCell { id: string; blocks: WriterBlock[] }
 export interface Table { id: string; type: 'table'; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[]; cellPadding?: {top:number;right:number;bottom:number;left:number}; border?: {width:number;color:Color} }
@@ -133,15 +134,19 @@ export function validateDocument(value: unknown): OfficeDocument {
   const ids = new Set<string>();
   const id = (candidate: unknown): void => { assertId(candidate); assert(!ids.has(candidate), 'invalid', 'Duplicate stable node identifier'); ids.add(candidate); };
   assert(isRecord(model.resources), 'invalid', 'Invalid resources');
-  let resourceBytes = 0;
+  let resourceBytes = 0, packagedImageBytes=0;
   for (const [key, item] of Object.entries(model.resources)) {
     assertId(key);
-    const resource = object(item, ['id', 'sha256', 'mimeType', 'byteLength']);
+    const resource = object(item, ['id', 'sha256', 'mimeType', 'byteLength', 'dataBase64', 'pixelWidth', 'pixelHeight']);
     assert(resource.id === key, 'invalid', 'Resource identifier mismatch');
     assert(typeof resource.sha256 === 'string' && /^[a-f0-9]{64}$/.test(resource.sha256), 'invalid', 'Invalid resource digest');
     text(resource.mimeType, 255, false);
     assert(/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(resource.mimeType), 'invalid', 'Invalid resource media type');
     integer(resource.byteLength, 0, 128 * 1024 * 1024);
+    if(resource.dataBase64!==undefined||resource.pixelWidth!==undefined||resource.pixelHeight!==undefined){
+      validateImageResource(resource);packagedImageBytes+=resource.byteLength;
+      assert(packagedImageBytes<=16*1024*1024,'limit','Packaged image budget exceeded');
+    }
     resourceBytes += resource.byteLength;
     assert(resourceBytes <= 128 * 1024 * 1024, 'limit', 'Document resource budget exceeded');
   }
@@ -166,14 +171,14 @@ export function validateDocument(value: unknown): OfficeDocument {
   validateTextStyle(model.defaultTextStyle);
   const resources = model.resources;
   const run = (candidate: unknown, textOnly = false): void => {
-    const inline = object(candidate, ['id', 'type', 'text', 'styleId', 'style', 'resourceId', 'width', 'height']); id(inline.id);
+    const inline = object(candidate, ['id', 'type', 'text', 'styleId', 'style', 'resourceId', 'width', 'height', 'drawingName', 'pictureName']); id(inline.id);
     if (inline.type === 'text') {
-      assert(!['resourceId', 'width', 'height'].some((key) => key in inline), 'invalid', 'Unexpected text run fields');
+      assert(!['resourceId', 'width', 'height', 'drawingName', 'pictureName'].some((key) => key in inline), 'invalid', 'Unexpected text run fields');
       text(inline.text); optionalId(inline.styleId, styles); if(inline.styleId!==undefined){const ref=styles[String(inline.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='character'),'invalid','Text run requires a character style');} if (inline.style !== undefined) validateTextStyle(inline.style);
     } else if (inline.type === 'image' && !textOnly) {
       assert(!['text', 'style', 'styleId'].some((key) => key in inline), 'invalid', 'Unexpected image fields');
       assert(inline.resourceId !== undefined, 'invalid', 'Missing image resource'); optionalId(inline.resourceId, resources);
-      integer(inline.width, 1); integer(inline.height, 1);
+      integer(inline.width, 1); integer(inline.height, 1);if(inline.drawingName!==undefined)text(inline.drawingName,512);if(inline.pictureName!==undefined)text(inline.pictureName,512);
     } else {
       assert(!textOnly && (inline.type === 'tab' || inline.type === 'line-break') && Object.keys(inline).length === 2, 'invalid', 'Unsupported inline model');
     }

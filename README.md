@@ -95,3 +95,7 @@ npm run smoke:desktop
 ### M2 Writer 第五批开发预览
 
 新增规则矩形表格、行列操作、单元格段落编辑、整行分页预览与固定列宽 DOCX 表格支持。复杂表格及图片仍在后续阶段；本批验收见 [M2 Writer](docs/M2-WRITER.md)。
+
+### M2 Writer 图片与页面设置开发预览
+
+增加受限 PNG/JPEG 内嵌图片段落、原始图片资源保存、页面纸型/方向/边距与段落间距。本阶段仍为限定功能开发版，不等于完整 Word 或旧 DOC 兼容。验收范围及剩余门槛见 [Writer 记录](docs/M2-WRITER.md)。

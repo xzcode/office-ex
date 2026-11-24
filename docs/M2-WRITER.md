@@ -77,3 +77,11 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 首批源码 286cf545befab1b2c9a28644c0ab3e9a6a559227，[CI 45434512688](https://github.com/xzcode/office-ex/actions/runs/45434512688) 的 verify-writer 成功：13 workspace、44 源文件，145/145 自动化回归通过、0 失败、0 跳过（新增 8 项表格用例）。独立 python-docx 验证真实 DOCX 表格行列、单元格多段落、直接文字格式、列宽、边框、编辑新增行与非正文部件字节一致。由于复核 Transitional CT_TblCellMar 顺序（top/left/bottom/right）后提交修正，新工作流替换旧 native 任务；不能把旧任务算作最终通过。
 
 最终受测源码 f72128a9f5c910811429e364399f8ee7487d7452，[CI 45434702537](https://github.com/xzcode/office-ex/actions/runs/45434702537)；check、test:interop、audit:licenses 三个实质验证步骤均已通过。 修正增加 XML 边距顺序独立检查以及嵌套表格拒绝样例。记录时任务状态：verify-writer: in_progress。仅以最终工作流实际结果认定 native 验收，未合并 master。仍限显式固定矩形表格，整行分页，复杂表格/拆行、图片及 DOC 未完成，未在 Microsoft Word 实测。
+
+## 第六批：图片、资源与页面设置（M2 集成候选，完整 M2 未达门槛）
+
+- 第五批最终源码 f72128a 的 CI 45434702537 基础、Windows、Linux 已成功；开始本轮时 macOS queued。下一次提交可能替换仍排队的任务；不记为通过。
+- 新增受限 PNG/JPEG 内容寻址资源：原始字节通过纯领域 base64 封装于 immutable snapshot（可选 ResourceRef 字段，旧元数据模型保持可读），单图 8MiB、文档图片总量 16MiB、40M pixels；PNG CRC/尺寸/关键块、JPEG frame/marker 检查。浏览器沙箱 worker 进一步用 createImageBitmap 验证实际解码及尺寸。无网络、SVG、外链、压缩元数据、EXIF/ICC 或动画图片。图像头检查不等于完整解码安全审计。当前封装对大型文档的复制和历史成本较高；后续可将资源字节迁到独立持久 blob store。
+- 图片插入/删除/等比缩放经事务与撤销；源图片原始字节、未引用资源仍保留，不自动 GC。当前仅支持独立图片段落的内嵌 DrawingML（不支持文字和图片混排、表格内图片、浮动、裁剪、非零效果偏移或 alt 元数据）。DOCX 增加明确的 media、content type 和 relationship 计划，原样复制字节不变；编辑只更改主部件和必要新增图片图关系/类型，保持现有媒体及其它部件。通过隔离 verifier 生成并重开，主进程既有原子提交/备份机制不变。OEX 可保存含图快照，缺失 payload 继续拒绝保存。恢复为 OEX 副本，原文件不自动覆盖。
+- 新增页面纸型 A4/A3/Letter、自定义宽高、横竖、四边距、段前后/缩进/精确行距直接格式（0 清除直接行距，继承样式仍有效）；页面命令按 twip，缩页前检查既有表格/图片尺寸，不静默缩放。图片参与估算分页，整张图不裁剪；源图像宽高保持 EMU。编辑区与预览仍分离。11 locale 199 键；无新生产依赖。
+- 验收新增资源/损坏数据/格式关系/独立图像互读/页面设置与原生图片操作。所有结论以实际 CI 为准。M2 WRT-01–04 不整体 verified：真实 WYSIWYG/跨段选区、精确复杂文字与 RTL、增量布局、一般 Word 文件/多节/样式主题依赖、普通图文混排及参考 Office 布局验收未完成；M2-L DOC 语义读写尚未实现。不可把现有窄 profile 或自建 fixture 当成完整兼容，未发布正式版。

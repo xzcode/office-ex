@@ -1,5 +1,5 @@
 import { OfficeError, asFailure, EMU_PER_CSS_PIXEL, type DocumentKind, type Result } from '@office-ex/contracts';
-import { DocumentSession, createDocument, validateDocument, type DocumentCommand, type SaveTicket, type OfficeDocument } from '@office-ex/core';
+import { DocumentSession, createDocument, validateDocument, type ImageResource, type DocumentCommand, type SaveTicket, type OfficeDocument } from '@office-ex/core';
 import { writerWorkspace, type WriterViewState } from './writer-workspace.js';
 import { setCells } from '@office-ex/sheets';
 import { insertShapes } from '@office-ex/slides';
@@ -9,7 +9,7 @@ import type { DesktopBridge, OpenFileResult, PublicSettings, RecoveryItem, MenuA
 import { availableLocales, TARGET_LOCALES, REGIONAL_LOCALES, resolveLocale, resolveRegion, localeDirection, localeLabel, isMessageKey, message as translate, diagnosticKey, errorKey, formatNumber, formatDate, type MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
 
-type WorkerType='inspect'|'serialize'|'recover';
+type WorkerType='inspect'|'serialize'|'recover'|'image';
 interface Tab {id:string;name:string;token?:string;session?:DocumentSession;inspection?:Inspection;busy:boolean;error?:{code:string;message:string};lastCheckpoint?:string;selectedShape?:string;writerState?:WriterViewState;format?:'docx'|'oex'}
 const $=<T extends HTMLElement>(selector:string):T=>document.querySelector<T>(selector)!;
 const bridge:DesktopBridge=window.office;
@@ -114,7 +114,7 @@ function documentView(tab:Tab):void{
   if(model.kind==='writer'){
     tab.writerState??={start:0,end:0,pageIndex:0};
     card.classList.add('writer-workspace-card');
-    card.append(writerWorkspace({snapshot:()=>session.snapshot(),execute:command=>execute(tab,command,false),render,error:errorMessage,composing:()=>composing,setComposing:value=>{composing=value;},t,number},tab.writerState));
+    card.append(writerWorkspace({snapshot:()=>session.snapshot(),execute:command=>execute(tab,command,false),render,error:errorMessage,composing:()=>composing,setComposing:value=>{composing=value;},t,number,prepareImage:bytes=>task<ImageResource>(tab.id+'-image','image',{bytes}),isCurrent:()=>current()===tab},tab.writerState));
   }else if(model.kind==='sheets'){
     card.append(text('label',t('cellsLabel')));const grid=document.createElement('div');grid.className='mini-grid';for(const h of ['', 'A','B','C'])grid.append(text('span',h));
     const sheet=model.sheets[0]!;
@@ -173,7 +173,7 @@ async function save(tab:Tab|undefined,saveAs=false):Promise<boolean>{
 }
 async function closeTab(id:string):Promise<boolean>{if(composing){notify('finishComposition');return false;}const tab=tabs.get(id);if(!tab)return true;if(tab.session?.saveState==='saving'){notify('working');return false;}flushInputs();await syncTabs();const decision=unwrap(await bridge.confirmClose(id));if(decision==='cancel')return false;if(decision==='save'&&!await save(tab))return false;
   if(tab.session?.dirty&&decision==='save')return false; // A new edit during save must still be reviewed.
-  cancelTask(id);cancelTask(`${id}-save`);cancelTask(`${id}-recovery`);unwrap(await bridge.releaseDocument(id,decision==='discard'));tab.session?.close();tabs.delete(id);if(active===id)active=[...tabs.keys()].at(-1)??null;await syncTabs();render();return true;}
+  cancelTask(id);cancelTask(`${id}-save`);cancelTask(`${id}-recovery`);cancelTask(`${id}-image`);unwrap(await bridge.releaseDocument(id,decision==='discard'));tab.session?.close();tabs.delete(id);if(active===id)active=[...tabs.keys()].at(-1)??null;await syncTabs();render();return true;}
 async function closeWindow():Promise<void>{if(closing)return;closing=true;try{for(const id of [...tabs.keys()])if(!await closeTab(id))return;unwrap(await bridge.finishClose());}finally{closing=false;}}
 async function checkpoint(tab:Tab):Promise<void>{const session=tab.session;if(!session||!session.dirty||session.contentId===tab.lastCheckpoint||session.saveState==='saving'||tab.busy)return;const snapshot=session.snapshot(),savedMarker=session.lastSavedContentId;const bytes=await task<Uint8Array>(`${tab.id}-recovery`,'serialize',{document:snapshot.document});if(!tabs.has(tab.id)||!session.dirty||isSaving(session)||session.lastSavedContentId!==savedMarker)return;unwrap(await bridge.checkpoint({documentId:tab.id,contentId:snapshot.contentId,revision:snapshot.revision,bytes}));tab.lastCheckpoint=snapshot.contentId;}
 async function restore(entry:RecoveryItem):Promise<void>{const result=unwrap(await bridge.recover(entry.id));const model=await task<OfficeDocument>('recover','recover',{bytes:result.bytes});await newDraft(model.kind,model);notify('recovered');}

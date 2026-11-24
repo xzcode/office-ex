@@ -96,3 +96,5 @@ M2 Writer 第四批受测源码 75cad7b0ac4a59043b666334b41e70af914dc781，137/1
 M2 Writer 第五批候选：上一批 45432375135 全任务通过；本批新增规则矩形表格、行列/列宽/边框事务、cell 段落编辑、整行分页及固定表格 DOCX 语义读写，11 locale 176 键。先查本批 CI，修实际失败后继续 inline PNG/JPEG 资源管理与安全原格式读写；超高行不拆分、复杂表格仍只读，保留六格式与多语言正式版门槛。见 docs/M2-WRITER.md。
 
 第五批验收：286cf545 的 145/145 核心回归与独立表格 DOCX 互读已通过；最终边距顺序修正 f72128a9f5c910811429e364399f8ee7487d7452，CI https://github.com/xzcode/office-ex/actions/runs/45434702537，实质 check/interop/license 步骤已通过，记录时 verify-writer: in_progress。下一批先核对最终 native，再开发 PNG/JPEG 图片资源封装、布局与 DOCX 原格式；如有实际失败先修复。保持当前 Writer 分支，未合并 master。
+
+M2 集成第六批候选：增加图片原始字节/摘要、受限 PNG/JPEG 插入缩放删除、OEX 图片封装、独立内嵌图片段落 DOCX 原格式、页面设置及段落 metrics。11 locale 199 键。当前仍非 M2 完整退出：普通 DOCX、分页所见即所得、复杂脚本/多节/图文混排及参考 Office 和 M2-L DOC 等未达原规范；保持当前开发分支及所有 P0 门槛，先核对本轮 CI 结果和验收缺口，后续逐项收敛。

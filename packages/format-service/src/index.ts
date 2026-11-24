@@ -23,12 +23,12 @@ export function parseDraft(bytes: Uint8Array): OfficeDocument {
   if (e.magic !== 'office-ex-draft' || e.version !== 1) throw new OfficeError('unsupported', 'Unsupported Office EX draft schema');
   if (Object.keys(e).some(k => !['magic','version','document'].includes(k))) throw new OfficeError('invalid','Unknown draft envelope field');
   const model = validateDocument(e.document);
-  if (Object.keys(model.resources).length) throw new OfficeError('unsupported', 'Draft resource payload packaging is not implemented');
+  if(Object.values(model.resources).some(r=>r.dataBase64===undefined))throw new OfficeError('unsupported','Draft resource bytes are missing');
   return model;
 }
 export function serializeDraft(document: unknown): Uint8Array {
   const model = validateDocument(document);
-  if (Object.keys(model.resources).length) throw new OfficeError('unsupported', 'Resource bytes must be packaged before this draft can be saved');
+  if(Object.values(model.resources).some(r=>r.dataBase64===undefined))throw new OfficeError('unsupported','Resource bytes must be packaged before this draft can be saved');
   const bytes = new TextEncoder().encode(JSON.stringify({magic:'office-ex-draft', version:1, document:model}));
   if (bytes.byteLength > MAX_DRAFT) throw new OfficeError('limit','Draft exceeds the 32 MiB budget');
   parseDraft(bytes); // Re-read our own serialized envelope before any filesystem commit.

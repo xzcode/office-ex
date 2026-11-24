@@ -5,11 +5,12 @@
  */
 import type { Element, Document } from '@xmldom/xmldom';
 import { OfficeError, assert, EMU_PER_TWIP } from '@office-ex/contracts';
-import { createDocument, validateDocument, freezeData, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type TextStyle, type WriterSection, type NamedStyle, type Table } from '@office-ex/core';
+import { createDocument, validateDocument, freezeData, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type Inline, type TextStyle, type WriterSection, type NamedStyle, type Table } from '@office-ex/core';
 import { openOpc, writeOpc, type OpcPackage } from './opc.js';
 import { parseXml } from './xml.js';
 import { writeZip } from './zip.js';
 import type { ContainerOptions } from './limits.js';
+import { loadMedia, planMedia, readInlinePicture, writeInlinePicture, addMediaParts, saveMediaPackage, type MediaGraph, type MediaPlan } from './writer-docx-images.js';
 import { readStyleProfile, type DocxStyleProfile, type ThemeProfile, requireStyleReference } from './writer-docx-styles.js';
 
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -187,7 +188,7 @@ function writeTable(table:DeepReadonly<Table>,maxWidth:number,write:(p:DeepReado
   }).join('')+'</w:tr>').join('')+'</w:tbl>';
 }
 
-function readMain(xml:Document,documentId:string,title:string,profile?:DocxStyleProfile):WriterDocument{
+function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleProfile|undefined,media:MediaGraph):WriterDocument{
   const root=xml.documentElement!;requireElement(root,'document');attrs(root);
   for(let n=xml.firstChild;n;n=n.nextSibling)if(n!==root)valid(n.nodeType===3&&!(n.nodeValue??'').trim()||n.nodeType===7&&n.nodeName==='xml','Unsupported document-level node');
   const contents=elements(root);valid(contents.length===1&&isW(contents[0]!,'body'),'Single body required');
@@ -199,11 +200,16 @@ function readMain(xml:Document,documentId:string,title:string,profile?:DocxStyle
     const bi=paragraphIndex++;valid(paragraphIndex<=MAX_BLOCKS,'Paragraph budget exceeded');requireElement(p,'p');attrs(p);const nodes=elements(p);
     let style:TextStyle|undefined,styleId=profile?.defaultParagraph;let i=0;
     if(nodes[0]&&isW(nodes[0],'pPr')){style=readParagraphStyle(nodes[0],profile?id=>{styleId=requireStyleReference(profile,id,'paragraph');}:undefined);i++;}
-    const runs:TextRun[]=[];let pageBreak=false;
+    const runs:Inline[]=[];let pageBreak=false;
     for(;i<nodes.length;i++){
       const r=nodes[i]!;requireElement(r,'r');attrs(r);valid(++runCount<=MAX_RUNS,'Run limit exceeded');
       const items=elements(r);let j=0;let direct:TextStyle|undefined,runStyleId:string|undefined;
       if(items[0]&&isW(items[0],'rPr')){direct=readRunStyle(items[0],profile?id=>{runStyleId=requireStyleReference(profile,id,'character');}:undefined);j++;}
+      if(items[j]&&isW(items[j]!,'drawing')){
+        valid(!inCell&&items.length===1&&nodes.length===i+1&&runs.length===0&&!direct&&!runStyleId,'Only a dedicated image paragraph is supported');
+        const picture=readInlinePicture(items[j]!,media,'r-'+bi+'-image');
+        valid(picture.width<=page.width-page.margins.left-page.margins.right&&picture.height<=page.height-page.margins.top-page.margins.bottom,'Image exceeds usable page');runs.push(picture);continue;
+      }
       let text='';
       for(;j<items.length;j++){
         const child=items[j]!;
@@ -230,7 +236,7 @@ function readMain(xml:Document,documentId:string,title:string,profile?:DocxStyle
         p=>readParagraph(p,true),n=>{cellCount+=n;valid(cellCount<=10000,'Document table-cell budget exceeded');}));
     }else blocks.push(readParagraph(block));
   }
-  const result=createDocument('writer',documentId,title);result.defaultTextStyle=profile?.defaults??{};result.styles=profile?.styles??{};if(profile?.defaultParagraph)result.defaultParagraphStyleId=profile.defaultParagraph;result.sections=[{id:'section-1',page,blocks}];
+  const result=createDocument('writer',documentId,title);result.defaultTextStyle=profile?.defaults??{};result.styles=profile?.styles??{};result.resources=media.resources;if(profile?.defaultParagraph)result.defaultParagraphStyleId=profile.defaultParagraph;result.sections=[{id:'section-1',page,blocks}];
   return validateDocument(result) as WriterDocument;
 }
 function escapeXml(value:string):string{
@@ -277,22 +283,24 @@ function canonicalData(value:unknown):string{
   if(Array.isArray(value))return '['+value.map(canonicalData).join(',')+']';
   return '{'+Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([k,v])=>JSON.stringify(k)+':'+canonicalData(v)).join(',')+'}';
 }
-function mainXml(candidate:unknown,profile?:DocxStyleProfile):{model:WriterDocument;xml:string}{
+function mainXml(candidate:unknown,profile:DocxStyleProfile|undefined,media:MediaPlan):{model:WriterDocument;xml:string}{
   const checked=validateDocument(candidate);valid(checked.kind==='writer','Expected Writer model');
-  valid(checked.sections.length===1&&!Object.keys(checked.resources).length,'Only one section and no assets');
+  valid(checked.sections.length===1,'Only one section is supported');
   if(profile){valid(checked.defaultParagraphStyleId===profile.defaultParagraph&&canonicalData(checked.styles)===canonicalData(profile.styles)&&canonicalData(checked.defaultTextStyle)===canonicalData(profile.defaults),'Source style definitions and defaults are immutable');}
   else{valid(!Object.keys(checked.styles).length,'New DOCX named style definitions are not supported');valid(Object.keys(checked.defaultTextStyle).every(k=>CHAR_KEYS.includes(k)),'Unsupported default text style');}
   const section=checked.sections[0]!;valid(section.blocks.length<=MAX_BLOCKS,'Block budget exceeded');
-  let totalRuns=0,totalText=0,paragraphCount=0,cellCount=0;let body='';
-  const writeParagraph=(block:DeepReadonly<Paragraph>):string=>{
+  let totalRuns=0,totalText=0,paragraphCount=0,cellCount=0,imageCount=0;let body='';
+  const writeParagraph=(block:DeepReadonly<Paragraph>,inCell=false):string=>{
     valid(++paragraphCount<=MAX_BLOCKS,'Paragraph budget exceeded');let body='';
     const paragraphStyle=block.styleId??profile?.defaultParagraph;
     if(paragraphStyle)requireStyleReference(profile,paragraphStyle,'paragraph');
     body+='<w:p>'+writeParagraphStyle(block.style??{},paragraphStyle);
     for(const inline of block.runs.length?block.runs:[{id:'empty',type:'text' as const,text:''}]){
       valid(++totalRuns<=MAX_RUNS,'Run budget exceeded');
-      valid(inline.type!=='image','Images are outside this profile');
-      if(inline.type==='text'){
+      if(inline.type==='image'){
+        valid(!inCell&&block.runs.length===1&&inline.width<=section.page.width-section.page.margins.left-section.page.margins.right&&inline.height<=section.page.height-section.page.margins.top-section.page.margins.bottom,'Only a dedicated inline image paragraph within the page is supported');
+        body+='<w:r>'+writeInlinePicture(inline,media,++imageCount)+'</w:r>';
+      }else if(inline.type==='text'){
         if(inline.styleId)requireStyleReference(profile,inline.styleId,'character');totalText+=inline.text.length;valid(totalText<=MAX_TEXT,'Text budget exceeded');
         body+='<w:r>'+writeRunStyle(profile?inline.style??{}:{...checked.defaultTextStyle,...inline.style},inline.styleId)+writeText(inline.text)+'</w:r>';
       }else body+='<w:r>'+writeRunStyle(profile?{}:checked.defaultTextStyle)+(inline.type==='tab'?'<w:tab/>':'<w:br/>')+'</w:r>';
@@ -302,7 +310,7 @@ function mainXml(candidate:unknown,profile?:DocxStyleProfile):{model:WriterDocum
   const maxWidth=section.page.width-section.page.margins.left-section.page.margins.right;
   for(const block of section.blocks){
     if(block.type==='page-break')body+='<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
-    else if(block.type==='table'){valid(!profile||profile.tableDefaultsSafe,'Default table style requires a later adapter');body+=writeTable(block,maxWidth,writeParagraph,n=>{cellCount+=n;valid(cellCount<=10000,'Document table-cell budget exceeded');});}
+    else if(block.type==='table'){valid(!profile||profile.tableDefaultsSafe,'Default table style requires a later adapter');body+=writeTable(block,maxWidth,p=>writeParagraph(p,true),n=>{cellCount+=n;valid(cellCount<=10000,'Document table-cell budget exceeded');});}
     else body+=writeParagraph(block);
   }
   const page=section.page,width=twip(page.width,1,31680),height=twip(page.height,1,31680),m=page.margins;
@@ -310,23 +318,24 @@ function mainXml(candidate:unknown,profile?:DocxStyleProfile):{model:WriterDocum
   return {model:checked,xml:DECL+'<w:document xmlns:w="'+W+'"><w:body>'+body+'</w:body></w:document>'};
 }
 export interface WriterDocxSource{readonly document:DeepReadonly<WriterDocument>;readonly mainPart:string}
-const sources=new WeakMap<WriterDocxSource,{pkg:OpcPackage;canonical:string;documentId:string;profile?:DocxStyleProfile}>();
+const sources=new WeakMap<WriterDocxSource,{pkg:OpcPackage;canonical:string;documentId:string;profile?:DocxStyleProfile;media:MediaGraph}>();
 export function openWriterDocx(bytes:Uint8Array,documentId:string,title:string,options:ContainerOptions={}):WriterDocxSource{
-  const pkg=openOpc(bytes,options),{part,profile}=readStyleProfile(pkg,options,readRunStyle,readParagraphStyle),document=readMain(parseXml(pkg.parts.get(part)!,options),documentId,title,profile);
+  const pkg=openOpc(bytes,options),{part,profile}=readStyleProfile(pkg,options,readRunStyle,readParagraphStyle),media=loadMedia(pkg,part),document=readMain(parseXml(pkg.parts.get(part)!,options),documentId,title,profile,media);
   const source=Object.freeze({document:freezeData(document),mainPart:part});
-  sources.set(source,{pkg,canonical:mainXml(document,profile).xml,documentId,profile});
+  sources.set(source,{pkg,canonical:mainXml(document,profile,planMedia(document.resources,part,pkg,media)).xml,documentId,profile,media});
   return source;
 }
 const encoder=new TextEncoder();
 export function writeWriterDocx(candidate:unknown,options:ContainerOptions={}):Uint8Array{
-  const {model,xml}=mainXml(candidate),part='word/document.xml';
-  const bytes=writeZip(new Map([
+  const model=validateDocument(candidate);valid(model.kind==='writer','Expected Writer model');const part='word/document.xml',media=planMedia(model.resources,part),{xml}=mainXml(model,undefined,media);
+  const parts=new Map([
     ['[Content_Types].xml',encoder.encode(DECL+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/'+part+'" ContentType="'+MAIN_TYPE+'"/></Types>')],
     ['_rels/.rels',encoder.encode(DECL+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="'+ROOT_REL+'" Target="'+part+'"/></Relationships>')],
     [part,encoder.encode(xml)]
-  ]),options);
-  const checked=openWriterDocx(bytes,model.documentId,model.title,options);
-  valid(mainXml(checked.document).xml===xml,'Semantic output verification failed');
+  ]);
+  addMediaParts(parts,part,media,options);const bytes=writeZip(parts,options);
+  const checked=openWriterDocx(bytes,model.documentId,model.title,options),saved=sources.get(checked)!;
+  valid(saved.canonical===xml&&canonicalData(checked.document.resources)===canonicalData(model.resources),'Semantic output verification failed');
   return bytes;
 }
 /** No-edit returns original archive bytes. Edited copy changes only the supported main part.
@@ -334,10 +343,11 @@ export function writeWriterDocx(candidate:unknown,options:ContainerOptions={}):U
  */
 export function saveWriterDocx(source:WriterDocxSource,candidate:unknown,options:ContainerOptions={}):Uint8Array{
   const saved=sources.get(source);assert(saved,'invalid','Unknown DOCX source capability');
-  const {model,xml}=mainXml(candidate,saved.profile);assert(model.documentId===saved.documentId,'conflict','Document identity mismatch');
-  if(xml===saved.canonical)return writeOpc(saved.pkg,new Map(),options);
-  const bytes=writeOpc(saved.pkg,new Map([[source.mainPart,encoder.encode(xml)]]),options);
+  const model=validateDocument(candidate);valid(model.kind==='writer','Expected Writer model');assert(model.documentId===saved.documentId,'conflict','Document identity mismatch');
+  const media=planMedia(model.resources,source.mainPart,saved.pkg,saved.media),{xml}=mainXml(model,saved.profile,media);
+  if(xml===saved.canonical&&!media.additions.length)return writeOpc(saved.pkg,new Map(),options);
+  const bytes=saveMediaPackage(saved.pkg,source.mainPart,xml,media,options);
   const checked=openWriterDocx(bytes,model.documentId,model.title,options);
-  valid(mainXml(checked.document,sources.get(checked)?.profile).xml===xml&&canonicalData(checked.document.styles)===canonicalData(model.styles)&&canonicalData(checked.document.defaultTextStyle)===canonicalData(saved.profile?.defaults??{}),'Edited DOCX verification failed');
+  valid(sources.get(checked)?.canonical===xml&&canonicalData(checked.document.resources)===canonicalData(model.resources)&&canonicalData(checked.document.styles)===canonicalData(model.styles)&&canonicalData(checked.document.defaultTextStyle)===canonicalData(saved.profile?.defaults??{}),'Edited DOCX verification failed');
   return bytes;
 }

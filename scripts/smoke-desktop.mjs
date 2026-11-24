@@ -9,6 +9,7 @@ import { docxParts, writeZip, writeWriterDocx, openWriterDocx } from '@office-ex
 import { createDocument } from '@office-ex/core';
 import { serializeDraft } from '@office-ex/format-service';
 import { styledFixture } from '../tests/writer-styled-fixture.ts';
+import {PNG,JPEG} from '../tests/writer-image-fixture.ts';
 import { openOpc } from '@office-ex/ooxml';
 
 const work=await mkdtemp(join(tmpdir(),'office-ex-native-'));
@@ -274,6 +275,42 @@ try{
   const reopenCount=await page.locator('.tab').count();await page.locator('.tab[aria-selected=true] .tab-close').click();
   await page.waitForFunction(count=>document.querySelectorAll('.tab').length===count-1,reopenCount);
   check('Writer table creates rows and columns, edits cells, undoes row deletion, saves and reopens a real DOCX');
+
+  const imagePath=join(work,'images.docx');
+  await page.locator('#home').click();await page.locator('#new-docx').click();
+  await inputEquals('#draft-text','','New image document');
+  await page.locator('#draft-text').fill('Image example');
+  await page.locator('#writer-paper').selectOption('letter');
+  await page.locator('#writer-orientation').selectOption('landscape');
+  await page.locator('#writer-apply-page').click();
+  await page.locator('#draft-text').click();
+  await page.locator('#writer-spaceAfter').fill('6');await page.locator('#writer-spaceAfter').press('Tab');
+  await page.locator('#writer-image-file').setInputFiles({name:'example.png',mimeType:'image/png',buffer:PNG});
+  await page.waitForSelector('.writer-image-card img',{timeout:30000});
+  await page.locator('#writer-image-file').setInputFiles({name:'example.jpeg',mimeType:'image/jpeg',buffer:JPEG});
+  await page.waitForFunction(()=>document.querySelectorAll('.writer-image-card img').length===2);
+  await page.locator('.writer-image-card').first().locator('.writer-image-width').fill('72');
+  await page.locator('.writer-image-card').first().locator('.writer-image-width').press('Tab');
+  await page.waitForFunction(()=>document.querySelector('#writer-page-preview')?.width>100&&!document.querySelector('#writer-page-preview')?.hidden);
+  await dialogSave(imagePath);await page.locator('#save').click();
+  await waitFor(async()=>{try{return (await readFile(imagePath)).length>100;}catch{return false;}},'DOCX image save',30000);
+  await page.waitForFunction(()=>!document.querySelector('#save').disabled&&document.querySelector('#document-status').textContent.includes('已保存'));
+  const imageDoc=openWriterDocx(await readFile(imagePath),'image-reader','Images').document;
+  assert.equal(Object.keys(imageDoc.resources).length,2);assert.ok(imageDoc.sections[0].page.width>imageDoc.sections[0].page.height);
+  const pictures=imageDoc.sections[0].blocks.flatMap(b=>b.type==='paragraph'?b.runs.filter(r=>r.type==='image'):[]);
+  assert.equal(pictures.length,2);assert.equal(pictures[0].width,914400);
+  assert.ok(Object.values(imageDoc.resources).some(r=>r.sha256===bytesHash(PNG)));
+  assert.ok(Object.values(imageDoc.resources).some(r=>r.sha256===bytesHash(JPEG)));
+  await screenshot('writer-images-docx');
+  const imageCount=await page.locator('.tab').count();await page.locator('.tab[aria-selected=true] .tab-close').click();
+  await page.waitForFunction(n=>document.querySelectorAll('.tab').length===n-1,imageCount);
+  await dialogOpen(imagePath);await page.waitForFunction(()=>document.querySelectorAll('.writer-image-card img').length===2);
+  await page.locator('.writer-image-card').first().locator('button').last().click();
+  await page.waitForFunction(()=>document.querySelectorAll('.writer-image-card').length===1);
+  await page.locator('#undo').click();await page.waitForFunction(()=>document.querySelectorAll('.writer-image-card').length===2);
+  const reopenedImages=await page.locator('.tab').count();await page.locator('.tab[aria-selected=true] .tab-close').click();
+  await page.waitForFunction(n=>document.querySelectorAll('.tab').length===n-1,reopenedImages);
+  check('Writer inserts bounded PNG/JPEG, resizes, saves landscape DOCX, reopens and undoes removal');
 
   await page.locator('.tab').first().click();assert.equal(await page.locator('#draft-text').inputValue(),'Edit made while saving');
   // Bad save destination keeps the document dirty, usable and the old file unchanged.

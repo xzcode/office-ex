@@ -4,7 +4,7 @@
  * Document coordinates are EMU. No derived geometry is persisted in the source model.
  */
 import { assert, graphemeBoundaries, type Cancellation } from '@office-ex/contracts';
-import { resolveTextStyle, freezeData, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterSection, type Paragraph, type WriterDocument, type Table } from '@office-ex/core';
+import { resolveTextStyle, freezeData, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterSection, type Paragraph, type WriterDocument, type Table, type ResourceRef } from '@office-ex/core';
 import { measureText, type FontMetrics, type FontRequest, type Point } from './index.js';
 
 export interface WriterPosition {paragraphId:string;offset:number}
@@ -12,7 +12,8 @@ export interface WriterCaret {offset:number;x:number}
 export interface WriterFragment {text:string;x:number;width:number;request:FontRequest;style:DeepReadonly<TextStyle>}
 export interface WriterLine {paragraphId:string;start:number;end:number;x:number;y:number;width:number;height:number;baseline:number;carets:WriterCaret[];fragments:WriterFragment[]}
 export interface WriterTableCellBox {tableId:string;rowId:string;cellId:string;paragraphIds:string[];x:number;y:number;width:number;height:number;border?:DeepReadonly<NonNullable<Table['border']>>}
-export interface WriterPage {sectionId:string;width:number;height:number;margins:DeepReadonly<WriterSection['page']['margins']>;lines:WriterLine[];tableCells:WriterTableCellBox[]}
+export interface WriterImageBox {paragraphId:string;imageId:string;resourceId:string;x:number;y:number;width:number;height:number}
+export interface WriterPage {sectionId:string;width:number;height:number;margins:DeepReadonly<WriterSection['page']['margins']>;lines:WriterLine[];tableCells:WriterTableCellBox[];images:WriterImageBox[]}
 export interface WriterLayout {revision:number;contentId:string;environmentId:string;pages:WriterPage[];warnings:string[]}
 export interface WriterLayoutOptions {maxPages?:number;maxClusters?:number;cancellation?:Cancellation}
 type Glyph={start:number;end:number;text:string;advance:number;ascent:number;descent:number;style:DeepReadonly<TextStyle>;request:FontRequest;kind:'text'|'tab'|'break'};
@@ -98,10 +99,10 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
     check();const spec=section.page,m=spec.margins;
     const usableWidth=spec.width-m.left-m.right,usableHeight=spec.height-m.top-m.bottom;
     assert(usableWidth>0&&usableHeight>0,'invalid','Page has no usable area');
-    const makePage=():WriterPage=>{assert(pages.length<maxPages,'limit','Writer layout page budget exceeded');const p:WriterPage={sectionId:section.id,width:spec.width,height:spec.height,margins:m,lines:[],tableCells:[]};pages.push(p);return p;};
+    const makePage=():WriterPage=>{assert(pages.length<maxPages,'limit','Writer layout page budget exceeded');const p:WriterPage={sectionId:section.id,width:spec.width,height:spec.height,margins:m,lines:[],tableCells:[],images:[]};pages.push(p);return p;};
     let page=makePage(),y=m.top;
     const advancePage=()=>{page=makePage();y=m.top;};
-    const space=(n:number)=>{if(n<=0)return;if(y+n>spec.height-m.bottom&&page.lines.length)advancePage();y=Math.min(spec.height-m.bottom,y+n);};
+    const space=(n:number)=>{if(n<=0)return;if(y+n>spec.height-m.bottom&&(page.lines.length||page.images.length))advancePage();y=Math.min(spec.height-m.bottom,y+n);};
 
     const layParagraph=(block:DeepReadonly<Paragraph>,originX:number,boxWidth:number,addSpace:(n:number)=>void,place:(line:WriterLine)=>void):void=>{
       check();assert(++blocks<=10000,'limit','Writer layout block budget exceeded');
@@ -198,6 +199,20 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
       check();
       if(block.type==='page-break'){assert(++blocks<=10000,'limit','Writer layout block budget exceeded');advancePage();continue;}
       if(block.type==='table'){layTable(block);continue;}
+      const image=block.runs.length===1&&block.runs[0]?.type==='image'?block.runs[0]:undefined;
+      if(image){
+        assert(++blocks<=10000,'limit','Writer layout block budget exceeded');
+        const resource=model.resources[image.resourceId];
+        assert(resource?.dataBase64,'unsupported','Missing packaged image resource');
+        const named=block.styleId??model.defaultParagraphStyleId,style=resolveTextStyle(model.defaultTextStyle,model.styles,named?[named]:[],block.style??{}).style;
+        const indent=Math.max(0,style.indent??0),available=usableWidth-indent;
+        assert(image.width<=available&&image.height<=usableHeight,'unsupported','Inline image exceeds page');
+        space(style.spaceBefore??0);
+        if(y+image.height>spec.height-m.bottom)advancePage();
+        const x=m.left+indent+(style.alignment==='center'?Math.floor((available-image.width)/2):style.alignment==='end'?available-image.width:0);
+        page.images.push({paragraphId:block.id,imageId:image.id,resourceId:image.resourceId,x,y,width:image.width,height:image.height});y+=image.height;
+        space(style.spaceAfter??0);continue;
+      }
       layParagraph(block,m.left,usableWidth,space,placeTop);
     }
   }

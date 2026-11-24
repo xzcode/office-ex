@@ -182,7 +182,7 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
   allowed(!pkg.hasMacros&&!pkg.hasSignatures&&!pkg.externalRelationships,'Protected or linked document');
   const main=pkg.mainPart,expected=new Set<string>(['[Content_Types].xml','_rels/.rels',main]);
   const root=pkg.relationships.get('')??[];
-  let mainCount=0,stylePath:string|undefined,themePath:string|undefined;
+  let mainCount=0,stylePath:string|undefined,themePath:string|undefined,hasMetadata=false;
   const typesSeen=new Set<string>();
   function admit(rel:OpcRelationship,type:string):string{
     const path=rel.targetPart;allowed(rel.mode==='Internal'&&path&&rel.fragment===null&&!expected.has(path)&&pkg.contentTypes.get(path)===type,'Unsupported or duplicate relationship target');
@@ -191,8 +191,8 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
   for(const rel of root){
     allowed(!typesSeen.has(rel.type),'Duplicate root relationship type');typesSeen.add(rel.type);
     if(rel.type===R+'officeDocument'){allowed(rel.targetPart===main&&rel.fragment===null&&rel.mode==='Internal','Invalid main part');mainCount++;}
-    else if(rel.type===CORE)admit(rel,'application/vnd.openxmlformats-package.core-properties+xml');
-    else if(rel.type===R+'extended-properties')admit(rel,'application/vnd.openxmlformats-officedocument.extended-properties+xml');
+    else if(rel.type===CORE){admit(rel,'application/vnd.openxmlformats-package.core-properties+xml');hasMetadata=true;}
+    else if(rel.type===R+'extended-properties'){admit(rel,'application/vnd.openxmlformats-officedocument.extended-properties+xml');hasMetadata=true;}
     else allowed(false,'Unsupported root relationship');
   }
   allowed(mainCount===1,'Missing main relationship');
@@ -203,12 +203,13 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
     for(const rel of mainRels){
       if(rel.type===R+'styles'){allowed(!stylePath,'Duplicate styles part');stylePath=admit(rel,STYLES);}
       else if(rel.type===R+'theme'){allowed(!themePath,'Duplicate theme part');themePath=admit(rel,THEME);}
+      else if(rel.type===R+'image'){const type=rel.targetPart?pkg.contentTypes.get(rel.targetPart):undefined;allowed(type==='image/png'||type==='image/jpeg','Unsupported image type');admit(rel,type);}
       else allowed(false,'Unsupported document relationship');
     }
   }
   allowed([...pkg.relationships.keys()].every(k=>k===''||k===main),'Unexpected auxiliary relationship graph');
   allowed(pkg.parts.size===expected.size&&[...pkg.parts.keys()].every(k=>expected.has(k)),'Additional package parts require a later adapter');
-  if(!stylePath&&!themePath&&expected.size===3)return {part:main};
+  if(!stylePath&&!themePath&&!hasMetadata)return {part:main};
   const theme=themePath?readTheme(pkg.parts.get(themePath)!,options):undefined;
   const profile=stylePath?readStyles(pkg.parts.get(stylePath)!,options,readRun,readParagraph,theme):{styles:{},defaults:{},pageOffsets:{},tableDefaultsSafe:true};
   return {part:main,profile};

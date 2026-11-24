@@ -148,6 +148,13 @@ export function setCharacterNamedStyle(snapshot:DocumentSnapshot,paragraphId:str
   const right=sliceRuns(p.runs,end,p.text.length,used,allocate);
   return runPatch(snapshot,p,[...left,...middle,...right]);
 }
+export function setParagraphMetrics(snapshot:DocumentSnapshot,paragraphId:string,metrics:Pick<TextStyle,'indent'|'spaceBefore'|'spaceAfter'|'lineHeight'>):DocumentCommand{
+  const p=locate(snapshot,paragraphId);assertPlainData(metrics);validateTextStyle(metrics);
+  assert(Object.keys(metrics).every(k=>['indent','spaceBefore','spaceAfter','lineHeight'].includes(k)),'invalid','Unexpected paragraph property');
+  const style={...p.paragraph.style,...cloneData(metrics)};
+  if(style.lineHeight===0)delete style.lineHeight;
+  return patchCommand(snapshot,'WRT-03',[{op:'set',path:[...p.parent,p.block,'style'],value:style}]);
+}
 export function setParagraphAlignment(snapshot:DocumentSnapshot,paragraphId:string,alignment:NonNullable<TextStyle['alignment']>):DocumentCommand{
   const p=locate(snapshot,paragraphId);validateTextStyle({alignment});
   return patchCommand(snapshot,'WRT-03',[{op:'set',path:[...p.parent,p.block,'style'],value:{...p.paragraph.style,alignment}}]);
