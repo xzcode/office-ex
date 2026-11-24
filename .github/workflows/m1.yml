@@ -37,7 +37,7 @@ jobs:
         with: {node-version: '24.22.3', cache: npm}
       - run: npm ci --ignore-scripts
       - run: npm run setup:desktop
-      - run: node --import tsx --test tests/file-service.test.ts tests/recovery.test.ts tests/ipc-policy.test.ts
+      - run: node --import tsx --test tests/file-service.test.ts tests/recovery.test.ts tests/ipc-policy.test.ts tests/settings.test.ts
       - run: npm run smoke:desktop
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
@@ -61,10 +61,15 @@ jobs:
         run: |
           sudo chown root:root node_modules/electron/dist/chrome-sandbox
           sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
-      - run: node --import tsx --test tests/file-service.test.ts tests/recovery.test.ts tests/ipc-policy.test.ts
+      - name: Install system fonts for the Chinese UI on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y fonts-noto-cjk fonts-noto-color-emoji
+      - run: node --import tsx --test tests/file-service.test.ts tests/recovery.test.ts tests/ipc-policy.test.ts tests/settings.test.ts
       - name: Native Linux smoke with sandbox enabled
         if: runner.os == 'Linux'
-        run: xvfb-run -a npm run smoke:desktop
+        run: xvfb-run -a --server-args="-screen 0 1280x900x24" npm run smoke:desktop
       - name: Native Windows smoke
         if: runner.os == 'Windows'
         run: npm run smoke:desktop

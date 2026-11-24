@@ -5,7 +5,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { resolve, join, basename, extname, isAbsolute } from 'node:path';
 import { asFailure, OfficeError, type Result } from '@office-ex/contracts';
 import type { TabState, MenuAction, OpenFileResult } from '@office-ex/ui';
-import { FileAuthority } from './file-service.js';
+import { FileAuthority, MAX_FILE_BYTES } from './file-service.js';
 import { TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId as id, parseDroppedPath, parseTabStates, parseDraftSave, parsePreservedCopy, parseRelease, parseSettingsPatch, parseRecoveryId, parseCheckpoint, commandLineFiles } from './ipc-policy.js';
 import { RecoveryStore } from './recovery.js';
 import { SettingsStore } from './settings.js';
@@ -24,6 +24,9 @@ let window:BrowserWindow|null = null;
 let allowClose = false;
 let rendererReady = false;
 let drainingFiles = false;
+let createMainWindow:(()=>Promise<void>)|undefined;
+let openingFiles:Promise<void>=Promise.resolve();
+let queuedOpens=0;
 let settings:SettingsStore;
 let recovery:RecoveryStore;
 let backups:RecoveryStore;
@@ -33,6 +36,13 @@ const originals = new Map<string,Uint8Array>();
 const pendingFiles:string[] = [];
 const runningSaves = new Set<string>();
 const MAX_ORIGINAL_CACHE_BYTES = 256 * 1024 * 1024;
+const cacheReservations=new Map<string,number>();
+function reserveCache(key:string,growth:number):void{
+  const cached=[...originals.values()].reduce((sum,bytes)=>sum+bytes.byteLength,0);
+  const reserved=[...cacheReservations.entries()].reduce((sum,[id,size])=>sum+(id===key?0:size),0);
+  if(cached+reserved+growth>MAX_ORIGINAL_CACHE_BYTES)throw new OfficeError('limit','Open file cache exceeds the 256 MiB budget');
+  cacheReservations.set(key,growth);
+}
 const byteHash = (value:Uint8Array):string => createHash('sha256').update(value).digest('hex');
 const localOrigin = isLocalAppUrl;
 const extensions = ['doc','docx','xls','xlsx','ppt','pptx','oex','pdf'];
@@ -50,20 +60,43 @@ function handle<T>(channel:string,run:(event:IpcMainInvokeEvent,...args:unknown[
 async function openSelected(path:string):Promise<OpenFileResult> {
   const owner=window;
   if(!owner||owner.isDestroyed())throw new OfficeError('conflict','No window is available');
-  const result=await authority.authorizeOpen(path,owner.id,randomUUID());
-  if(window!==owner||owner.isDestroyed()){
-    if(!result.duplicate)authority.revokeDocument(owner.id,result.documentId);
-    throw new OfficeError('cancelled','The file window was closed');
-  }
-  if(result.duplicate&&authority.get(result.token,owner.id,result.documentId).identity?.sha256!==result.identity.sha256)throw new OfficeError('conflict','The already-open file changed outside Office EX');
-  if(!result.duplicate){
-    const cached=[...originals.values()].reduce((sum,value)=>sum+value.byteLength,0);
-    if(cached+result.bytes.byteLength>MAX_ORIGINAL_CACHE_BYTES){authority.revokeDocument(owner.id,result.documentId);throw new OfficeError('limit','Open file cache exceeds the 256 MiB budget');}
-    originals.set(result.token,result.bytes.slice());
-  }
-  // Recent-history persistence must not turn a successful file open into a failure.
-  try{await settings.addRecent(authority.get(result.token,owner.id,result.documentId).path,result.name);}catch{/* document remains available */}
-  return {token:result.token,documentId:result.documentId,name:result.name,bytes:result.bytes,duplicate:result.duplicate};
+  if(queuedOpens>=32)throw new OfficeError('limit','Too many pending file opens');
+  queuedOpens++;
+  const operation=openingFiles.then(()=>openSelectedNow(path,owner));
+  openingFiles=operation.then(()=>undefined,()=>undefined);
+  try{return await operation;}finally{queuedOpens--;}
+}
+async function openSelectedNow(path:string,owner:BrowserWindow):Promise<OpenFileResult>{
+  if(window!==owner||owner.isDestroyed())throw new OfficeError('cancelled','The file window was closed');
+  const reservation=`open:${randomUUID()}`;
+  try{
+    const stat=await lstat(path);
+    if(!stat.isFile()||stat.isSymbolicLink())throw new OfficeError('unsafe','Only regular files can be opened');
+    if(!Number.isSafeInteger(stat.size)||stat.size>MAX_FILE_BYTES)throw new OfficeError('limit','File exceeds the 100 MiB budget');
+    let credited=0;
+    for(const [token,bytes] of originals){
+      for(const documentId of tabs.keys()){
+        try{const grant=authority.get(token,owner.id,documentId);if(grant.path===resolve(path)||(grant.identity?.dev===String(stat.dev)&&grant.identity.ino===String(stat.ino))){credited=bytes.byteLength;break;}}catch{/* another session */}
+      }
+      if(credited)break;
+    }
+    // Reserve growth before the bounded read. A single open queue bounds read buffers as well.
+    reserveCache(reservation,Math.max(0,stat.size-credited));
+    const result=await authority.authorizeOpen(path,owner.id,randomUUID());
+    if(window!==owner||owner.isDestroyed()){
+      if(!result.duplicate)authority.revokeDocument(owner.id,result.documentId);
+      throw new OfficeError('cancelled','The file window was closed');
+    }
+    if(result.duplicate&&authority.get(result.token,owner.id,result.documentId).identity?.sha256!==result.identity.sha256)throw new OfficeError('conflict','The already-open file changed outside Office EX');
+    if(!result.duplicate){
+      try{reserveCache(reservation,result.bytes.byteLength);}catch(error){authority.revokeDocument(owner.id,result.documentId);throw error;}
+      originals.set(result.token,result.bytes.slice());
+    }
+    cacheReservations.delete(reservation);
+    // Recent-history persistence must not turn a successful file open into a failure.
+    try{await settings.addRecent(authority.get(result.token,owner.id,result.documentId).path,result.name);}catch{/* document remains available */}
+    return {token:result.token,documentId:result.documentId,name:result.name,bytes:result.bytes,duplicate:result.duplicate};
+  }finally{cacheReservations.delete(reservation);}
 }
 function enqueueFile(path:string):void{
   const value=parseDroppedPath(path);
@@ -126,6 +159,7 @@ function installIpc():void {
     if(runningSaves.has(request.documentId))throw new OfficeError('conflict','Save is already running');
     runningSaves.add(request.documentId);
     let createdTarget:string|undefined,committed=false;
+    const reservation=`save:${request.documentId}`;
     try {
       let token=request.sourceToken as string|undefined;
       if(token && extname(authority.get(token,window!.id,request.documentId).path).toLowerCase()!=='.oex') throw new OfficeError('unsafe','Office files cannot be overwritten by draft serialization');
@@ -140,19 +174,20 @@ function installIpc():void {
         token=await authority.authorizeTarget(chosen.filePath,window!.id,request.documentId,exists,request.sourceToken as string|undefined);createdTarget=token;
       }
       const bytes=request.bytes; const expected=byteHash(bytes);
-      const cached=[...originals.entries()].reduce((sum,[key,value])=>sum+(key===token||key===request.sourceToken?0:value.byteLength),0);
-      if(cached+bytes.byteLength>MAX_ORIGINAL_CACHE_BYTES)throw new OfficeError('limit','Open file cache exceeds the 256 MiB budget');
+      const previousBytes=originals.get(request.sourceToken??token)?.byteLength??0;
+      reserveCache(reservation,Math.max(0,bytes.byteLength-previousBytes));
       const result=await authority.commit(token,window!.id,request.documentId,bytes,{backup:async(previous,identity)=>{await backups.put(request.documentId as string,`backup:${identity.sha256}`,request.revision,previous);},validate:async reread=>{
         // Worker already serialized and re-read the model; main checks the exact planned bytes.
         if(byteHash(reread)!==expected)throw new OfficeError('invalid','Save verification failed');
       }});
       committed=true;originals.set(token,bytes.slice());
       if(request.sourceToken&&request.sourceToken!==token){authority.revokeToken(request.sourceToken,window!.id,request.documentId);originals.delete(request.sourceToken);}
+      cacheReservations.delete(reservation);
       const warnings:string[]=[];
       try{await recovery.clearSaved(request.documentId,request.revision);}catch{warnings.push('recovery-cleanup-failed');}
       try{await settings.addRecent(authority.get(token,window!.id,request.documentId).path,result.name);}catch{warnings.push('recent-update-failed');}
       return {token,name:result.name,durability:result.durability,warnings};
-    } finally {if(createdTarget&&!committed){try{authority.revokeToken(createdTarget,window!.id,request.documentId);}catch{/* already revoked */}}runningSaves.delete(request.documentId);}
+    } finally {cacheReservations.delete(reservation);if(createdTarget&&!committed){try{authority.revokeToken(createdTarget,window!.id,request.documentId);}catch{/* already revoked */}}runningSaves.delete(request.documentId);}
   });
   handle('office:save-copy',async(_event,candidate)=>{
     const request=parsePreservedCopy(candidate);
@@ -164,8 +199,8 @@ function installIpc():void {
     const grant=authority.get(request.sourceToken,window!.id,request.documentId);
     const bytes=originals.get(request.sourceToken);
     if(!bytes)throw new OfficeError('invalid','Original bytes are unavailable');
-    const extension=extname(grant.path).slice(1)||'bin';
-    const chosen=await dialog.showSaveDialog(window!,{defaultPath:`${basename(grant.path,extname(grant.path))}-copy.${extension}`,filters:[{name:'Original file format',extensions:[extension]}],properties:['showOverwriteConfirmation','createDirectory']});
+    const suffix=extname(grant.path),extension=suffix.slice(1);
+    const chosen=await dialog.showSaveDialog(window!,{defaultPath:`${basename(grant.path,suffix)}-copy${suffix}`,filters:[{name:extension?'Original file format':'All files',extensions:[extension||'*']}],properties:['showOverwriteConfirmation','createDirectory']});
     if(chosen.canceled||!chosen.filePath)return null;
     if(extname(chosen.filePath).toLowerCase()!==extname(grant.path).toLowerCase())throw new OfficeError('invalid','A preserved copy must retain its source extension');
     let exists=false;try{await lstat(chosen.filePath);exists=true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
@@ -202,10 +237,11 @@ function installIpc():void {
     await recovery.put(r.documentId,r.contentId,r.revision,r.bytes);
   });
 }
-app.on('open-file',(event,path)=>{event.preventDefault();try{enqueueFile(path);}catch{dialog.showErrorBox('Office EX','文件无法打开 / Unable to open file');}});
+app.on('open-file',(event,path)=>{event.preventDefault();try{enqueueFile(path);if(!window&&createMainWindow)void createMainWindow().catch(()=>dialog.showErrorBox('Office EX','窗口无法打开 / Unable to open window'));}catch{dialog.showErrorBox('Office EX','文件无法打开 / Unable to open file');}});
 app.on('second-instance',(_event,argv,cwd)=>{
   if(window&&!window.isDestroyed()){if(window.isMinimized())window.restore();window.focus();}
   for(const path of commandLineFiles(argv,Boolean(process.defaultApp),cwd)){try{enqueueFile(path);}catch{break;}}
+  if(!window&&createMainWindow)void createMainWindow().catch(()=>dialog.showErrorBox('Office EX','窗口无法打开 / Unable to open window'));
 });
 app.on('before-quit',event=>{if(window&&!allowClose){event.preventDefault();send('close-window');}});
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
@@ -232,6 +268,7 @@ if(ownsProfile)app.whenReady().then(async()=>{
   });
   installIpc();installMenu();
   const createWindow=async():Promise<void>=>{
+    if(window&&!window.isDestroyed())return;
     allowClose=false;rendererReady=false;
     window=new BrowserWindow({width:1280,height:840,minWidth:880,minHeight:600,show:false,title:'Office EX',backgroundColor:'#f7f8fa',webPreferences:{preload:join(__dirname,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false,nodeIntegrationInWorker:false,nodeIntegrationInSubFrames:false,webSecurity:true,webviewTag:false,spellcheck:false,devTools:!app.isPackaged}});
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
@@ -244,6 +281,7 @@ if(ownsProfile)app.whenReady().then(async()=>{
     await window.loadURL(`${ORIGIN}/index.html`);
     // OS-open events queue until the renderer has installed its listener.
   };
+  createMainWindow=createWindow;
   await createWindow();
   app.on('activate',()=>{if(!window)void createWindow();});
 }).catch(error=>{console.error(error instanceof OfficeError?error.code:'startup-failed');app.exit(1);});

@@ -1,0 +1,7 @@
+# The dependency inventory hashes the exact lockfile bytes on every platform.
+/package-lock.json text eol=lf
+/docs/DEPENDENCIES.lock.json text eol=lf
+
+# Preserve upstream license/NOTICE bytes exactly, including intentional CRLF.
+# Normalizing these files would invalidate their reviewed SHA-256 hashes.
+/notices/** -text

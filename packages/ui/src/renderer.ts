@@ -164,5 +164,21 @@ matchMedia('(prefers-color-scheme:dark)').addEventListener('change',applyTheme);
 document.addEventListener('dragover',event=>{event.preventDefault();$('.drop-zone')?.classList.add('drag-over');});document.addEventListener('dragleave',()=>$('.drop-zone')?.classList.remove('drag-over'));
 document.addEventListener('drop',event=>{event.preventDefault();$('.drop-zone')?.classList.remove('drag-over');const files=event.dataTransfer?.files;if(files?.length===1)run(async()=>openFile(unwrap(await bridge.openDroppedFile(files[0]!))));else if(files?.length)errorMessage(new OfficeError('limit','Open one dropped file at a time'));});
 bridge.onAction(value=>run(()=>action(value)));bridge.onFile(file=>run(()=>openFile(file)));
-setInterval(()=>{for(const tab of tabs.values())run(()=>checkpoint(tab));},30_000);
+let checkpointSweepRunning=false;
+setInterval(()=>run(async()=>{
+  if(checkpointSweepRunning)return;
+  checkpointSweepRunning=true;
+  try{
+    // Keep at most one recovery task active; all dirty tabs can checkpoint in one
+    // interval without exhausting the shared four-worker budget.
+    for(const tab of [...tabs.values()]){
+      if(tasks.size>=4)break;
+      try{await checkpoint(tab);}catch(error){
+        const failure=asFailure(error);
+        if(failure.code==='cancelled'||failure.code==='conflict'&&!tab.session?.dirty)continue;
+        errorMessage(error);
+      }
+    }
+  }finally{checkpointSweepRunning=false;}
+}),30_000);
 run(async()=>{const initial=unwrap(await bridge.initialize());settings=initial.settings;recoveryItems=initial.recovery.entries;corruptRecovery=initial.recovery.corrupt;const shortcut=document.querySelector('kbd');if(shortcut)shortcut.textContent=initial.platform==='darwin'?'⌘ O':'Ctrl O';render();document.body.dataset.ready='true';});
