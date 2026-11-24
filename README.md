@@ -2,6 +2,14 @@
 
 自主研发、跨平台、离线优先的开源办公套件。Office EX 自己实现编辑器、排版、公式计算、幻灯片与用户界面，通用开源组件只承担桌面运行时、ZIP/XML、字体和渲染等基础设施。**不基于其他 Office 套件进行二次开发。**
 
+## 文件格式与规范
+
+首个正式版目标：DOC/DOCX、XLS/XLSX、PPT/PPTX（旧版 Office 97–2003）原格式读写及双向转换；PDF 阅读/导出。尚未实现完整兼容。统一自研领域模型，不使用其他完整办公引擎。
+
+- [正式开发规范 v1.0](docs/specs/README.md)
+- [新旧文件格式契约](docs/specs/03-formats.md)
+- [功能追踪矩阵](docs/specs/features.json)
+
 ## 状态
 
 M0-R2：自主路线已确定。原创 TypeScript OOXML 写入原型可以生成基础 DOCX/XLSX XML 部件，经测试工具封装 ZIP 后由独立解析库读取。尚无桌面可安装包，不宣称完整 Office 兼容性。

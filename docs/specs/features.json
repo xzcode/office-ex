@@ -1,0 +1,247 @@
+{
+  "schemaVersion": 1,
+  "baseline": "2026-11-24",
+  "statusNote": "Grouped P0 tracking items; all individual MUST rules in normative docs also apply. No feature marked verified. The existing OOXML output spike is not full editor support.",
+  "features": [
+    {
+      "id": "ARC-01",
+      "milestone": "M1",
+      "priority": "P0",
+      "acceptance": "模块边界及类型契约",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "MOD-01",
+      "milestone": "M1",
+      "priority": "P0",
+      "acceptance": "统一模型/版本/命令与历史",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "FMT-05",
+      "milestone": "M1",
+      "priority": "P0",
+      "acceptance": "安全 OPC ZIP/XML 容器",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "LEG-01",
+      "milestone": "M1",
+      "priority": "P0",
+      "acceptance": "安全 CFB 读写",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "FS-02",
+      "milestone": "M1",
+      "priority": "P0",
+      "acceptance": "原子保存与冲突",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "FS-03",
+      "milestone": "M1",
+      "priority": "P0",
+      "acceptance": "恢复",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "SEC-01",
+      "milestone": "M1",
+      "priority": "P0",
+      "acceptance": "隔离 IPC 与零网络",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "SEC-02",
+      "milestone": "M1",
+      "priority": "P0",
+      "acceptance": "恶意文件拒绝",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "UI-01",
+      "milestone": "M1",
+      "priority": "P0",
+      "acceptance": "桌面主题与标签",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "WRT-01",
+      "milestone": "M2",
+      "priority": "P0",
+      "acceptance": "Writer 文字模型及编辑",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "WRT-02",
+      "milestone": "M2",
+      "priority": "P0",
+      "acceptance": "分页和样式",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "WRT-03",
+      "milestone": "M2",
+      "priority": "P0",
+      "acceptance": "表格、图片及输入",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "WRT-04",
+      "milestone": "M2",
+      "priority": "P0",
+      "acceptance": "DOCX 往返",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "LEG-02",
+      "milestone": "M2-L",
+      "priority": "P0",
+      "acceptance": "DOC 97–2003 读写",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "SHT-01",
+      "milestone": "M3",
+      "priority": "P0",
+      "acceptance": "网格/样式/稀疏数据",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "SHT-03",
+      "milestone": "M3",
+      "priority": "P0",
+      "acceptance": "公式解析与计算",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "SHT-04",
+      "milestone": "M3",
+      "priority": "P0",
+      "acceptance": "引用及增量重算",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "SHT-05",
+      "milestone": "M3",
+      "priority": "P0",
+      "acceptance": "XLSX 往返",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "LEG-03",
+      "milestone": "M3-L",
+      "priority": "P0",
+      "acceptance": "BIFF8 XLS 读写",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "SLD-01",
+      "milestone": "M4",
+      "priority": "P0",
+      "acceptance": "幻灯片场景和编辑",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "SLD-03",
+      "milestone": "M4",
+      "priority": "P0",
+      "acceptance": "PPTX 往返",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "LEG-04",
+      "milestone": "M4-L",
+      "priority": "P0",
+      "acceptance": "PPT 97–2003 读写",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "PDF-01",
+      "milestone": "M4",
+      "priority": "P0",
+      "acceptance": "PDF 阅读",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "PDF-02",
+      "milestone": "M4",
+      "priority": "P0",
+      "acceptance": "PDF 输出",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "FMT-04",
+      "milestone": "M5",
+      "priority": "P0",
+      "acceptance": "六格式双向转换及限制",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "LEG-06",
+      "milestone": "M5",
+      "priority": "P0",
+      "acceptance": "旧格式 Office 实测与保护",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "QA-03",
+      "milestone": "M5",
+      "priority": "P0",
+      "acceptance": "六格式完整兼容回归",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "QA-04",
+      "milestone": "M5",
+      "priority": "P0",
+      "acceptance": "视觉/公式参考验证",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "QA-05",
+      "milestone": "M5",
+      "priority": "P0",
+      "acceptance": "性能",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "id": "QA-06",
+      "milestone": "M5",
+      "priority": "P0",
+      "acceptance": "安全与原生安装",
+      "status": "planned",
+      "evidence": []
+    }
+  ]
+}
