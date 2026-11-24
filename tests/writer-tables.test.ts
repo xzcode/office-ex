@@ -98,6 +98,7 @@ test('WRT-04 table merge, nesting, unequal grid widths and unknown properties st
   for(const mutate of [
     (x:string)=>x.replace('</w:tcPr>','<w:gridSpan w:val="2"/></w:tcPr>'),
     (x:string)=>x.replace('</w:tcPr>','<w:vMerge/></w:tcPr>'),
+    (x:string)=>x.replace('</w:tcPr>','</w:tcPr><w:tbl/>'),
     (x:string)=>x.replace('<w:tcW ','<w:tcW w:extra="1" '),
     (x:string)=>x.replace(/<w:gridCol w:w="\d+"\/>/,'<w:gridCol w:w="1"/>'),
     (x:string)=>x.replace('<w:tblLayout w:type="fixed"/>','<w:tblLayout w:type="autofit"/>')

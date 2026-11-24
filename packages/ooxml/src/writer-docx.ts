@@ -114,7 +114,8 @@ function simpleText(el:Element):string{
  * Require explicit geometry and margins rather than invent Word defaults.
  */
 const TABLE_EDGES=['top','left','bottom','right','insideH','insideV'] as const;
-const CELL_EDGES=['top','right','bottom','left'] as const;
+// Transitional CT_TblCellMar sequence: top, left, bottom, right.
+const CELL_EDGES=['top','left','bottom','right'] as const;
 const TABLE_DEFAULT_PADDING={top:38100,right:57150,bottom:38100,left:57150};
 function dxa(el:Element,min=0):number{
   attrs(el,['w:w','w:type']);empty(el);valid(prop(el,'type')==='dxa','Expected explicit twip table dimension');
