@@ -62,3 +62,12 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 受测源码 75cad7b0ac4a59043b666334b41e70af914dc781；[CI 45432375135](https://github.com/xzcode/office-ex/actions/runs/45432375135)。基础 verify-writer 已通过：13 workspaces、43 源文件；137/137 自动化测试通过、0 失败、0 跳过（新增 4 项样式测试）。命名样式继承及 toggle、主题字体/颜色、直接样式覆盖、样式定义不可改、未知依赖和循环阻断均通过。独立 python-docx 实际读取受控的原始与编辑后样式 DOCX，校验段落/字符样式 ID、继承引用、字体/字号/RGB、页眉偏移及所有非正文部件逐字节一致。原有 DOCX/XLSX/CFB 互读及依赖审查通过。
 
 记录时任务状态：verify-writer: success; native-other (windows-2025): in_progress; native-macos: in_progress; native-other (ubuntu-24.04): in_progress。原生工具栏、样式选择与完整桌面保存以本次实际任务最终结果为准，未完成不得标为通过。当前代码未合并 master。此为源样式只读保留 profile，不是任意普通 Word 文件兼容：settings/numbering、复杂样式、直接主题属性及非一致字体映射暂受限；混合选区精确状态、自动 next style、新建样式、表格、图片、完整 WYSIWYG、参考 Office 和旧 DOC 仍待开发/验收。
+
+## 第五批：矩形表格事务、分页与 DOCX（实现候选）
+
+- 第四批 CI 45432375135 对源码 75cad7b 三平台 native 及 137/137 基础回归全部通过；本批单独验证。
+- 模型扩充可选 cellPadding、uniform border 和 defaultParagraphStyleId；保留 schemaVersion 1 旧草稿的读取能力。Writer 支持 top-level 规则矩形表格，默认列宽以 twip 分配至当前纸张正文宽度；行、列插入删除、列宽调整、边框开关和删除表格均使用 WRT-03 事务、稳定 ID、撤销/重做。删除末行/末列必须显式删除表格；单节仅剩一个表格时阻止删除，避免产生空 section。插列从相邻列分配宽度，删列将宽度归还相邻列，调整列宽保持总宽度（单列允许不超过正文宽度）。同一单元格可编辑多个段落、直接格式和已有命名样式，可分段/合段，禁止跨 cell 合并、cell 内硬分页、嵌套表格与不支持的 inline 对象。新增 cell 使用导入模型的默认段落样式。
+- 排版复用已有 glyph/line 计算，以各 cell 内容宽度和 padding 布局，行高取最高 cell；整行跨页移动，生成 tableCells 与段落的逻辑 caret/selection 共享快照。Canvas 绘制 uniform border；点击在 cell 矩形内优先匹配该 cell 的段落。当前行不能拆成两页；超高行或超宽文字明确拒绝预览，不裁剪/删改源模型。复杂脚本仍沿用已有 layout 限制。
+- DOCX 支持严格固定宽度矩形表格：显式 tblW、fixed tblLayout、tblGrid、四边 tblCellMar、可选一致六边 single RGB border，行/列/单元格均须规则矩形及 tcW 与 grid 一致，单元格含普通段落。单 section 现有页宽/边距限制不变。默认 table style 不可解释时阻止有损编辑；源样式/主题与其它允许非正文部件字节不变。合并/跨列/纵向合并、autofit、嵌套、复杂边框、行高、单元格额外属性及未知内容不在本 profile，保持只读。不宣称所有 Word 表格可编辑。
+- UI 新增表格工具栏、行列数量输入、增删行列、列宽（pt）、边框开关、删除、可直接编辑的矩形 cell grid。现有格式工具对选中 cell 的段落有效；分页预览仍与编辑区分离。11 套 locale 新增 12 键，176 键/套；无新生产依赖。
+- 新增 8 项定向核心回归及独立 python-docx 表格互读，原生 smoke 覆盖创建、cell 内容、行列编辑、撤销、DOCX 保存与复开。CI 实际结果另记。下一批为图片资源封装与 DOCX inline 图片，之后补普通 Word 表格、复杂排版、旧 DOC 及全部 P0 门槛。

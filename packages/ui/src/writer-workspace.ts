@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, graphemeBoundaries, OfficeError } from '@office-ex/contracts';
-import { resolveTextStyle, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument } from '@office-ex/core';
-import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff } from '@office-ex/writer';
+import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, EMU_PER_TWIP, graphemeBoundaries, OfficeError } from '@office-ex/contracts';
+import { resolveTextStyle, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterBlock, type Paragraph, type Table } from '@office-ex/core';
+import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation } from '@office-ex/writer';
 import { layoutWriter, hitTestWriterPage, writerCaretBox, writerSelectionBoxes, type WriterLayout } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
@@ -83,6 +83,10 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
         for(const rect of writerSelectionBoxes(layout,state.paragraphId,state.start,state.end))if(rect.pageIndex===state.pageIndex)ctx.fillRect(px(rect.x),px(rect.y),px(rect.width),px(rect.height));
       }catch{/* Native textarea may temporarily select inside a grapheme. Never mutate source. */}
     }
+    for(const cell of page.tableCells){
+      const border=cell.border;
+      if(border){ctx.strokeStyle=safeColor({color:border.color});ctx.lineWidth=Math.max(0.35,px(border.width));ctx.strokeRect(px(cell.x),px(cell.y),px(cell.width),px(cell.height));}
+    }
     ctx.textBaseline='alphabetic';ctx.textAlign='left';ctx.direction='ltr';
     for(const line of page.lines)for(const fragment of line.fragments){
       const r=fragment.request,family=/^(sans-serif|serif|monospace|system-ui)$/.test(r.family)?r.family:JSON.stringify(r.family);
@@ -126,16 +130,18 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   }
   function safe(fn:()=>void):void{try{fn();}catch(e){host.error(e);}}
   const actions:{button:HTMLButtonElement;range?:boolean;enabled?:()=>boolean}[]=[];
+  const tableInputs:HTMLInputElement[]=[];
+  function contextTable(){const id=state.paragraphId;if(!id)return undefined;const location=tableCellLocation(host.snapshot(),id);if(!location)return undefined;const table=modelOf(host.snapshot()).sections.flatMap(s=>s.blocks).find(b=>b.id===location.tableId);return table?.type==='table'?{...location,table}:undefined;}
   const formatFields:{element:HTMLInputElement|HTMLSelectElement;range:boolean}[]=[];
-  function tool(key:MessageKey,id:string,fn:()=>void,range=false):void{
-    const b=button(t(key),()=>safe(fn),id);b.onmousedown=e=>e.preventDefault();actions.push({button:b,range});controls.append(b);
+  function tool(key:MessageKey,id:string,fn:()=>void,range=false,enabled?:()=>boolean,parent:HTMLElement=controls):void{
+    const b=button(t(key),()=>safe(fn),id);b.onmousedown=e=>e.preventDefault();actions.push({button:b,range,enabled});parent.append(b);
   }
   function selectedStyle(key:'bold'|'italic'|'underline'):boolean{
     const selection=currentSelection();if(!selection||selection.start===selection.end)return false;
     const doc=modelOf(host.snapshot());
-    const p=doc.sections.flatMap(s=>s.blocks).find(b=>b.id===selection.id);
+    const p=selectedParagraph();
     if(!p||p.type!=='paragraph')return false;
-    const base=resolveTextStyle(doc.defaultTextStyle,doc.styles,p.styleId?[p.styleId]:[],p.style??{}).style;
+    const base=resolveTextStyle(doc.defaultTextStyle,doc.styles,(p.styleId??doc.defaultParagraphStyleId)?[p.styleId??doc.defaultParagraphStyleId!]:[],p.style??{}).style;
     let cursor=0,selected=0,all=true;
     for(const r of p.runs){if(r.type!=='text')return false;const end=cursor+r.text.length;
       if(cursor<selection.end&&end>selection.start){selected++;all=all&&resolveTextStyle(base,doc.styles,r.styleId?[r.styleId]:[],r.style??{}).style[key]===true;}cursor=end;}
@@ -143,12 +149,16 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   }
   function selectedParagraph(){
     const selection=currentSelection();if(!selection)return undefined;
-    const doc=modelOf(host.snapshot());const p=doc.sections.flatMap(s=>s.blocks).find(b=>b.id===selection.id);
-    return p?.type==='paragraph'?p:undefined;
+    const doc=modelOf(host.snapshot());
+    for(const section of doc.sections)for(const block of section.blocks){
+      if(block.type==='paragraph'&&block.id===selection.id)return block;
+      if(block.type==='table')for(const row of block.rows)for(const cell of row.cells)for(const p of cell.blocks)if(p.type==='paragraph'&&p.id===selection.id)return p;
+    }
+    return undefined;
   }
   function effectiveSelectedStyle():DeepReadonly<TextStyle>|undefined{
     const selection=currentSelection(),p=selectedParagraph();if(!selection||!p)return undefined;
-    const doc=modelOf(host.snapshot()),base=resolveTextStyle(doc.defaultTextStyle,doc.styles,p.styleId?[p.styleId]:[],p.style??{}).style;
+    const doc=modelOf(host.snapshot()),base=resolveTextStyle(doc.defaultTextStyle,doc.styles,(p.styleId??doc.defaultParagraphStyleId)?[p.styleId??doc.defaultParagraphStyleId!]:[],p.style??{}).style;
     let cursor=0;
     for(const r of p.runs){if(r.type!=='text')return base;const end=cursor+r.text.length;
       if(selection.start<=end&&(selection.start<end||selection.start===selection.end))return resolveTextStyle(base,doc.styles,r.styleId?[r.styleId]:[],r.style??{}).style;cursor=end;
@@ -157,7 +167,11 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   }
   function syncControls():void{
     const selection=currentSelection();
-    for(const action of actions)action.button.disabled=!selection||host.composing()||!!action.range&&selection.start===selection.end;
+    for(const action of actions)action.button.disabled=!selection||host.composing()||!!action.range&&selection.start===selection.end||!!action.enabled&&!action.enabled();
+    const tableContext=contextTable();
+    for(const input of tableInputs)input.disabled=host.composing()||!selection||(input.id==='writer-table-width'?!tableContext:!!tableContext);
+    const width=root.querySelector<HTMLInputElement>('#writer-table-width');if(width&&document.activeElement!==width)width.value=tableContext?String(tableContext.table.columnWidths[tableContext.column]!/EMU_PER_POINT):'';
+    const border=root.querySelector<HTMLButtonElement>('#writer-table-border');if(border)border.setAttribute('aria-pressed',String(!!tableContext?.table.border));
     for(const field of formatFields)field.element.disabled=!selection||host.composing()||field.range&&selection.start===selection.end;
     const style=effectiveSelectedStyle(),p=selectedParagraph();
     // The first selected run supplies the displayed value; mixed selections are
@@ -172,7 +186,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
         const c=style.color;color.value=c?.kind==='rgba'?'#'+[c.red,c.green,c.blue].map(n=>n.toString(16).padStart(2,'0')).join(''):'#20242c';
       }
       const named=root.querySelector<HTMLSelectElement>('#writer-paragraph-style');
-      if(named&&document.activeElement!==named)named.value=p?.styleId??'';
+      if(named&&document.activeElement!==named)named.value=p?.styleId??modelOf(host.snapshot()).defaultParagraphStyleId??'';
       const character=root.querySelector<HTMLSelectElement>('#writer-character-style');
       if(character&&document.activeElement!==character){
         const sel=currentSelection();let offset=0,current='';
@@ -232,25 +246,69 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     }
   }
   tool('writerSplit','writer-split',split);
-  tool('writerPageBreak','writer-page-break',()=>{const sel=currentSelection();if(sel&&!host.composing()&&host.execute(insertPageBreakAfter(host.snapshot(),sel.id,crypto.randomUUID())))host.render();});
+  tool('writerPageBreak','writer-page-break',()=>{const sel=currentSelection();if(sel&&!host.composing()&&host.execute(insertPageBreakAfter(host.snapshot(),sel.id,crypto.randomUUID())))host.render();},false,()=>!contextTable());
+  const tableBar=node('div','','writer-table-controls');
+  tableBar.setAttribute('role','toolbar');tableBar.setAttribute('aria-label',t('writerTable'));
+  function tableField(key:MessageKey,id:string,value:string,min:number,max:number,step:string):HTMLInputElement{
+    const label=node('label','','writer-format-field'),input=node('input');input.id=id;input.type='number';input.min=String(min);input.max=String(max);input.step=step;input.value=value;input.setAttribute('aria-label',t(key));
+    label.append(node('span',t(key)),input);tableBar.append(label);tableInputs.push(input);return input;
+  }
+  const rowsField=tableField('writerTableRows','writer-table-rows','2',1,50,'1');
+  const colsField=tableField('writerTableColumns','writer-table-columns','2',1,16,'1');
+  function focusTable(tableId:string,row=0,column=0):void{
+    const table=modelOf(host.snapshot()).sections.flatMap(s=>s.blocks).find(b=>b.id===tableId);
+    if(table?.type!=='table')return;
+    const cell=table.rows[Math.min(row,table.rows.length-1)]!.cells[Math.min(column,table.columnWidths.length-1)]!;
+    const paragraph=cell.blocks.find(b=>b.type==='paragraph');
+    if(paragraph){state.paragraphId=paragraph.id;state.start=0;state.end=0;state.focus=true;}
+  }
+  function changeTable(make:(c:NonNullable<ReturnType<typeof contextTable>>)=>DocumentCommand,rowDelta=0,colDelta=0):void{
+    const c=contextTable();if(!c||host.composing())return;
+    if(host.execute(make(c))){focusTable(c.tableId,c.row+rowDelta,c.column+colDelta);host.render();}
+  }
+  tool('writerInsertTable','writer-insert-table',()=>{
+    const sel=currentSelection();if(!sel||host.composing()||contextTable())return;
+    const prefix=crypto.randomUUID();
+    if(host.execute(insertTableAfter(host.snapshot(),sel.id,rowsField.valueAsNumber,colsField.valueAsNumber,prefix))){
+      focusTable(prefix+'-1');host.render();
+    }
+  },false,()=>!contextTable(),tableBar);
+  tool('writerAddRow','writer-table-add-row',()=>changeTable(c=>insertTableRow(host.snapshot(),c.tableId,c.row+1,crypto.randomUUID()),1),false,()=>!!contextTable(),tableBar);
+  tool('writerDeleteRow','writer-table-delete-row',()=>changeTable(c=>deleteTableRow(host.snapshot(),c.tableId,c.row)),false,()=>!!contextTable()&&contextTable()!.table.rows.length>1,tableBar);
+  tool('writerAddColumn','writer-table-add-column',()=>changeTable(c=>insertTableColumn(host.snapshot(),c.tableId,c.column+1,crypto.randomUUID()),0,1),false,()=>!!contextTable(),tableBar);
+  tool('writerDeleteColumn','writer-table-delete-column',()=>changeTable(c=>deleteTableColumn(host.snapshot(),c.tableId,c.column)),false,()=>!!contextTable()&&contextTable()!.table.columnWidths.length>1,tableBar);
+  const widthField=tableField('writerColumnWidth','writer-table-width','',12,1584,'0.05');
+  widthField.onchange=()=>safe(()=>{const n=widthField.valueAsNumber;if(!Number.isFinite(n)||n<12)throw new OfficeError('invalid','Invalid column width');changeTable(c=>resizeTableColumn(host.snapshot(),c.tableId,c.column,Math.round(n*20)*EMU_PER_TWIP));});
+  tool('writerTableBorder','writer-table-border',()=>changeTable(c=>setTableBorder(host.snapshot(),c.tableId,c.table.border?null:{width:6350,color:{kind:'rgba',red:0,green:0,blue:0,alpha:255}})),false,()=>!!contextTable(),tableBar);
+  tool('writerDeleteTable','writer-table-delete',()=>{
+    const c=contextTable();if(!c||host.composing())return;
+    if(host.execute(deleteTable(host.snapshot(),c.tableId))){state.paragraphId=undefined;state.start=0;state.end=0;host.render();}
+  },false,()=>!!contextTable(),tableBar);
+  root.insertBefore(tableBar,note);
   function join(id:string,direction:'previous'|'next'):void{
     const d=modelOf(host.snapshot());
+    const groups:DeepReadonly<WriterBlock[]>[]=[];
     for(const section of d.sections){
-      const index=section.blocks.findIndex(b=>b.id===id);if(index<0)continue;
-      const a=direction==='previous'?section.blocks[index-1]:section.blocks[index],b=direction==='previous'?section.blocks[index]:section.blocks[index+1];
+      groups.push(section.blocks);
+      for(const b of section.blocks)if(b.type==='table')for(const r of b.rows)for(const c of r.cells)groups.push(c.blocks);
+    }
+    for(const blocks of groups){
+      const index=blocks.findIndex(b=>b.id===id);if(index<0)continue;
+      const a=direction==='previous'?blocks[index-1]:blocks[index],b=direction==='previous'?blocks[index]:blocks[index+1];
       if(a?.type!=='paragraph'||b?.type!=='paragraph')return;
       const offset=paragraphText(host.snapshot(),a.id).length;
       if(host.execute(joinParagraphs(host.snapshot(),a.id,b.id))){state.paragraphId=a.id;state.start=offset;state.end=offset;state.focus=true;host.render();}return;
     }
   }
   let index=0;
-  for(const section of modelOf(host.snapshot()).sections)for(const p of section.blocks){
+  function renderParagraph(p:DeepReadonly<WriterBlock>,parent:HTMLElement,cell?:{row:number;column:number}):void{
     if(p.type!=='paragraph'||p.runs.some(r=>r.type!=='text')){
-      const indicator=node('p',t(p.type==='page-break'?'writerPageBreak':'writerUnsupportedBlock'),'writer-block-note');edit.append(indicator);continue;
+      const indicator=node('p',t(p.type==='page-break'?'writerPageBreak':'writerUnsupportedBlock'),'writer-block-note');parent.append(indicator);return;
     }
     const input=node('textarea','','writer-paragraph draft-text');input.id=inputId(index++);input.dataset.paragraphId=p.id;
-    input.dir='auto';input.rows=3;input.setAttribute('aria-label',t('textLabel')+' '+host.number(index));input.value=paragraphText(host.snapshot(),p.id);
-    inputs.set(p.id,input);edit.append(input);
+    input.dir='auto';input.rows=cell?2:3;input.setAttribute('aria-label',cell?t('writerCell',{row:host.number(cell.row+1),column:host.number(cell.column+1)})+' · '+host.number(index):t('textLabel')+' '+host.number(index));input.value=paragraphText(host.snapshot(),p.id);
+    if(cell){input.classList.add('writer-cell-input');input.dataset.row=String(cell.row);input.dataset.column=String(cell.column);}
+    inputs.set(p.id,input);parent.append(input);
     const commit=()=>{
       try{
         const s=host.snapshot(),old=paragraphText(s,p.id),change=paragraphEditDiff(old,input.value);
@@ -269,6 +327,24 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
       else if(e.key==='Backspace'&&input.selectionStart===0&&input.selectionEnd===0){e.preventDefault();safe(()=>join(p.id,'previous'));}
       else if(e.key==='Delete'&&input.selectionStart===input.value.length&&input.selectionEnd===input.value.length){e.preventDefault();safe(()=>join(p.id,'next'));}
     };
+  }
+  function renderTable(table:DeepReadonly<Table>):void{
+    const wrap=node('div','','writer-table-wrap');
+    const grid=node('table','','writer-edit-table');grid.dataset.tableId=table.id;grid.setAttribute('aria-label',t('writerTable'));
+    const columns=node('colgroup');const sum=table.columnWidths.reduce((a,b)=>a+b,0);
+    for(const width of table.columnWidths){const col=node('col');col.style.width=String(width/sum*100)+'%';columns.append(col);}
+    const body=node('tbody');grid.append(columns,body);
+    for(let row=0;row<table.rows.length;row++){
+      const tr=node('tr');body.append(tr);
+      for(let column=0;column<table.columnWidths.length;column++){
+        const cell=table.rows[row]!.cells[column]!,td=node('td');td.dataset.cellId=cell.id;tr.append(td);
+        for(const p of cell.blocks)renderParagraph(p,td,{row,column});
+      }
+    }
+    wrap.append(grid);edit.append(wrap);
+  }
+  for(const section of modelOf(host.snapshot()).sections)for(const p of section.blocks){
+    if(p.type==='table')renderTable(p);else renderParagraph(p,edit);
   }
   if(!state.paragraphId||!inputs.has(state.paragraphId)){state.paragraphId=inputs.keys().next().value;state.start=0;state.end=0;}
   const initial=activeParagraph();if(initial){initial.setSelectionRange(state.start,state.end);if(state.focus){state.focus=false;requestAnimationFrame(()=>{if(initial.isConnected)initial.focus({preventScroll:true});});}}

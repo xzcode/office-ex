@@ -91,3 +91,7 @@ npm run smoke:desktop
 ### M2 Writer 第四批开发预览
 
 新增字体、字号、颜色、已有命名样式工具，以及受限的 DOCX 样式和主题读取与原部件保留。普通 Word 文档的完整样式、复杂部件和旧 DOC 仍在开发中；当前候选范围及验收见 [M2 Writer](docs/M2-WRITER.md)。
+
+### M2 Writer 第五批开发预览
+
+新增规则矩形表格、行列操作、单元格段落编辑、整行分页预览与固定列宽 DOCX 表格支持。复杂表格及图片仍在后续阶段；本批验收见 [M2 Writer](docs/M2-WRITER.md)。

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 /** M2 narrow WordprocessingML semantic profile, using the existing bounded OPC layer.
- * Only supported named styles and preserved themes; table/image content, tracked changes, external links and unsupported
+ * Only supported named styles and preserved themes; nested/merged tables, images, tracked changes, external links and unsupported
  * section defaults may be rewritten. Unsupported documents stay on the inspection path.
  */
 import type { Element, Document } from '@xmldom/xmldom';
 import { OfficeError, assert, EMU_PER_TWIP } from '@office-ex/contracts';
-import { createDocument, validateDocument, freezeData, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type TextStyle, type WriterSection, type NamedStyle } from '@office-ex/core';
+import { createDocument, validateDocument, freezeData, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type TextStyle, type WriterSection, type NamedStyle, type Table } from '@office-ex/core';
 import { openOpc, writeOpc, type OpcPackage } from './opc.js';
 import { parseXml } from './xml.js';
 import { writeZip } from './zip.js';
@@ -110,6 +110,82 @@ function simpleText(el:Element):string{
   valid(!/[\r\n\t]/.test(text),'Raw line/tab control inside w:t');
   return text;
 }
+/** Fixed-width rectangular table profile. Each cell contains only paragraphs.
+ * Require explicit geometry and margins rather than invent Word defaults.
+ */
+const TABLE_EDGES=['top','left','bottom','right','insideH','insideV'] as const;
+const CELL_EDGES=['top','right','bottom','left'] as const;
+const TABLE_DEFAULT_PADDING={top:38100,right:57150,bottom:38100,left:57150};
+function dxa(el:Element,min=0):number{
+  attrs(el,['w:w','w:type']);empty(el);valid(prop(el,'type')==='dxa','Expected explicit twip table dimension');
+  return numberProp(el,'w',min,31680)*EMU_PER_TWIP;
+}
+function readTable(el:Element,id:string,maxWidth:number,read:(p:Element)=>WriterBlock,charge:(n:number)=>void):Table{
+  requireElement(el,'tbl');attrs(el);
+  const children=elements(el);valid(children.length>=3&&isW(children[0]!,'tblPr')&&isW(children[1]!,'tblGrid'),'Explicit table properties and grid required');
+  const props=children[0]!,grid=children[1]!;attrs(props);attrs(grid);
+  let width:number|undefined,padding:Table['cellPadding'],border:Table['border'],fixed=false;
+  const seen=new Set<string>();
+  for(const item of elements(props)){
+    const n=item.localName;valid(item.namespaceURI===W&&n!==null&&!seen.has(n),'Duplicate or unknown table property');seen.add(n);
+    if(n==='tblW')width=dxa(item,1);
+    else if(n==='tblLayout'){attrs(item,['w:type']);empty(item);valid(prop(item,'type')==='fixed','Only fixed-width tables supported');fixed=true;}
+    else if(n==='tblCellMar'){
+      attrs(item);const margins=elements(item);valid(margins.length===4,'Explicit cell margins required');
+      const pad:Record<string,number>={};
+      for(const child of margins){const edge=child.localName;valid(child.namespaceURI===W&&edge!==null&&(CELL_EDGES as readonly string[]).includes(edge)&&!Object.hasOwn(pad,edge),'Unsupported cell margin');pad[edge]=dxa(child);}
+      padding={top:pad.top!,right:pad.right!,bottom:pad.bottom!,left:pad.left!};
+    }else if(n==='tblBorders'){
+      attrs(item);const edges=elements(item);valid(edges.length===6,'Uniform six-edge table border required');
+      const used=new Set<string>();let spec:string|undefined;
+      for(const edge of edges){
+        const key=edge.localName;valid(edge.namespaceURI===W&&key!==null&&(TABLE_EDGES as readonly string[]).includes(key)&&!used.has(key),'Unsupported table border edge');used.add(key);
+        attrs(edge,['w:val','w:sz','w:space','w:color']);empty(edge);
+        const value=prop(edge,'val');valid(value==='single','Only uniform single-line borders supported');
+        const size=numberProp(edge,'sz',2,96),color=prop(edge,'color')??'';
+        valid(/^[0-9a-fA-F]{6}$/.test(color)&&(prop(edge,'space')===undefined||prop(edge,'space')==='0'),'Unsupported table border color or spacing');
+        const code=size+':'+color.toUpperCase();valid(spec===undefined||spec===code,'Mixed table border styles unsupported');spec=code;
+        border={width:Math.round(size*12700/8),color:{kind:'rgba',red:parseInt(color.slice(0,2),16),green:parseInt(color.slice(2,4),16),blue:parseInt(color.slice(4,6),16),alpha:255}};
+      }
+    }else unsupported('Unsupported table property '+n);
+  }
+  valid(fixed&&width!==undefined&&padding,'Fixed table geometry and cell margins required');
+  const columns=elements(grid);valid(columns.length>=1&&columns.length<=64,'Table column limit exceeded');
+  const columnWidths=columns.map(col=>{requireElement(col,'gridCol');attrs(col,['w:w']);empty(col);return numberProp(col,'w',1,31680)*EMU_PER_TWIP;});
+  valid(columnWidths.reduce((a,b)=>a+b,0)===width&&width<=maxWidth&&columnWidths.every(w=>w>padding!.left+padding!.right),'Invalid table grid or content width');
+  const rows=children.slice(2);valid(rows.length>=1&&rows.length<=500&&rows.length*columns.length<=10000,'Table cell budget exceeded');charge(rows.length*columns.length);
+  return {id,type:'table',columnWidths,cellPadding:padding,...(border?{border}:{}),rows:rows.map((row,ri)=>{
+    requireElement(row,'tr');attrs(row);const cells=elements(row);valid(cells.length===columns.length,'Non-rectangular or merged table');
+    return {id:id+'-row-'+ri,cells:cells.map((cell,ci)=>{
+      requireElement(cell,'tc');attrs(cell);const body=elements(cell);
+      valid(body.length>=2&&isW(body[0]!,'tcPr'),'Explicit cell properties and paragraph required');
+      const tcPr=body[0]!;attrs(tcPr);const items=elements(tcPr);
+      valid(items.length===1&&isW(items[0]!,'tcW')&&dxa(items[0]!,1)===columnWidths[ci],'Cell width differs from grid or unsupported cell properties');
+      const blocks=body.slice(1).map(p=>{requireElement(p,'p');const block=read(p);valid(block.type==='paragraph','Page break in table cell');return block;});
+      return {id:id+'-cell-'+ri+'-'+ci,blocks};
+    })};
+  })};
+}
+function writeTable(table:DeepReadonly<Table>,maxWidth:number,write:(p:DeepReadonly<Paragraph>)=>string,charge:(n:number)=>void):string{
+  const pad=table.cellPadding??TABLE_DEFAULT_PADDING;
+  const exact=(n:number,min=0)=>{valid(n%EMU_PER_TWIP===0,'Table dimensions require whole twips');return twip(n,min,31680);};
+  const widths=table.columnWidths.map(w=>exact(w,1)),sum=widths.reduce((a,b)=>a+b,0);
+  valid(sum<=31680&&sum*EMU_PER_TWIP<=maxWidth&&table.columnWidths.every(w=>w>pad.left+pad.right),'Table exceeds page or cell content width');
+  valid(table.rows.length<=500&&widths.length<=64&&table.rows.length*widths.length<=10000,'Table cell budget exceeded');charge(table.rows.length*widths.length);
+  let properties=tag('tblW',{w:sum,type:'dxa'});
+  if(table.border){
+    const c=table.border.color;valid(c.kind==='rgba'&&c.alpha===255,'Only opaque RGB table borders supported');
+    const size=Math.round(table.border.width*8/12700);valid(size>=2&&size<=96&&Math.round(size*12700/8)===table.border.width,'Table border size is not representable');
+    const color=[c.red,c.green,c.blue].map(v=>v.toString(16).padStart(2,'0')).join('').toUpperCase();
+    properties+='<w:tblBorders>'+TABLE_EDGES.map(edge=>tag(edge,{val:'single',sz:size,space:0,color})).join('')+'</w:tblBorders>';
+  }
+  properties+=tag('tblLayout',{type:'fixed'})+'<w:tblCellMar>'+CELL_EDGES.map(edge=>tag(edge,{w:exact(pad[edge]),type:'dxa'})).join('')+'</w:tblCellMar>';
+  return '<w:tbl><w:tblPr>'+properties+'</w:tblPr><w:tblGrid>'+widths.map(w=>tag('gridCol',{w})).join('')+'</w:tblGrid>'+table.rows.map(row=>'<w:tr>'+row.cells.map((cell,i)=>{
+    valid(cell.blocks.length>0&&cell.blocks.every(b=>b.type==='paragraph'),'Nested tables or non-paragraph cell blocks unsupported');
+    return '<w:tc><w:tcPr>'+tag('tcW',{w:widths[i]!,type:'dxa'})+'</w:tcPr>'+cell.blocks.map(b=>write(b as DeepReadonly<Paragraph>)).join('')+'</w:tc>';
+  }).join('')+'</w:tr>').join('')+'</w:tbl>';
+}
+
 function readMain(xml:Document,documentId:string,title:string,profile?:DocxStyleProfile):WriterDocument{
   const root=xml.documentElement!;requireElement(root,'document');attrs(root);
   for(let n=xml.firstChild;n;n=n.nextSibling)if(n!==root)valid(n.nodeType===3&&!(n.nodeValue??'').trim()||n.nodeType===7&&n.nodeName==='xml','Unsupported document-level node');
@@ -117,8 +193,9 @@ function readMain(xml:Document,documentId:string,title:string,profile?:DocxStyle
   const body=contents[0]!;attrs(body);const children=elements(body);
   valid(children.length>=2&&children.length<=MAX_BLOCKS+1,'Missing paragraphs or block limit exceeded');
   const page=readPage(children.at(-1)!,profile);const blocks:WriterBlock[]=[];let runCount=0,textCount=0;
-  for(let bi=0;bi<children.length-1;bi++){
-    const p=children[bi]!;requireElement(p,'p');attrs(p);const nodes=elements(p);
+  let paragraphIndex=0,cellCount=0;
+  const readParagraph=(p:Element,inCell=false):WriterBlock=>{
+    const bi=paragraphIndex++;valid(paragraphIndex<=MAX_BLOCKS,'Paragraph budget exceeded');requireElement(p,'p');attrs(p);const nodes=elements(p);
     let style:TextStyle|undefined,styleId=profile?.defaultParagraph;let i=0;
     if(nodes[0]&&isW(nodes[0],'pPr')){style=readParagraphStyle(nodes[0],profile?id=>{styleId=requireStyleReference(profile,id,'paragraph');}:undefined);i++;}
     const runs:TextRun[]=[];let pageBreak=false;
@@ -134,17 +211,25 @@ function readMain(xml:Document,documentId:string,title:string,profile?:DocxStyle
         else if(isW(child,'br')){
           attrs(child,['w:type']);empty(child);const type=prop(child,'type');
           if(type==='page'){
-            valid(!style&&!direct&&!runStyleId&&(!profile||!styleId||styleId===profile.defaultParagraph)&&nodes.length===1&&items.length===1,'Page break must occupy its own unformatted paragraph');pageBreak=true;
+            valid(!inCell&&!style&&!direct&&!runStyleId&&(!profile||!styleId||styleId===profile.defaultParagraph)&&nodes.length===1&&items.length===1,'Page break must occupy its own unformatted paragraph');pageBreak=true;
           }else{valid(type===undefined||type==='textWrapping','Unsupported break type');text+='\n';}
         }else unsupported('Unsupported run content '+child.localName);
       }
       textCount+=text.length;valid(textCount<=MAX_TEXT,'Text budget exceeded');
       if(!pageBreak)runs.push({id:'r-'+bi+'-'+runs.length,type:'text',text,...(runStyleId?{styleId:runStyleId}:{}),...(direct&&Object.keys(direct).length?{style:direct}:{})});
     }
-    if(pageBreak)blocks.push({id:'break-'+bi,type:'page-break'});
-    else blocks.push({id:'p-'+bi,type:'paragraph',runs:runs.length?runs:[{id:'r-'+bi+'-0',type:'text',text:''}],...(styleId?{styleId}:{}),...(style&&Object.keys(style).length?{style}:{})});
+    if(pageBreak)return {id:'break-'+bi,type:'page-break'};
+    return {id:'p-'+bi,type:'paragraph',runs:runs.length?runs:[{id:'r-'+bi+'-0',type:'text',text:''}],...(styleId?{styleId}:{}),...(style&&Object.keys(style).length?{style}:{})};
+  };
+  for(let bi=0;bi<children.length-1;bi++){
+    const block=children[bi]!;
+    if(isW(block,'tbl')){
+      valid(!profile||profile.tableDefaultsSafe,'Default table style requires a later adapter');
+      blocks.push(readTable(block,'table-'+bi,page.width-page.margins.left-page.margins.right,
+        p=>readParagraph(p,true),n=>{cellCount+=n;valid(cellCount<=10000,'Document table-cell budget exceeded');}));
+    }else blocks.push(readParagraph(block));
   }
-  const result=createDocument('writer',documentId,title);result.defaultTextStyle=profile?.defaults??{};result.styles=profile?.styles??{};result.sections=[{id:'section-1',page,blocks}];
+  const result=createDocument('writer',documentId,title);result.defaultTextStyle=profile?.defaults??{};result.styles=profile?.styles??{};if(profile?.defaultParagraph)result.defaultParagraphStyleId=profile.defaultParagraph;result.sections=[{id:'section-1',page,blocks}];
   return validateDocument(result) as WriterDocument;
 }
 function escapeXml(value:string):string{
@@ -194,13 +279,12 @@ function canonicalData(value:unknown):string{
 function mainXml(candidate:unknown,profile?:DocxStyleProfile):{model:WriterDocument;xml:string}{
   const checked=validateDocument(candidate);valid(checked.kind==='writer','Expected Writer model');
   valid(checked.sections.length===1&&!Object.keys(checked.resources).length,'Only one section and no assets');
-  if(profile){valid(canonicalData(checked.styles)===canonicalData(profile.styles)&&canonicalData(checked.defaultTextStyle)===canonicalData(profile.defaults),'Source style definitions and defaults are immutable');}
+  if(profile){valid(checked.defaultParagraphStyleId===profile.defaultParagraph&&canonicalData(checked.styles)===canonicalData(profile.styles)&&canonicalData(checked.defaultTextStyle)===canonicalData(profile.defaults),'Source style definitions and defaults are immutable');}
   else{valid(!Object.keys(checked.styles).length,'New DOCX named style definitions are not supported');valid(Object.keys(checked.defaultTextStyle).every(k=>CHAR_KEYS.includes(k)),'Unsupported default text style');}
   const section=checked.sections[0]!;valid(section.blocks.length<=MAX_BLOCKS,'Block budget exceeded');
-  let totalRuns=0,totalText=0;let body='';
-  for(const block of section.blocks){
-    if(block.type==='page-break'){body+='<w:p><w:r><w:br w:type="page"/></w:r></w:p>';continue;}
-    valid(block.type==='paragraph','Tables unsupported');
+  let totalRuns=0,totalText=0,paragraphCount=0,cellCount=0;let body='';
+  const writeParagraph=(block:DeepReadonly<Paragraph>):string=>{
+    valid(++paragraphCount<=MAX_BLOCKS,'Paragraph budget exceeded');let body='';
     const paragraphStyle=block.styleId??profile?.defaultParagraph;
     if(paragraphStyle)requireStyleReference(profile,paragraphStyle,'paragraph');
     body+='<w:p>'+writeParagraphStyle(block.style??{},paragraphStyle);
@@ -212,7 +296,13 @@ function mainXml(candidate:unknown,profile?:DocxStyleProfile):{model:WriterDocum
         body+='<w:r>'+writeRunStyle(profile?inline.style??{}:{...checked.defaultTextStyle,...inline.style},inline.styleId)+writeText(inline.text)+'</w:r>';
       }else body+='<w:r>'+writeRunStyle(profile?{}:checked.defaultTextStyle)+(inline.type==='tab'?'<w:tab/>':'<w:br/>')+'</w:r>';
     }
-    body+='</w:p>';
+    return body+'</w:p>';
+  };
+  const maxWidth=section.page.width-section.page.margins.left-section.page.margins.right;
+  for(const block of section.blocks){
+    if(block.type==='page-break')body+='<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+    else if(block.type==='table'){valid(!profile||profile.tableDefaultsSafe,'Default table style requires a later adapter');body+=writeTable(block,maxWidth,writeParagraph,n=>{cellCount+=n;valid(cellCount<=10000,'Document table-cell budget exceeded');});}
+    else body+=writeParagraph(block);
   }
   const page=section.page,width=twip(page.width,1,31680),height=twip(page.height,1,31680),m=page.margins;
   body+='<w:sectPr>'+tag('pgSz',{w:width,h:height,...(width>height?{orient:'landscape'}:{})})+tag('pgMar',{top:twip(m.top,0,31680),right:twip(m.right,0,31680),bottom:twip(m.bottom,0,31680),left:twip(m.left,0,31680),header:profile?.pageOffsets.header??0,footer:profile?.pageOffsets.footer??0,gutter:0})+'</w:sectPr>';

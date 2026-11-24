@@ -4,14 +4,15 @@
  * Document coordinates are EMU. No derived geometry is persisted in the source model.
  */
 import { assert, graphemeBoundaries, type Cancellation } from '@office-ex/contracts';
-import { resolveTextStyle, freezeData, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterSection, type Paragraph, type WriterDocument } from '@office-ex/core';
+import { resolveTextStyle, freezeData, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterSection, type Paragraph, type WriterDocument, type Table } from '@office-ex/core';
 import { measureText, type FontMetrics, type FontRequest, type Point } from './index.js';
 
 export interface WriterPosition {paragraphId:string;offset:number}
 export interface WriterCaret {offset:number;x:number}
 export interface WriterFragment {text:string;x:number;width:number;request:FontRequest;style:DeepReadonly<TextStyle>}
 export interface WriterLine {paragraphId:string;start:number;end:number;x:number;y:number;width:number;height:number;baseline:number;carets:WriterCaret[];fragments:WriterFragment[]}
-export interface WriterPage {sectionId:string;width:number;height:number;margins:DeepReadonly<WriterSection['page']['margins']>;lines:WriterLine[]}
+export interface WriterTableCellBox {tableId:string;rowId:string;cellId:string;paragraphIds:string[];x:number;y:number;width:number;height:number;border?:DeepReadonly<NonNullable<Table['border']>>}
+export interface WriterPage {sectionId:string;width:number;height:number;margins:DeepReadonly<WriterSection['page']['margins']>;lines:WriterLine[];tableCells:WriterTableCellBox[]}
 export interface WriterLayout {revision:number;contentId:string;environmentId:string;pages:WriterPage[];warnings:string[]}
 export interface WriterLayoutOptions {maxPages?:number;maxClusters?:number;cancellation?:Cancellation}
 type Glyph={start:number;end:number;text:string;advance:number;ascent:number;descent:number;style:DeepReadonly<TextStyle>;request:FontRequest;kind:'text'|'tab'|'break'};
@@ -34,7 +35,8 @@ function requestFor(provider:FontMetrics,text:string,style:DeepReadonly<TextStyl
   return {metrics:measured.metrics,request:{...measured.request,family:measured.metrics.actualFamily}};
 }
 function glyphsFor(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>,provider:FontMetrics,warnings:Set<string>,charge:(n:number)=>void,check:()=>void):{glyphs:Glyph[];style:DeepReadonly<TextStyle>;minimum:number}{
-  const para=resolveTextStyle(model.defaultTextStyle,model.styles,p.styleId?[p.styleId]:[],p.style??{});
+  const paragraphStyle=p.styleId??model.defaultParagraphStyleId;
+  const para=resolveTextStyle(model.defaultTextStyle,model.styles,paragraphStyle?[paragraphStyle]:[],p.style??{});
   for(const d of para.diagnostics)warnings.add(d.code);
   const style=para.style;const pieces:{text:string;style:DeepReadonly<TextStyle>}[]=[];
   for(const run of p.runs){
@@ -96,21 +98,20 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
     check();const spec=section.page,m=spec.margins;
     const usableWidth=spec.width-m.left-m.right,usableHeight=spec.height-m.top-m.bottom;
     assert(usableWidth>0&&usableHeight>0,'invalid','Page has no usable area');
-    const makePage=():WriterPage=>{assert(pages.length<maxPages,'limit','Writer layout page budget exceeded');const p:WriterPage={sectionId:section.id,width:spec.width,height:spec.height,margins:m,lines:[]};pages.push(p);return p;};
+    const makePage=():WriterPage=>{assert(pages.length<maxPages,'limit','Writer layout page budget exceeded');const p:WriterPage={sectionId:section.id,width:spec.width,height:spec.height,margins:m,lines:[],tableCells:[]};pages.push(p);return p;};
     let page=makePage(),y=m.top;
     const advancePage=()=>{page=makePage();y=m.top;};
     const space=(n:number)=>{if(n<=0)return;if(y+n>spec.height-m.bottom&&page.lines.length)advancePage();y=Math.min(spec.height-m.bottom,y+n);};
-    for(const block of section.blocks){
+
+    const layParagraph=(block:DeepReadonly<Paragraph>,originX:number,boxWidth:number,addSpace:(n:number)=>void,place:(line:WriterLine)=>void):void=>{
       check();assert(++blocks<=10000,'limit','Writer layout block budget exceeded');
-      if(block.type==='page-break'){advancePage();continue;}
-      assert(block.type==='paragraph','unsupported','Tables need a later layout adapter');
       const {glyphs,style,minimum}=glyphsFor(model,block,provider,warnings,charge,check);
       const indent=Math.max(0,style.indent??0);
       if((style.indent??0)<0)warnings.add('writer.negative-indent-limited');
-      const available=usableWidth-indent;
+      const available=boxWidth-indent;
       assert(available>0,'unsupported','Paragraph indent consumes page width');
       if(style.alignment==='justify')warnings.add('writer.justification-pending');
-      space(style.spaceBefore??0);
+      addSpace(style.spaceBefore??0);
       const emit=(tokens:Glyph[],start:number,end:number,forced:boolean)=>{
         check();
         const width=tokens.reduce((sum,g)=>sum+g.advance,0);
@@ -120,8 +121,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
         if(style.lineHeight!==undefined&&style.lineHeight<natural)warnings.add('writer.exact-lineheight-limited');
         const height=Math.max(natural,style.lineHeight??0);
         assert(height<=usableHeight,'unsupported','Line exceeds usable page height');
-        if(y+height>spec.height-m.bottom)advancePage();
-        const x=m.left+indent+(style.alignment==='center'?Math.max(0,Math.round((available-width)/2)):style.alignment==='end'?Math.max(0,available-width):0);
+        const x=originX+indent+(style.alignment==='center'?Math.max(0,Math.round((available-width)/2)):style.alignment==='end'?Math.max(0,available-width):0);
         if(width>available)warnings.add('writer.line-overflow');
         if(forced)warnings.add('writer.grapheme-wrap');
         const carets:WriterCaret[]=[{offset:start,x}],fragments:WriterFragment[]=[];let px=x;
@@ -134,7 +134,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
           px+=g.advance;carets.push({offset:g.end,x:px});
         }
         if(carets.at(-1)!.offset!==end)carets.push({offset:end,x:px});
-        page.lines.push({paragraphId:block.id,start,end,x,y,width,height,baseline:y+Math.floor((height-ascent-descent)/2)+ascent,carets,fragments});y+=height;
+        place({paragraphId:block.id,start,end,x,y:0,width,height,baseline:Math.floor((height-ascent-descent)/2)+ascent,carets,fragments});
       };
       let begin=0;let finalHard=false;
       while(begin<glyphs.length){
@@ -152,7 +152,53 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
         else{const end=reachedEnd?i:lastBreak>begin?lastBreak:i;assert(end>begin,'internal','Writer layout made no progress');emit(glyphs.slice(begin,end),glyphs[begin]!.start,glyphs[end-1]!.end,!reachedEnd&&lastBreak<=begin);begin=end;finalHard=false;}
       }
       if(!glyphs.length||finalHard){const end=glyphs.at(-1)?.end??0;emit([],end,end,false);}
-      space(style.spaceAfter??0);
+      addSpace(style.spaceAfter??0);
+    };
+    const placeTop=(line:WriterLine):void=>{
+      if(y+line.height>spec.height-m.bottom)advancePage();
+      page.lines.push({...line,y,baseline:y+line.baseline});y+=line.height;
+    };
+    const layTable=(table:DeepReadonly<Table>):void=>{
+      const pad=table.cellPadding??{top:38100,right:57150,bottom:38100,left:57150};
+      const totalWidth=table.columnWidths.reduce((a,b)=>a+b,0);
+      assert(totalWidth<=usableWidth,'unsupported','Table exceeds page content width');
+      assert(table.columnWidths.every(w=>w>pad.left+pad.right),'unsupported','Table cell has no content width');
+      warnings.add('writer.table-row-pagination');
+      for(const row of table.rows){
+        check();assert(++blocks<=10000,'limit','Writer table row budget exceeded');
+        const rowCells:{box:WriterTableCellBox;lines:WriterLine[];height:number}[]=[];
+        let x=m.left,rowHeight=0;
+        for(let col=0;col<row.cells.length;col++){
+          const cell=row.cells[col]!,width=table.columnWidths[col]!,lines:WriterLine[]=[];let localY=pad.top;
+          const addSpace=(n:number)=>{localY+=n;assert(localY+pad.bottom<=usableHeight,'unsupported','Table row exceeds page content height');};
+          const place=(line:WriterLine)=>{
+            assert(line.x+line.width<=x+width-pad.right,'unsupported','Table cell line exceeds content width');
+            lines.push({...line,y:localY,baseline:localY+line.baseline});addSpace(line.height);
+          };
+          for(const child of cell.blocks){
+            assert(child.type==='paragraph','unsupported','Nested tables and page breaks within cells unsupported');
+            layParagraph(child,x+pad.left,width-pad.left-pad.right,addSpace,place);
+          }
+          const h=localY+pad.bottom;
+          assert(h>0&&h<=usableHeight,'unsupported','Table row exceeds page content height');
+          rowHeight=Math.max(rowHeight,h);
+          const box:WriterTableCellBox={tableId:table.id,rowId:row.id,cellId:cell.id,paragraphIds:cell.blocks.map(b=>b.id),x,y:0,width,height:0,...(table.border?{border:table.border}:{})};
+          rowCells.push({box,lines,height:h});x+=width;
+        }
+        // Keep every row together. Oversized rows are rejected rather than clipped.
+        if(y+rowHeight>spec.height-m.bottom)advancePage();
+        for(const item of rowCells){
+          page.tableCells.push({...item.box,y,height:rowHeight});
+          for(const line of item.lines)page.lines.push({...line,y:y+line.y,baseline:y+line.baseline});
+        }
+        y+=rowHeight;
+      }
+    };
+    for(const block of section.blocks){
+      check();
+      if(block.type==='page-break'){assert(++blocks<=10000,'limit','Writer layout block budget exceeded');advancePage();continue;}
+      if(block.type==='table'){layTable(block);continue;}
+      layParagraph(block,m.left,usableWidth,space,placeTop);
     }
   }
   return freezeData({revision:snapshot.revision,contentId:snapshot.contentId,environmentId:provider.environmentId,pages,warnings:[...warnings].sort()});
@@ -161,9 +207,13 @@ type ReadLayout=DeepReadonly<WriterLayout>;
 export function hitTestWriterPage(layout:ReadLayout,pageIndex:number,point:Point):WriterPosition|undefined{
   assert(Number.isFinite(point.x)&&Number.isFinite(point.y),'invalid','Invalid Writer hit point');
   const page=layout.pages[pageIndex];if(!page?.lines.length)return undefined;
+  const cell=page.tableCells.find(c=>point.x>=c.x&&point.x<c.x+c.width&&point.y>=c.y&&point.y<c.y+c.height);
+  const candidates=cell?page.lines.filter(l=>cell.paragraphIds.includes(l.paragraphId)):page.lines;
+  if(!candidates.length)return undefined;
   const distance=(line:DeepReadonly<WriterLine>)=>Math.max(line.y-point.y,point.y-line.y-line.height,0);
-  let nearest=page.lines[0]!;
-  for(const line of page.lines)if(distance(line)<distance(nearest))nearest=line;
+  const horizontal=(line:DeepReadonly<WriterLine>)=>Math.max(line.x-point.x,point.x-line.x-line.width,0);
+  let nearest=candidates[0]!;
+  for(const line of candidates)if(distance(line)<distance(nearest)||distance(line)===distance(nearest)&&horizontal(line)<horizontal(nearest))nearest=line;
   let caret=nearest.carets[0]!;
   for(const c of nearest.carets)if(Math.abs(c.x-point.x)<Math.abs(caret.x-point.x))caret=c;
   return {paragraphId:nearest.paragraphId,offset:caret.offset};

@@ -16,10 +16,10 @@ export interface TextRun { id: string; type: 'text'; text: string; styleId?: str
 export type Inline = TextRun | { id: string; type: 'tab' | 'line-break' } | { id: string; type: 'image'; resourceId: string; width: number; height: number };
 export interface Paragraph { id: string; type: 'paragraph'; styleId?: string; style?: TextStyle; runs: Inline[] }
 export interface TableCell { id: string; blocks: WriterBlock[] }
-export interface Table { id: string; type: 'table'; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[] }
+export interface Table { id: string; type: 'table'; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[]; cellPadding?: {top:number;right:number;bottom:number;left:number}; border?: {width:number;color:Color} }
 export type WriterBlock = Paragraph | Table | { id: string; type: 'page-break' };
 export interface WriterSection { id: string; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
-export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[] }
+export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string }
 
 export type CellValue = { kind: 'blank' } | { kind: 'string'; value: string } | { kind: 'number'; value: number } | { kind: 'boolean'; value: boolean } | { kind: 'error'; value: '#NULL!' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#NAME?' | '#NUM!' | '#N/A' } | { kind: 'formula'; source: string };
 export interface Cell { value: CellValue; styleId?: string; numberFormat?: string }
@@ -128,7 +128,7 @@ export function validateDocument(value: unknown): OfficeDocument {
   assert(isRecord(value), 'invalid', 'Expected document');
   if (value.schemaVersion !== 1) throw new OfficeError('unsupported', 'Unsupported document schema version');
   const fields = ['schemaVersion', 'documentId', 'title', 'resources', 'styles', 'defaultTextStyle', 'kind'];
-  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections'] : value.kind === 'sheets' ? ['dateSystem', 'sheets'] : value.kind === 'slides' ? ['size', 'slides'] : [])]);
+  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections','defaultParagraphStyleId'] : value.kind === 'sheets' ? ['dateSystem', 'sheets'] : value.kind === 'slides' ? ['size', 'slides'] : [])]);
   assertId(model.documentId); text(model.title, 1024, false);
   const ids = new Set<string>();
   const id = (candidate: unknown): void => { assertId(candidate); assert(!ids.has(candidate), 'invalid', 'Duplicate stable node identifier'); ids.add(candidate); };
@@ -180,15 +180,18 @@ export function validateDocument(value: unknown): OfficeDocument {
   };
   const block = (candidate: unknown, depth = 0): void => {
     assert(depth <= 64, 'limit', 'Table nesting budget exceeded');
-    const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows']); id(value.id);
+    const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows', 'cellPadding', 'border']); id(value.id);
     if (value.type === 'paragraph') {
-      assert(!('rows' in value) && !('columnWidths' in value), 'invalid', 'Unexpected paragraph fields');
+      assert(!['rows','columnWidths','cellPadding','border'].some(k=>k in value), 'invalid', 'Unexpected paragraph fields');
       optionalId(value.styleId, styles); if(value.styleId!==undefined){const ref=styles[String(value.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='paragraph'),'invalid','Paragraph requires a paragraph style');} if (value.style !== undefined) validateTextStyle(value.style);
       list(value.runs).forEach((item) => run(item));
     } else if (value.type === 'table') {
       assert(!['runs', 'style', 'styleId'].some((key) => key in value), 'invalid', 'Unexpected table fields');
       const widths = list(value.columnWidths, 1); widths.forEach((width) => integer(width, 1));
-      list(value.rows, 1).forEach((candidate) => {
+      assert(widths.length<=64&&widths.reduce<number>((sum,w)=>sum+Number(w),0)<=Number.MAX_SAFE_INTEGER,'limit','Table width budget exceeded');
+      if(value.cellPadding!==undefined){const pad=object(value.cellPadding,['top','right','bottom','left']);for(const key of ['top','right','bottom','left'])integer(pad[key],0,12_700*144);}
+      if(value.border!==undefined){const border=object(value.border,['width','color']);integer(border.width,1,12_700*12);validateColor(border.color);}
+      const rows=list(value.rows,1);assert(rows.length<=500&&rows.length*widths.length<=10000,'limit','Table cell budget exceeded');rows.forEach((candidate) => {
         const row = object(candidate, ['id', 'cells']); id(row.id);
         const cells = list(row.cells); assert(cells.length === widths.length, 'invalid', 'Non-rectangular table');
         cells.forEach((candidate) => { const cell = object(candidate, ['id', 'blocks']); id(cell.id); list(cell.blocks, 1).forEach((item) => block(item, depth + 1)); });
@@ -196,6 +199,8 @@ export function validateDocument(value: unknown): OfficeDocument {
     } else assert(value.type === 'page-break' && Object.keys(value).length === 2, 'invalid', 'Invalid writer block');
   };
   if (model.kind === 'writer') {
+    optionalId(model.defaultParagraphStyleId,styles);
+    if(model.defaultParagraphStyleId!==undefined){const ref=styles[String(model.defaultParagraphStyleId)];assert(isRecord(ref)&&ref.kind==='paragraph','invalid','Default paragraph style must be a paragraph style');}
     list(model.sections, 1).forEach((candidate) => {
       const section = object(candidate, ['id', 'page', 'blocks']); id(section.id);
       const page = object(section.page, ['width', 'height', 'margins']); integer(page.width, 1); integer(page.height, 1);

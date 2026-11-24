@@ -230,6 +230,51 @@ try{
   await page.waitForFunction(count=>document.querySelectorAll('.tab').length===count-1,styledCount);
   check('Styled DOCX opens in Writer, applies named paragraph style and preserves every non-main part');
 
+  // Table editing goes through the real desktop editor and source-preserving save.
+  const tablePath=join(work,'table.docx');
+  await page.locator('#home').click();await page.locator('#new-docx').click();
+  await inputEquals('#draft-text','','New table document');
+  await page.locator('#draft-text').fill('Table example');
+  await page.locator('#writer-insert-table').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.writer-edit-table tbody tr').length===2);
+  const cell=(row,column)=>page.locator('.writer-cell-input[data-row="'+row+'"][data-column="'+column+'"]').first();
+  await cell(0,0).fill('中文 表格 😀');
+  await cell(0,1).fill('日本語');
+  await cell(1,0).fill('Second row');
+  await cell(0,0).click();
+  await page.locator('#writer-table-add-row').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.writer-edit-table tbody tr').length===3);
+  await cell(0,0).click();
+  await page.locator('#writer-table-add-column').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.writer-edit-table tbody tr:first-child td').length===3);
+  await cell(0,1).fill('Inserted column');
+  await cell(1,0).fill('Inserted row');
+  await page.locator('#writer-table-delete-row').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.writer-edit-table tbody tr').length===2);
+  await page.locator('#undo').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.writer-edit-table tbody tr').length===3);
+  assert.equal(await cell(1,0).inputValue(),'Inserted row');
+  await cell(0,0).click();
+  await page.waitForFunction(()=>{const c=document.querySelector('#writer-page-preview');return c&&!c.hidden&&c.width>100;});
+  await dialogSave(tablePath);await page.locator('#save').click();
+  await waitFor(async()=>{try{return (await readFile(tablePath)).length>100;}catch{return false;}},'real DOCX table save',30000);
+  await page.waitForFunction(()=>!document.querySelector('#save').disabled&&document.querySelector('#document-status').textContent.includes('已保存'));
+  const tableBytes=await readFile(tablePath);
+  const tableModel=openWriterDocx(tableBytes,'table-reader','Table').document;
+  const table=tableModel.sections[0].blocks.find(b=>b.type==='table');
+  assert.equal(table.rows.length,3);assert.equal(table.columnWidths.length,3);
+  const cellText=(r,c)=>table.rows[r].cells[c].blocks.map(p=>p.runs.map(run=>run.type==='text'?run.text:'').join('')).join('\n');
+  assert.equal(cellText(0,0),'中文 表格 😀');assert.equal(cellText(0,1),'Inserted column');
+  assert.equal(cellText(0,2),'日本語');assert.equal(cellText(1,0),'Inserted row');assert.ok(table.border);
+  await screenshot('writer-table-docx');
+  const tableCount=await page.locator('.tab').count();await page.locator('.tab[aria-selected=true] .tab-close').click();
+  await page.waitForFunction(count=>document.querySelectorAll('.tab').length===count-1,tableCount);
+  await dialogOpen(tablePath);await page.waitForSelector('.writer-edit-table');
+  assert.equal(await cell(0,0).inputValue(),'中文 表格 😀');assert.equal(await cell(0,1).inputValue(),'Inserted column');
+  const reopenCount=await page.locator('.tab').count();await page.locator('.tab[aria-selected=true] .tab-close').click();
+  await page.waitForFunction(count=>document.querySelectorAll('.tab').length===count-1,reopenCount);
+  check('Writer table creates rows and columns, edits cells, undoes row deletion, saves and reopens a real DOCX');
+
   await page.locator('.tab').first().click();assert.equal(await page.locator('#draft-text').inputValue(),'Edit made while saving');
   // Bad save destination keeps the document dirty, usable and the old file unchanged.
   const stable=await readFile(draftCopyPath);await page.locator('#draft-text').fill('Dirty content before simulated crash');

@@ -92,3 +92,5 @@ M2 Writer 第三批受测源码 c79feaf16191e01b890e16012f7daca98a0a30ef，基�
 M2 Writer 第四批候选：第三批 CI 45428117703 三平台全部通过；第四批新增字体/字号/颜色工具、命名样式应用、保留式 styles/theme profile，11 locale 164 键。继续核对本批 CI 后扩展普通 Word 的默认/脚本样式、settings/numbering 依赖闭包、表格、图像及 DOC；不把受控 style fixture 当作全面 Word 兼容。详细边界见 docs/M2-WRITER.md。
 
 M2 Writer 第四批受测源码 75cad7b0ac4a59043b666334b41e70af914dc781，137/137 基础回归、受控样式 DOCX 独立互读与非正文部件逐字节保留均已通过；CI https://github.com/xzcode/office-ex/actions/runs/45432375135。记录时 verify-writer: success; native-other (windows-2025): in_progress; native-macos: in_progress; native-other (ubuntu-24.04): in_progress。后续继续同一 Writer 分支，先核对该原生结果并只修实际问题；随后优先扩大安全 Word profile（docDefaults、字体/语言映射、settings 等影响闭包）、表格结构与布局、图片资产、旧 DOC。源样式目录仍只读，不能把本轮称为完整 Office 兼容。保留全部 22 locale 及六格式发布门槛。
+
+M2 Writer 第五批候选：上一批 45432375135 全任务通过；本批新增规则矩形表格、行列/列宽/边框事务、cell 段落编辑、整行分页及固定表格 DOCX 语义读写，11 locale 176 键。先查本批 CI，修实际失败后继续 inline PNG/JPEG 资源管理与安全原格式读写；超高行不拆分、复杂表格仍只读，保留六格式与多语言正式版门槛。见 docs/M2-WRITER.md。

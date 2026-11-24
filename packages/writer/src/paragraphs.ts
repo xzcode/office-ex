@@ -1,33 +1,40 @@
 // SPDX-License-Identifier: MIT
 /** M2 Writer transaction layer. Paragraph-wide offsets are UTF-16 at grapheme boundaries.
- * This first slice operates on top-level, text-only paragraphs; unsupported inline objects
- * and tables are never silently flattened. All changes go through DocumentSession.
+ * Operates on top-level and simple table-cell text paragraphs. Unsupported inline objects
+ * and nested tables are never silently flattened. All changes go through DocumentSession.
  */
 import { assert, assertId, assertUnicode, assertGraphemeRange, graphemeBoundaries } from '@office-ex/contracts';
-import { patchCommand, validateTextStyle, assertPlainData, cloneData, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type Paragraph, type TextRun, type WriterDocument } from '@office-ex/core';
+import { patchCommand, validateTextStyle, assertPlainData, cloneData, type DocumentSnapshot, type DocumentCommand, type ModelPath, type DeepReadonly, type TextStyle, type Paragraph, type TextRun, type WriterDocument } from '@office-ex/core';
 
 type ReadRun = DeepReadonly<TextRun>;
 type ReadParagraph = DeepReadonly<Paragraph>;
-type Location = { section:number; block:number; paragraph:ReadParagraph; runs:readonly ReadRun[]; text:string };
+type Location = { section:number; block:number; parent:ModelPath; inCell:boolean; paragraph:ReadParagraph; runs:readonly ReadRun[]; text:string };
 function writer(snapshot:DocumentSnapshot):DeepReadonly<WriterDocument>{
   assert(snapshot.document.kind==='writer','invalid','Expected Writer document');
   return snapshot.document;
 }
 function locate(snapshot:DocumentSnapshot,id:string):Location{
   const model=writer(snapshot);
-  for(let section=0;section<model.sections.length;section++){
-    const block=model.sections[section]!.blocks.findIndex(b=>b.id===id);
-    if(block<0)continue;
-    const paragraph=model.sections[section]!.blocks[block]!;
-    assert(paragraph.type==='paragraph','unsupported','Only paragraph editing is supported here');
-    const runs:ReadRun[]=[];
-    for(const run of paragraph.runs){
-      assert(run.type==='text','unsupported','Paragraph contains an unsupported inline object');
-      runs.push(run);
+  function find(blocks:DeepReadonly<WriterDocument['sections'][number]['blocks']>,section:number,parent:ModelPath,inCell:boolean):Location|undefined{
+    for(let block=0;block<blocks.length;block++){
+      const p=blocks[block]!;
+      if(p.id===id){
+        assert(p.type==='paragraph','unsupported','Only paragraph editing is supported here');
+        const runs:ReadRun[]=[];
+        for(const run of p.runs){assert(run.type==='text','unsupported','Paragraph contains an unsupported inline object');runs.push(run);}
+        return {section,block,parent,inCell,paragraph:p,runs,text:runs.map(r=>r.text).join('')};
+      }
+      if(p.type==='table'&&!inCell)for(let row=0;row<p.rows.length;row++)for(let col=0;col<p.rows[row]!.cells.length;col++){
+        const found=find(p.rows[row]!.cells[col]!.blocks,section,[...parent,block,'rows',row,'cells',col,'blocks'],true);
+        if(found)return found;
+      }
     }
-    return {section,block,paragraph,runs,text:runs.map(r=>r.text).join('')};
+    return undefined;
   }
-  assert(false,'invalid','Top-level paragraph not found');
+  for(let section=0;section<model.sections.length;section++){
+    const found=find(model.sections[section]!.blocks,section,['sections',section,'blocks'],false);if(found)return found;
+  }
+  assert(false,'invalid','Paragraph not found');
 }
 export function paragraphText(snapshot:DocumentSnapshot,paragraphId:string):string{return locate(snapshot,paragraphId).text;}
 function allocator(prefix:string):()=>string{
@@ -61,7 +68,7 @@ function nonEmpty(runs:TextRun[],template:ReadRun|undefined,allocate:()=>string)
   return runs.length?runs:[inserted(template,'',allocate)];
 }
 function runPatch(snapshot:DocumentSnapshot,p:Location,runs:TextRun[]):DocumentCommand{
-  return patchCommand(snapshot,'WRT-03',[{op:'set',path:['sections',p.section,'blocks',p.block,'runs'],value:runs}]);
+  return patchCommand(snapshot,'WRT-03',[{op:'set',path:[...p.parent,p.block,'runs'],value:runs}]);
 }
 /** Replace across runs; insertion inherits the preceding run (or first run at offset 0). */
 export function replaceParagraphRange(snapshot:DocumentSnapshot,paragraphId:string,start:number,end:number,replacement:string,operationId:string):DocumentCommand{
@@ -73,7 +80,7 @@ export function replaceParagraphRange(snapshot:DocumentSnapshot,paragraphId:stri
   let cursor=0;
   for(let index=0;index<p.runs.length;index++){
     const run=p.runs[index]!,next=cursor+run.text.length;
-    if(start>=cursor&&end<=next){const value=run.text.slice(0,start-cursor)+replacement+run.text.slice(end-cursor);if(value.length<=1_000_000)return patchCommand(snapshot,'WRT-03',[{op:'set',path:['sections',p.section,'blocks',p.block,'runs',index,'text'],value}]);}
+    if(start>=cursor&&end<=next){const value=run.text.slice(0,start-cursor)+replacement+run.text.slice(end-cursor);if(value.length<=1_000_000)return patchCommand(snapshot,'WRT-03',[{op:'set',path:[...p.parent,p.block,'runs',index,'text'],value}]);}
     cursor=next;
   }
   const allocate=allocator(operationId),used=new Set<string>(),template=templateAt(p.runs,start);
@@ -104,7 +111,7 @@ export function splitParagraphRange(snapshot:DocumentSnapshot,paragraphId:string
   const left=nonEmpty(sliceRuns(p.runs,0,start,used,allocate),template,allocate);
   const right=nonEmpty(sliceRuns(p.runs,end,p.text.length,used,allocate),template,allocate);
   const original=cloneData(p.paragraph);
-  return patchCommand(snapshot,'WRT-03',[{op:'splice',path:['sections',p.section,'blocks'],index:p.block,deleteCount:1,items:[{...original,runs:left},{...original,id:newParagraphId,runs:right}]}]);
+  return patchCommand(snapshot,'WRT-03',[{op:'splice',path:p.parent,index:p.block,deleteCount:1,items:[{...original,runs:left},{...original,id:newParagraphId,runs:right}]}]);
 }
 /** A native input change becomes one grapheme-safe minimal replacement. */
 export function paragraphEditDiff(before:string,after:string):{start:number;end:number;replacement:string}|undefined{
@@ -118,16 +125,16 @@ export function paragraphEditDiff(before:string,after:string):{start:number;end:
 /** Join adjacent paragraphs in the same section; preceding paragraph properties win. */
 export function joinParagraphs(snapshot:DocumentSnapshot,firstId:string,secondId:string):DocumentCommand{
   const first=locate(snapshot,firstId),second=locate(snapshot,secondId);
-  assert(first.section===second.section&&first.block+1===second.block,'invalid','Paragraphs must be adjacent in the same section');
+  assert(JSON.stringify(first.parent)===JSON.stringify(second.parent)&&first.block+1===second.block,'invalid','Paragraphs must be adjacent in the same section');
   const runs=[...first.runs,...second.runs].map(r=>cloneData(r));
-  return patchCommand(snapshot,'WRT-03',[{op:'splice',path:['sections',first.section,'blocks'],index:first.block,deleteCount:2,items:[{...cloneData(first.paragraph),runs}]}]);
+  return patchCommand(snapshot,'WRT-03',[{op:'splice',path:first.parent,index:first.block,deleteCount:2,items:[{...cloneData(first.paragraph),runs}]}]);
 }
 /** Apply an existing paragraph style without deleting direct formatting. */
 export function setParagraphNamedStyle(snapshot:DocumentSnapshot,paragraphId:string,styleId:string):DocumentCommand{
   const p=locate(snapshot,paragraphId),model=writer(snapshot);
   assertId(styleId);const style=Object.hasOwn(model.styles,styleId)?model.styles[styleId]:undefined;
   assert(style?.kind==='paragraph','unsupported','Expected a supported paragraph style');
-  return patchCommand(snapshot,'WRT-03',[{op:'set',path:['sections',p.section,'blocks',p.block,'styleId'],value:styleId}]);
+  return patchCommand(snapshot,'WRT-03',[{op:'set',path:[...p.parent,p.block,'styleId'],value:styleId}]);
 }
 /** Apply an existing character style to a grapheme-safe selection. */
 export function setCharacterNamedStyle(snapshot:DocumentSnapshot,paragraphId:string,start:number,end:number,styleId:string,operationId:string):DocumentCommand{
@@ -143,10 +150,10 @@ export function setCharacterNamedStyle(snapshot:DocumentSnapshot,paragraphId:str
 }
 export function setParagraphAlignment(snapshot:DocumentSnapshot,paragraphId:string,alignment:NonNullable<TextStyle['alignment']>):DocumentCommand{
   const p=locate(snapshot,paragraphId);validateTextStyle({alignment});
-  return patchCommand(snapshot,'WRT-03',[{op:'set',path:['sections',p.section,'blocks',p.block,'style'],value:{...p.paragraph.style,alignment}}]);
+  return patchCommand(snapshot,'WRT-03',[{op:'set',path:[...p.parent,p.block,'style'],value:{...p.paragraph.style,alignment}}]);
 }
 /** Page breaks are explicit blocks, not derived pagination. */
 export function insertPageBreakAfter(snapshot:DocumentSnapshot,paragraphId:string,breakId:string):DocumentCommand{
-  const p=locate(snapshot,paragraphId);assertId(breakId);
-  return patchCommand(snapshot,'WRT-03',[{op:'splice',path:['sections',p.section,'blocks'],index:p.block+1,deleteCount:0,items:[{id:breakId,type:'page-break'}]}]);
+  const p=locate(snapshot,paragraphId);assertId(breakId);assert(!p.inCell,'unsupported','Page breaks inside cells are not supported');
+  return patchCommand(snapshot,'WRT-03',[{op:'splice',path:p.parent,index:p.block+1,deleteCount:0,items:[{id:breakId,type:'page-break'}]}]);
 }

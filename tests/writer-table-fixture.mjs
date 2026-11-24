@@ -1,0 +1,10 @@
+import {writeFileSync} from 'node:fs';
+import {makeTableFixture,writerModel,tableOf,cellParagraph} from './writer-table-fixture.ts';
+import {writeWriterDocx,openWriterDocx,saveWriterDocx} from '@office-ex/ooxml';
+import {DocumentSession} from '@office-ex/core';
+import {insertTableRow,replaceParagraphRange} from '@office-ex/writer';
+const original=writeWriterDocx(writerModel(makeTableFixture())),source=openWriterDocx(original,'table-interop','Table');
+const session=new DocumentSession(source.document,{saved:true}),table=tableOf(writerModel(session));
+session.execute(insertTableRow(session.snapshot(),table.id,2,'extra-row'));
+session.execute(replaceParagraphRange(session.snapshot(),cellParagraph(session,2,1),0,0,'Added row 中文','text'));
+writeFileSync(process.argv[2],original);writeFileSync(process.argv[3],saveWriterDocx(source,session.snapshot().document));
