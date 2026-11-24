@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "2026-11-24",
-  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed. Spec v1.1 adds I18N-01–05 and QA-07 as planned cross-cutting P0 release requirements; historical M1 evidence is unchanged. M2-I18N initial implementation has four draft UI catalogs and shared settings/formatting; not yet verified, 22-locale release gate unchanged. A-batch second iteration implements 11 candidate UI catalogs, structured messages and pseudo fixtures; new CI and full 22-locale gates remain.",
+  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed. Spec v1.1 adds I18N-01–05 and QA-07 as planned cross-cutting P0 release requirements; historical M1 evidence is unchanged. M2-I18N initial implementation has four draft UI catalogs and shared settings/formatting; not yet verified, 22-locale release gate unchanged. A-batch second iteration implements 11 candidate UI catalogs, structured messages and pseudo fixtures; new CI and full 22-locale gates remain. M2 Writer first slice: paragraph transactions and narrow DOCX semantic adapter implemented; verification and later gates pending.",
   "features": [
     {
       "id": "ARC-01",
@@ -311,8 +311,15 @@
       "milestone": "M2",
       "priority": "P0",
       "acceptance": "Writer 文字模型及编辑",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [],
+      "implementationPaths": [
+        "packages/writer/src/paragraphs.ts",
+        "tests/writer-paragraphs.test.ts"
+      ],
+      "remainingScope": [
+        "Top-level text-only paragraph operations; unsupported inline objects/tables blocked. Writer UI selection, true IME, rich rendering, complex script/layout, table/image commands and full WRT requirements remain."
+      ]
     },
     {
       "id": "WRT-02",
@@ -327,16 +334,32 @@
       "milestone": "M2",
       "priority": "P0",
       "acceptance": "表格、图片及输入",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [],
+      "implementationPaths": [
+        "packages/writer/src/paragraphs.ts",
+        "tests/writer-paragraphs.test.ts"
+      ],
+      "remainingScope": [
+        "Top-level text-only paragraph operations; unsupported inline objects/tables blocked. Writer UI selection, true IME, rich rendering, complex script/layout, table/image commands and full WRT requirements remain."
+      ]
     },
     {
       "id": "WRT-04",
       "milestone": "M2",
       "priority": "P0",
       "acceptance": "DOCX 往返",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [],
+      "implementationPaths": [
+        "packages/ooxml/src/writer-docx.ts",
+        "tests/writer-docx.test.ts",
+        "tests/writer_docx_interop.py"
+      ],
+      "remainingScope": [
+        "Narrow minimal Transitional DOCX profile only: direct formatting, text, tabs, line/page breaks, explicit single-section page geometry. Ordinary documents with styles, themes, tables, images, revision marks or other parts are blocked from semantic rewriting.",
+        "No desktop semantic import/save wiring, no Word GUI acceptance, no DOC legacy implementation."
+      ]
     },
     {
       "id": "LEG-02",
