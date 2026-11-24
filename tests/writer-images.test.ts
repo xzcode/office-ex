@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {OfficeError,EMU_PER_TWIP,EMU_PER_POINT,graphemeBoundaries} from '@office-ex/contracts';
-import {createDocument,DocumentSession,makeImageResource,validateImageResource,decodeImageBytes,inspectImage,cloneData,type WriterDocument} from '@office-ex/core';
+import {createDocument,DocumentSession,patchCommand,makeImageResource,validateImageResource,decodeImageBytes,inspectImage,cloneData,type WriterDocument} from '@office-ex/core';
 import {insertImageAfter,resizeInlineImage,removeInlineImage,setWriterPage,setParagraphMetrics,insertPageBreakAfter} from '@office-ex/writer';
 import {layoutWriter,type FontMetrics} from '@office-ex/render';
 import {writeWriterDocx,openWriterDocx,saveWriterDocx,openOpc,writeZip} from '@office-ex/ooxml';
@@ -86,4 +86,12 @@ test('WRT-02 page settings, margins, paragraph metrics and image layout use one 
   const reopened=openWriterDocx(writeWriterDocx(current.document),'page','Page').document;
   assert.deepEqual(reopened.sections[0]!.page,model(s).sections[0]!.page);
   for(let i=0;i<3;i++)s.undo();assert.deepEqual(s.snapshot().document,before);
+});
+
+test('MOD-03 Writer image/page transaction privileges stay narrow',()=>{
+  const s=new DocumentSession(createDocument('writer','image-perms')),r=makeImageResource(PNG);
+  assert.throws(()=>s.execute(patchCommand(s.snapshot(),'WRT-02',[{op:'set',path:['sections',0,'blocks',0,'runs',0,'text'],value:'bypass'}])),fails('unsupported'));
+  s.execute(insertImageAfter(s.snapshot(),'paragraph-1',r,'permission-image'));
+  assert.throws(()=>s.execute(patchCommand(s.snapshot(),'WRT-03',[{op:'set',path:['resources',r.id],value:r}])),fails('conflict'));
+  assert.throws(()=>s.execute(patchCommand(s.snapshot(),'WRT-03',[{op:'delete',path:['resources',r.id]}])),fails('unsupported'));
 });

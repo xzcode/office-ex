@@ -1,5 +1,6 @@
 import { CancellationToken, assert, assertId, isRecord, type Diagnostic } from '@office-ex/contracts';
 import { assertPlainData, cloneData, freezeData, validateDocument, type OfficeDocument } from './model.js';
+import { validateImageResource } from './images.js';
 
 export type DeepReadonly<T> = T extends readonly (infer U)[] ? readonly DeepReadonly<U>[] : T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> } : T;
 export type ModelPath = readonly (string | number)[];
@@ -18,7 +19,7 @@ export interface SessionCapabilities {
   readonly allowedFeatures: readonly string[];
   readonly diagnostics: readonly Diagnostic[];
 }
-export const EDITABLE_CAPABILITIES: SessionCapabilities = Object.freeze({ canEdit: true, allowedFeatures: Object.freeze(['MOD-01', 'MOD-03', 'WRT-03', 'SHT-02', 'SLD-02']), diagnostics: Object.freeze([]) });
+export const EDITABLE_CAPABILITIES: SessionCapabilities = Object.freeze({ canEdit: true, allowedFeatures: Object.freeze(['MOD-01', 'MOD-03', 'WRT-02', 'WRT-03', 'SHT-02', 'SLD-02']), diagnostics: Object.freeze([]) });
 export interface DocumentSnapshot { readonly document: DeepReadonly<OfficeDocument>; readonly revision: number; readonly contentId: string }
 export interface SaveTicket extends DocumentSnapshot { readonly id: string; readonly documentId: string }
 export interface TransactionResult {
@@ -154,10 +155,21 @@ export class DocumentSession {
       assert(operations.length <= 10_000, 'limit', 'Command operation budget exceeded');
     }
     this.#assertEditable(featureId);
-    const permittedRoots: Record<string, readonly string[]> = { 'MOD-01': ['resources', 'styles', 'defaultTextStyle'], 'MOD-03': ['title'], 'WRT-03': ['sections'], 'SHT-02': ['sheets', 'dateSystem'], 'SLD-02': ['slides', 'size'] };
-    const requiredKind: Record<string, string> = { 'WRT-03': 'writer', 'SHT-02': 'sheets', 'SLD-02': 'slides' };
+    const permittedRoots: Record<string, readonly string[]> = { 'MOD-01': ['resources', 'styles', 'defaultTextStyle'], 'MOD-03': ['title'], 'WRT-02': ['sections'], 'WRT-03': ['sections', 'resources'], 'SHT-02': ['sheets', 'dateSystem'], 'SLD-02': ['slides', 'size'] };
+    const requiredKind: Record<string, string> = { 'WRT-02': 'writer', 'WRT-03': 'writer', 'SHT-02': 'sheets', 'SLD-02': 'slides' };
     assert(!requiredKind[featureId] || requiredKind[featureId] === this.#document.kind, 'invalid', 'Command feature does not match document kind');
-    for (const operation of operations) { assertOperation(operation); assert(permittedRoots[featureId]?.includes(String(operation.path[0])), 'unsupported', 'Feature cannot modify that model region'); }
+    const newImages=new Set<string>();
+    for (const operation of operations) {
+      assertOperation(operation);
+      assert(permittedRoots[featureId]?.includes(String(operation.path[0])), 'unsupported', 'Feature cannot modify that model region');
+      if(featureId==='WRT-02')assert(operation.op==='set'&&operation.path.length===3&&operation.path[0]==='sections'&&typeof operation.path[1]==='number'&&operation.path[2]==='page','unsupported','Page command can only replace section page geometry');
+      if(featureId==='WRT-03'&&operation.path[0]==='resources'){
+        assert(operation.op==='set'&&operation.path.length===2&&typeof operation.path[1]==='string','unsupported','Writer may only add an immutable image resource');
+        validateImageResource(operation.value);const id=operation.path[1];
+        assert(id===operation.value.id&&!Object.hasOwn(this.#document.resources,id)&&!newImages.has(id),'conflict','Cannot replace an existing resource');
+        newImages.add(id);
+      }
+    }
     const batch = applyBatch(this.#document, operations);
     if (batch.forward.length === 0) return this.#result(false);
     const bytes = new TextEncoder().encode(JSON.stringify([batch.forward, batch.inverse])).byteLength;
