@@ -482,7 +482,8 @@
       "status": "implemented",
       "evidence": [
         "docs/M2-I18N.md",
-        "https://github.com/xzcode/office-ex/actions/runs/45379428809"
+        "https://github.com/xzcode/office-ex/actions/runs/45379428809",
+        "https://github.com/xzcode/office-ex/actions/runs/45380700385"
       ],
       "spec": "docs/specs/09-i18n.md",
       "implementationPaths": [
@@ -498,7 +499,7 @@
       ],
       "remainingScope": [
         "11 A-batch candidate UI catalogs each cover 137 current keys; B-batch 11 not exposed as complete locales.",
-        "Previous four-catalog CI 45379428809 all jobs successful; new source requires its own verification.",
+        "A-batch source 9d5d59b passed verify and all three native jobs in CI 45380700385; remaining release gates unchanged.",
         "Structured plural/select and pseudo stress helper are implemented; interactive pseudo locales, language search, full ICU parser if needed, human review, document metadata, RTL shaping and complete editor/release gates remain."
       ]
     },
@@ -510,7 +511,8 @@
       "status": "implemented",
       "evidence": [
         "docs/M2-I18N.md",
-        "https://github.com/xzcode/office-ex/actions/runs/45379428809"
+        "https://github.com/xzcode/office-ex/actions/runs/45379428809",
+        "https://github.com/xzcode/office-ex/actions/runs/45380700385"
       ],
       "spec": "docs/specs/09-i18n.md",
       "implementationPaths": [
@@ -526,7 +528,7 @@
       ],
       "remainingScope": [
         "11 A-batch candidate UI catalogs each cover 137 current keys; B-batch 11 not exposed as complete locales.",
-        "Previous four-catalog CI 45379428809 all jobs successful; new source requires its own verification.",
+        "A-batch source 9d5d59b passed verify and all three native jobs in CI 45380700385; remaining release gates unchanged.",
         "Structured plural/select and pseudo stress helper are implemented; interactive pseudo locales, language search, full ICU parser if needed, human review, document metadata, RTL shaping and complete editor/release gates remain."
       ]
     },
