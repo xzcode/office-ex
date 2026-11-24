@@ -56,3 +56,9 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 - 扩展 `NamedStyle` 的可选 kind、bold/italic toggle，保留旧 OEX schema 可读。解析 docDefaults、支持的段落/字符命名样式、basedOn 链、明确的样式引用及样式内主题色/一致的主题字体。粗/斜体按命名样式 toggle 与直接格式区分。未知未使用样式保留但不暴露；已引用、默认或继承链上不可理解的样式阻断编辑。主题颜色限 RGB/系统色 lastClr，禁止 tint/shade、复杂字体映射与主题修改；直接正文主题属性仍不支持。链接/next 等样式元数据原样保留，编辑器暂不自动切换 next style。允许已知根元数据部件，保持字节，不更新其中统计字段；禁止未知关系、settings、numbering、复杂对象或外部依赖。
 - 只允许 source-owned 样式/主题 profile；样式定义和文档默认值不可修改，原格式保存只替换主部件，完整保留非主部件，原样另存字节不变，重开核验语义。样式/主题源不写入普通新建 DOCX；从 OEX 恢复的有命名样式文档暂不能转换为新 DOCX。未实现常见完整 Word 样式/主题、脚本映射、复杂格式、完整 WYSIWYG 和 DOC，不能声称所有 Word 文档可编辑。
 - 新增受控 DOCX 夹具与独立 python-docx 读取验收，包括命名样式/主题、直接覆盖、原始非正文部件、header/footer 偏移。新增基础及 native smoke 用例；实际结果见本批 CI，不把受控夹具当作 Microsoft Office 实测。无新生产依赖。
+
+### 第四批验收记录
+
+受测源码 75cad7b0ac4a59043b666334b41e70af914dc781；[CI 45432375135](https://github.com/xzcode/office-ex/actions/runs/45432375135)。基础 verify-writer 已通过：13 workspaces、43 源文件；137/137 自动化测试通过、0 失败、0 跳过（新增 4 项样式测试）。命名样式继承及 toggle、主题字体/颜色、直接样式覆盖、样式定义不可改、未知依赖和循环阻断均通过。独立 python-docx 实际读取受控的原始与编辑后样式 DOCX，校验段落/字符样式 ID、继承引用、字体/字号/RGB、页眉偏移及所有非正文部件逐字节一致。原有 DOCX/XLSX/CFB 互读及依赖审查通过。
+
+记录时任务状态：verify-writer: success; native-other (windows-2025): in_progress; native-macos: in_progress; native-other (ubuntu-24.04): in_progress。原生工具栏、样式选择与完整桌面保存以本次实际任务最终结果为准，未完成不得标为通过。当前代码未合并 master。此为源样式只读保留 profile，不是任意普通 Word 文件兼容：settings/numbering、复杂样式、直接主题属性及非一致字体映射暂受限；混合选区精确状态、自动 next style、新建样式、表格、图片、完整 WYSIWYG、参考 Office 和旧 DOC 仍待开发/验收。

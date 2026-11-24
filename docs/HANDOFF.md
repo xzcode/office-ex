@@ -90,3 +90,5 @@ M2 Writer 第三批候选：DOCX 窄 profile 桌面新建、打开编辑、保�
 M2 Writer 第三批受测源码 c79feaf16191e01b890e16012f7daca98a0a30ef，基础回归 133/133 通过，CI https://github.com/xzcode/office-ex/actions/runs/45428117703；记录时 verify-writer: success; native-other (ubuntu-24.04): in_progress; native-macos: in_progress; native-other (windows-2025): in_progress。下一轮先检查本批原生验收，针对实际失败修复；然后扩展字体/字号/颜色工具、普通 DOCX styles/资源和表格图片，继续 DOC 旧格式。原格式编辑仅支持窄 profile，不宣传通用 Word 兼容；未合并 master。
 
 M2 Writer 第四批候选：第三批 CI 45428117703 三平台全部通过；第四批新增字体/字号/颜色工具、命名样式应用、保留式 styles/theme profile，11 locale 164 键。继续核对本批 CI 后扩展普通 Word 的默认/脚本样式、settings/numbering 依赖闭包、表格、图像及 DOC；不把受控 style fixture 当作全面 Word 兼容。详细边界见 docs/M2-WRITER.md。
+
+M2 Writer 第四批受测源码 75cad7b0ac4a59043b666334b41e70af914dc781，137/137 基础回归、受控样式 DOCX 独立互读与非正文部件逐字节保留均已通过；CI https://github.com/xzcode/office-ex/actions/runs/45432375135。记录时 verify-writer: success; native-other (windows-2025): in_progress; native-macos: in_progress; native-other (ubuntu-24.04): in_progress。后续继续同一 Writer 分支，先核对该原生结果并只修实际问题；随后优先扩大安全 Word profile（docDefaults、字体/语言映射、settings 等影响闭包）、表格结构与布局、图片资产、旧 DOC。源样式目录仍只读，不能把本轮称为完整 Office 兼容。保留全部 22 locale 及六格式发布门槛。
