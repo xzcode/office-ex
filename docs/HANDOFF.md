@@ -8,6 +8,8 @@ Build environment observation: Linux x86_64 Debian 13, about 30 GiB available di
 
 Resume in order:
 1. Run scripts/preflight.py --network on a dedicated Ubuntu build machine; verify storage, RAM, swap, internet and available tools.
-2. Retrieve exact source revisions from upstream/lock.json and audit build_tools additional dependencies, toolchain downloads, versions, checksums and licenses. Disable moving updates for the locked build. Never modify unrelated server projects.
+2. Run scripts/prepare_sources.py prepare .work/upstream, then verify; retrieve exact source revisions from upstream/lock.json and audit build_tools additional dependencies, toolchain downloads, versions, checksums and licenses. Disable moving updates for the locked build. Never modify unrelated server projects.
 3. Complete Linux source compilation and native launch, record commands/logs/SHA256, then macOS ARM64 build and launch. Run fixture round-trip and visual checks; record outstanding risks.
 4. Finish M0 gates in docs/M0.md, then begin M1. Do not create release or run unnecessary builds before that.
+
+See [M0_VERIFICATION.md](M0_VERIFICATION.md) for actual fixture/preflight results. Source preparation script passed syntax and CLI help checks; network checkout is not tested.

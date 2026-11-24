@@ -10,6 +10,7 @@ M0 技术基线：首选 ONLYOFFICE Desktop Editors 10.0.0，尚未完成源码�
 - [许可证与第三方声明](docs/LICENSING.md)
 - [上游源码锁定清单](upstream/lock.json)
 - [兼容性用例与操作方法](docs/COMPATIBILITY.md)
+- [M0 实际验证记录](docs/M0_VERIFICATION.md)
 - [后续交接](docs/HANDOFF.md)
 
 ## 开发工具
@@ -19,6 +20,13 @@ M0 技术基线：首选 ONLYOFFICE Desktop Editors 10.0.0，尚未完成源码�
 ```sh
 python3 scripts/preflight.py
 python3 scripts/preflight.py --network
+```
+
+在具备网络、磁盘条件的专用环境，获取并核对上游源码快照（不是完整的构建工作区，prepare 需要全新路径）：
+
+```sh
+python3 scripts/prepare_sources.py prepare .work/upstream
+python3 scripts/prepare_sources.py verify .work/upstream
 ```
 
 生成兼容性基线（虚拟环境内安装测试依赖）：
