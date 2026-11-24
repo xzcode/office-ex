@@ -85,3 +85,19 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 - 图片插入/删除/等比缩放经事务与撤销；源图片原始字节、未引用资源仍保留，不自动 GC。当前仅支持独立图片段落的内嵌 DrawingML（不支持文字和图片混排、表格内图片、浮动、裁剪、非零效果偏移或 alt 元数据）。DOCX 增加明确的 media、content type 和 relationship 计划，原样复制字节不变；编辑只更改主部件和必要新增图片图关系/类型，保持现有媒体及其它部件。通过隔离 verifier 生成并重开，主进程既有原子提交/备份机制不变。OEX 可保存含图快照，缺失 payload 继续拒绝保存。恢复为 OEX 副本，原文件不自动覆盖。
 - 新增页面纸型 A4/A3/Letter、自定义宽高、横竖、四边距、段前后/缩进/精确行距直接格式（0 清除直接行距，继承样式仍有效）；页面命令按 twip，缩页前检查既有表格/图片尺寸，不静默缩放。图片参与估算分页，整张图不裁剪；源图像宽高保持 EMU。编辑区与预览仍分离。11 locale 199 键；无新生产依赖。
 - 验收新增资源/损坏数据/格式关系/独立图像互读/页面设置与原生图片操作。所有结论以实际 CI 为准。M2 WRT-01–04 不整体 verified：真实 WYSIWYG/跨段选区、精确复杂文字与 RTL、增量布局、一般 Word 文件/多节/样式主题依赖、普通图文混排及参考 Office 布局验收未完成；M2-L DOC 语义读写尚未实现。不可把现有窄 profile 或自建 fixture 当成完整兼容，未发布正式版。
+
+### 第六批集成验收与 M2 退出核查
+
+首轮源码 ca3dbf2b 的 CI 45436815771 有 5 项新图片/页面测试失败，原因为 WRT-03 事务仅允许 sections 根，不能原子追加图片资源，WRT-02 页面命令亦未授权。最终源码 2ce8f4599a7e5d0aed2482e510df37f347c20cea 修正：WRT-03 仅可按摘要 ID 新增通过校验的不可变图片资源，禁止覆盖/删除既有资源；WRT-02 限 Writer section.page 完整替换，不开放其它模型区域。新增权限回归。
+
+[CI 45437070146](https://github.com/xzcode/office-ex/actions/runs/45437070146) verify-writer 成功：13 workspace、48 源文件，152/152 自动化测试通过，0 失败、0 跳过。独立 python-docx 验证 PNG/JPEG 原始媒体字节、内嵌图片尺寸与等比缩放、源样式/非正文部件保留、页参数；原有 OOXML/CFB 互读与依赖许可审查均通过。记录时任务状态：verify-writer: success; native-other (ubuntu-24.04): in_progress; native-other (windows-2025): in_progress; native-macos: queued。未完成 native 不计通过。上一批最终 45434702537 基础、Windows、Linux 通过；macOS 排队任务被新工作流替换，不计通过。
+
+| 需求 | 当前已验证范围 | 仍未达到原规范的退出条件 |
+|---|---|---|
+| WRT-01 | 段落/run、规则表格、图片独立段落、页面设置事务 | 真正跨段落选区/完整编辑界面、多节语义 |
+| WRT-02 | 样式级联、估算换行、整行表格与整图分页、页面参数 | 精确复杂文字/bidi、增量重排、真实分页 WYSIWYG 与 Office 排版精度 |
+| WRT-03 | 文字/单元格输入、事务撤销、有限 PNG/JPEG、等比缩放 | 图文混排、单元格图片、完整剪贴板/真实 IME 与复杂选区验收 |
+| WRT-04 | 有限 Transitional DOCX 原格式桌面流程、表格/样式/图片独立互读 | 扩大普通 Office 生成文档支持、实际 Office 互操作与布局验证 |
+| M2-L / LEG-02 | CFB 容器和 DOC 识别基础 | DOC 语义读写、双向转换与独立 Office 证据 |
+
+结论：本次并非完整 M2 验收。保持 WRT-01–04 implemented，禁止改为 verified，未合并 master，未发布安装包。图片资源当前在模型快照内 base64 封装（较高内存/历史复制成本，8MiB 单图、16MiB 文档图片预算）；继续开发独立 blob 存储、图文混排、普通 Word 兼容、复杂排版与旧 DOC。原 M2、M2-L、22 locale 与正式版六格式 P0 门槛不降低。
