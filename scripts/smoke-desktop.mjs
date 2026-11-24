@@ -74,6 +74,31 @@ try{
   const revisionBefore=await page.locator('#document-status').textContent();
   await page.locator('#draft-text').evaluate(el=>{el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:''}));el.value='中文输入法提交 😀';el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',isComposing:true,data:'中'}));el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'中文输入法提交 😀'}));});
   assert.notEqual(await page.locator('#document-status').textContent(),revisionBefore);await page.locator('#undo').click();await inputEquals('#draft-text','中文草稿 😀\nFirst saved revision','Composition undo rendered');check('Composition commit is one undo transaction (event simulation)');
+  // M2 Writer input controls and derived page preview share the same draft.
+  await page.waitForFunction(()=>{const c=document.querySelector('#writer-page-preview');return c&&!c.hidden&&c.width>100;});
+  await page.locator('#draft-text').evaluate(el=>{el.focus();el.setSelectionRange(0,4);el.dispatchEvent(new Event('select'));});
+  await page.locator('#writer-bold').click();
+  await page.waitForFunction(()=>document.querySelector('#writer-bold').getAttribute('aria-pressed')==='true');
+  await page.locator('#draft-text').evaluate(el=>{el.focus();el.setSelectionRange(4,4);el.dispatchEvent(new Event('select'));});
+  await page.locator('#writer-split').click();
+  await page.waitForSelector('#writer-paragraph-1');
+  assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿');
+  assert.equal(await page.locator('#writer-paragraph-1').inputValue(),' 😀\nFirst saved revision');
+  await page.locator('#writer-paragraph-1').evaluate(el=>{el.focus();el.setSelectionRange(0,0);el.dispatchEvent(new Event('select'));});
+  await page.locator('#writer-paragraph-1').press('Backspace');
+  await page.waitForFunction(()=>document.querySelectorAll('.writer-paragraph').length===1);
+  assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');
+  await page.locator('#writer-page-break').click();
+  await page.waitForFunction(()=>!document.querySelector('#writer-next-page').disabled);
+  await page.locator('#writer-next-page').click();assert.match(await page.locator('.writer-pagebar span').textContent(),/2/);
+  await page.locator('#writer-previous-page').click();
+  await page.locator('#writer-page-preview').click({position:{x:50,y:50}});
+  assert.equal(await page.locator('#draft-text').evaluate(el=>document.activeElement===el),true);
+  // Revert the four structural/style operations, preserving the earlier saved baseline.
+  for(let i=0;i<4;i++){const before=await page.locator('#document-status').textContent();await page.locator('#undo').click();await page.waitForFunction(old=>document.querySelector('#document-status').textContent!==old,before);}
+  await inputEquals('#draft-text','中文草稿 😀\nFirst saved revision','Writer structural undo rendered');
+  await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));
+  check('Writer multi-paragraph controls, selected formatting, split/join, explicit page navigation and caret hit-test');
   // Each domain uses the same session and persistence contract in its own tab.
   await page.locator('#home').click();await page.locator('[data-kind=sheets]').click();
   await page.getByRole('textbox',{name:'A1',exact:true}).fill('单元格 中文');

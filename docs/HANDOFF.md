@@ -80,3 +80,5 @@ M2-I18N A 批第二轮：初始四语言源码 0862f02 三平台 CI 45379428809 
 参见 docs/M2-WRITER.md：跨 run 段落事务、直接样式、分合段、显式分页符，独立最小 Transitional DOCX 语义读写。当前不改变桌面只读 Office 检查流程，未知属性/部件阻止语义适配。先看独立分支 m2-writer-20261124 的 CI 结果，再接入分页布局、编辑界面、安全原格式保存、DOC 与国际化文档属性。不要将窄 profile 或独立 Python 互读等同于真实 Office 完整兼容。
 
 M2 Writer 首批验收通过：源码 7692c0c7da8e561f3d15da71edf1ab8f2b314a06，CI 45424554932，121/121 回归及独立 DOCX 互读；留在 m2-writer-20261124，下一批在此分支继续分页、富文本输入和桌面安全接入。六格式和多语言发布门槛不变。
+
+M2 Writer 第二批候选实现：docs/M2-WRITER.md，布局与多段编辑工作区、11 locale 文案，原生 CI 待结果。后续继续 DOCX 桌面安全保存与普通 styles/资源适配、完整富文本排版和 DOC 旧格式，不降低 I18N/PDF/Office 门槛。
