@@ -2,9 +2,11 @@
 
 自主研发、跨平台、离线优先的开源办公套件。原创代码采用 MIT 许可证；文档模型、命令、撤销、格式语义、排版、公式和幻灯片场景由项目自己实现。通用开源依赖负责桌面运行时、压缩和 XML 等基础设施。
 
-## 当前进度：M1 基础设施
+## 当前进度：M1 基础设施已完成
 
-仓库已包含 Electron 桌面工作台、多标签会话、共享模型与事务、ZIP/XML/OPC 与 CFB 容器、安全保存、备份、恢复、主题和中英文设置。**目前是开发预览，没有发布正式安装包。** 原生桌面与整批集成验证状态以 [M1 文档](docs/M1.md#验证状态与证据)及对应 CI 运行记录为准；工作流存在不代表各平台已经通过。
+M1.1–M1.10 已完成并通过阶段验收：Electron 桌面工作台、多标签会话、共享模型与事务、ZIP/XML/OPC 与 CFB 容器、安全保存、备份、恢复、主题和中英文设置均已落地。源码 `7d0522d` 在 [同一轮 CI](https://github.com/xzcode/office-ex/actions/runs/45375454826) 通过 99 项基础回归，以及 macOS ARM64、Windows x64、Linux x64 各 15 项真实 Electron 检查。完整环境、平台测试计数、跳过项和截图见 [验收记录](docs/verification/m1/README.md)。
+
+**目前是 `0.1.0-dev.1` 开发预览，没有发布正式安装包。** 已验收的是 M1 基础设施范围，完整 Office 兼容能力继续按后续阶段实施。
 
 当前界面可以：
 
@@ -30,7 +32,7 @@ npm run setup:desktop
 npm run start
 ```
 
-`setup:desktop` 显式安装锁定版本的原生 Electron；`start` 构建后打开桌面窗口。Linux 需要图形会话和可用的 Chromium sandbox。无图形界面的 CI 使用 Xvfb，并按工作流配置 sandbox；不要通过关闭 sandbox 获得所谓“验证通过”。
+`setup:desktop` 显式安装锁定版本的原生 Electron；`start` 构建后打开桌面窗口。Linux 需要图形会话、可用的 Chromium sandbox 和中文字体；Ubuntu CI 安装 `fonts-noto-cjk`、`fonts-noto-color-emoji`，使用 Xvfb。系统字体不随应用分发，sandbox 配置见工作流。
 
 ## 开发验证
 
@@ -62,6 +64,7 @@ npm run smoke:desktop
 ## 文档
 
 - [M1 实现、API、阶段和验证说明](docs/M1.md)
+- [M1 验收报告与原生截图](docs/verification/m1/README.md)
 - [M1 架构决策](docs/decisions/0001-m1-boundaries.md)
 - [开发规范 v1.0](docs/specs/README.md)
 - [六格式契约](docs/specs/03-formats.md)

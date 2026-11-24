@@ -1,6 +1,6 @@
 # Office EX 开发交接 — M1
 
-更新日期：2026-11-24。仓库：`xzcode/office-ex`，主分支：`master`。当前正在完成 M1 基础设施整批集成与原生验证；最终提交 SHA 和 CI 结果需由验收记录关联，本文不预先宣布各平台通过。
+更新日期：2026-11-24。仓库：`xzcode/office-ex`，主分支：`master`。**M1.1–M1.10 已完成并通过基础设施阶段验收。** 受测源码为 `7d0522dcd2a8f6db676a6878429da2ca31a839f6`，tree 为 `25ea2dd3dfadad3c161798f36fef7896eb64fcc8`；[CI 45375454826](https://github.com/xzcode/office-ex/actions/runs/45375454826) 四个任务全部成功。后续仅补充文档、矩阵和证据，不把文档提交冒充测试源版本。
 
 ## 必须保留的决定
 
@@ -15,7 +15,7 @@
 1. `AGENTS.md`、`docs/LICENSING.md`。
 2. `docs/specs/README.md` 与本次相关规范；规范优先于旧路线图。
 3. `docs/M1.md`、`docs/decisions/0001-m1-boundaries.md`。
-4. `docs/specs/features.json` 的实际状态和证据，以及目标提交对应的 CI 输出。
+4. `docs/specs/features.json` 的完整需求状态与 `m1Acceptance`，以及 `docs/verification/m1/README.md`、`report.json` 和原生输出。
 
 ## 已落地的 M1 代码
 
@@ -27,7 +27,7 @@
 - `format-service`：在 sandbox worker 中组合容器检测和内部草稿序列化；不让低层容器互相依赖，不让 Electron main 解析文档。
 - `apps/desktop`：本地协议、受限 preload/IPC、窗口／菜单、文件 token、身份检查、原子提交、替换前备份、恢复和设置。
 - `ui`：多标签、首页／最近文件、中文／英文、浅／深／系统主题、三个草稿预览、Office 结构检查、取消、脏文档关闭提示。
-- CI 和真正的 Electron smoke harness：先做基础检查，再验证 macOS ARM64，之后 Windows/Linux；具体通过状态需查看真实运行结果。
+- CI 和真正的 Electron smoke harness：基础检查、macOS ARM64、Windows x64、Linux x64 均已通过，平台输出和截图已归档。
 
 ## 当前能力与边界
 
@@ -53,12 +53,14 @@ npm run start
 
 `tsx` 使用 `node --import tsx --test` 运行，避免 CLI 额外 IPC socket 在受限执行环境失败。Linux smoke 需要图形会话／Xvfb 和正常 sandbox；不要关闭 sandbox 获得通过。
 
-2026-11-24 本轮核心／渲染的 21 个定向测试和架构检查已独立通过；依赖审查确认 66 个锁定 npm 包、23 份当前安装 notice 文件，并实际 stage 了 Electron 原生 notices。整批测试统计、独立容器互读、各原生平台与 smoke 截图以最终验收产物为准。未收到该平台成功结果前保持“待验证”。
+最终源码的 99 项基础回归全部通过，独立 ZIP／CFB 互读、原 M0 XML 语义检查、架构／许可证检查及原生构建均通过。macOS 15.8.2 ARM64、Windows Server 2025 x64、Ubuntu 24.04.5 x64 各通过 15 项真实 Electron smoke。宿主回归子集：macOS／Linux 各 43 通过；Windows 42 通过、1 个设置软链接用例显式跳过。不要把这个跳过项写成通过，或把 Server CI 写成 Windows 10/11 安装认证。
+
+依赖审查确认 66 个锁定 npm 包、23 份当前安装 notice 文件；原生构建 stage 了 Electron 和 Chromium notices。2026-11-24 npm advisory 查询为 0 已知漏洞。`.gitattributes` 固定 lock 的 LF，并保留上游 notice 的原始混合换行，防止 Windows checkout 改变审核 hash。Linux 原生 CI 安装系统中文／emoji 字体，保留 sandbox；截图等待实际可见窗口和绘制帧，最终三平台均无 capture retry。
 
 ## 接下来如何继续
 
-先收齐并审查 M1 最终源码提交的基础检查、互读、原生 sandbox、文件保存／恢复和界面 smoke 证据，更新追踪矩阵。不要把提交前或其他 commit 的测试结果当成当前构建证据。
+下一阶段进入 M2 Writer：建立真正的段落／run 编辑、选区／IME、布局盒和分页，再实现 DOCX 语义映射与意图编辑保存。并行设计 MS-DOC 的 M2-L 子阶段，使用共享 CFB 与 Writer 模型。后续继续 M3/BIFF8 XLS、M4/PPT/PPTX/PDF；正式发布前完成六格式往返、转换、参考 Office 和各平台安装验证。
 
-通过 M1 后进入 M2 Writer：建立真正的段落／run 编辑、选区／IME、布局盒和分页，再实现 DOCX 语义映射与意图编辑保存。并行设计 MS-DOC 的 M2-L 子阶段，使用共享 CFB 与 Writer 模型。后续继续 M3/BIFF8 XLS、M4/PPT/PPTX/PDF；正式发布前完成六格式往返、转换、参考 Office 和各平台安装验证。
+每次修改继续以受测源码、日期、具体平台和样本更新证据。当前 `features.json` 的 `m1Acceptance` 已通过；较宽的文件、安全、UI 和格式需求整体仍为 `implemented`，其 `remainingScope` 是后续工作或已明确的保证边界，不应直接整体改成 `verified`。
 
 不要新建 Release、宣称已生成安装包、降低 P0 验收，或把 `.oex` 作为正式版兼容目标的替代。修复与验证应围绕具体剩余风险；不重复无关打包或扩大到未授权项目。

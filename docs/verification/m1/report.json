@@ -1,0 +1,470 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M1",
+  "version": "0.1.0-dev.1",
+  "status": "verified",
+  "verifiedAt": "2026-11-24T10:33:39Z",
+  "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+  "sourceTree": "25ea2dd3dfadad3c161798f36fef7896eb64fcc8",
+  "scope": "M1 infrastructure acceptance only; six-format semantic editing, Office round-trips, conversion, layout/formula compatibility and installers remain later milestones.",
+  "ci": {
+    "id": 45375454826,
+    "url": "https://github.com/xzcode/office-ex/actions/runs/45375454826",
+    "headSha": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+    "event": "push",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 138380395533,
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/xzcode/office-ex/actions/runs/45375454826/job/138380395533"
+      },
+      {
+        "id": 138380658504,
+        "name": "native-macos",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/xzcode/office-ex/actions/runs/45375454826/job/138380658504"
+      },
+      {
+        "id": 138381306377,
+        "name": "native-other (windows-2025)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/xzcode/office-ex/actions/runs/45375454826/job/138381306377"
+      },
+      {
+        "id": 138381309509,
+        "name": "native-other (ubuntu-24.04)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/xzcode/office-ex/actions/runs/45375454826/job/138381309509"
+      }
+    ]
+  },
+  "checks": {
+    "typecheck": "passed",
+    "architecture": {
+      "status": "passed",
+      "workspaces": 12,
+      "sourceFiles": 29,
+      "checks": [
+        "Public entrypoints and declared dependencies",
+        "Acyclic allowed dependency graph",
+        "Separate domain compile without Node or DOM",
+        "UI document parsing restricted to worker"
+      ]
+    },
+    "automated": {
+      "command": "npm run check",
+      "jobId": 138380395533,
+      "total": 99,
+      "passed": 99,
+      "failed": 0,
+      "skipped": 0,
+      "node": "24.22.3",
+      "npm": "11.19.1"
+    },
+    "interop": {
+      "status": "passed",
+      "command": "npm run test:interop",
+      "python": "3.12.14",
+      "readers": {
+        "python-docx": "1.2.0",
+        "openpyxl": "3.1.5",
+        "olefile": "0.47",
+        "zipfile": "Python standard library"
+      },
+      "scope": [
+        "Original M0 DOCX/XLSX XML parts independently packaged/read",
+        "Original ZIP writer independently read by Python zipfile and Python DEFLATE input parsed",
+        "CFB v3/v4 nested/empty/mini/4096 boundary/8MiB DIFAT; independent olefile small and large stream edits reread"
+      ]
+    },
+    "licenses": {
+      "status": "passed",
+      "lockedNpmPackages": 66,
+      "installedNoticeFiles": 23,
+      "inventory": "docs/DEPENDENCIES.lock.json",
+      "nativeNotices": "Electron LICENSE and Chromium LICENSES.chromium.html staged by every native build"
+    },
+    "npmAudit": {
+      "status": "passed",
+      "queriedOn": "2026-11-24",
+      "totalVulnerabilities": 0,
+      "scope": "npm advisory results at verification time; not an exhaustive runtime security audit"
+    },
+    "build": {
+      "status": "passed",
+      "scope": "Real native Electron main/preload/renderer/worker bundles on all three CI runners; no installer or formal release"
+    }
+  },
+  "native": [
+    {
+      "os": "macOS 15.8.2 (24H232)",
+      "runnerImage": "macos-15-arm64",
+      "runnerImageVersion": "20261118.0550.1",
+      "jobId": 138380658504,
+      "tests": {
+        "total": 43,
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0
+      },
+      "artifactId": 14909734810,
+      "platform": "darwin",
+      "arch": "arm64",
+      "node": "24.22.3",
+      "electron": "45.4.1",
+      "chromiumUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) OfficeEX/0.1.0-dev.1 Chrome/156.0.8078.100 Electron/45.4.1 Safari/537.36",
+      "status": "passed",
+      "checks": 15,
+      "startedAt": "2026-11-24T10:31:26.144Z",
+      "finishedAt": "2026-11-24T10:32:02.557Z",
+      "captureRetries": [],
+      "evidence": "docs/verification/m1/native/darwin-arm64.json"
+    },
+    {
+      "os": "Ubuntu 24.04.5 LTS",
+      "runnerImage": "ubuntu-24.04",
+      "runnerImageVersion": "20261116.133.1",
+      "jobId": 138381309509,
+      "tests": {
+        "total": 43,
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0
+      },
+      "artifactId": 14909964542,
+      "platform": "linux",
+      "arch": "x64",
+      "node": "24.22.3",
+      "electron": "45.4.1",
+      "chromiumUserAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) OfficeEX/0.1.0-dev.1 Chrome/156.0.8078.100 Electron/45.4.1 Safari/537.36",
+      "status": "passed",
+      "checks": 15,
+      "startedAt": "2026-11-24T10:33:00.829Z",
+      "finishedAt": "2026-11-24T10:33:36.172Z",
+      "captureRetries": [],
+      "evidence": "docs/verification/m1/native/linux-x64.json"
+    },
+    {
+      "os": "Windows Server 2025 10.0.26100 Datacenter",
+      "runnerImage": "windows-2025-vs2026",
+      "runnerImageVersion": "20261116.315.1",
+      "jobId": 138381306377,
+      "tests": {
+        "total": 43,
+        "passed": 42,
+        "failed": 0,
+        "skipped": 1,
+        "skip": "The settings-file symlink load test explicitly skips win32; file-service/recovery link checks ran. Do not describe this as 43 Windows passes."
+      },
+      "artifactId": 14909659876,
+      "platform": "win32",
+      "arch": "x64",
+      "node": "24.22.3",
+      "electron": "45.4.1",
+      "chromiumUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) OfficeEX/0.1.0-dev.1 Chrome/156.0.8078.100 Electron/45.4.1 Safari/537.36",
+      "status": "passed",
+      "checks": 15,
+      "startedAt": "2026-11-24T10:32:45.821Z",
+      "finishedAt": "2026-11-24T10:33:17.788Z",
+      "captureRetries": [],
+      "evidence": "docs/verification/m1/native/win32-x64.json"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 14909964542,
+      "name": "m1-native-Linux-X64",
+      "sha256": "4f2099fbf4d9a699e44adcb1b96f633b300cdf0ebaa91bc27efbdb1d4814ffea",
+      "bytes": 306650,
+      "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+      "url": "https://github.com/xzcode/office-ex/actions/runs/45375454826/artifacts/14909964542",
+      "archiveSha256VerifiedOnDownload": true
+    },
+    {
+      "id": 14909734810,
+      "name": "m1-native-macos-arm64",
+      "sha256": "4ae280d1984c8d3dbdaa0d4f18b6e6848553ac4968cd2bd605213272f0ba7d9b",
+      "bytes": 287447,
+      "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+      "url": "https://github.com/xzcode/office-ex/actions/runs/45375454826/artifacts/14909734810",
+      "archiveSha256VerifiedOnDownload": true
+    },
+    {
+      "id": 14909659876,
+      "name": "m1-native-Windows-X64",
+      "sha256": "12e0dbadb1f76a3c1f34e9f5cea5b12f0b06465742afbe4ab7d954057a14c24f",
+      "bytes": 177833,
+      "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+      "url": "https://github.com/xzcode/office-ex/actions/runs/45375454826/artifacts/14909659876",
+      "archiveSha256VerifiedOnDownload": true
+    }
+  ],
+  "files": [
+    {
+      "path": "docs/verification/m1/native/darwin-arm64-draft-dark.png",
+      "sha256": "38da6e7971b7dce9f78f2aa35c50d069963a976ded9aaf5867b1ead1ea4972c5",
+      "bytes": 61096,
+      "width": 1024,
+      "height": 656
+    },
+    {
+      "path": "docs/verification/m1/native/darwin-arm64-home.png",
+      "sha256": "8f42fe95e765e9241569b254a8c3d326215ea4636fe7f08e4e970257cce0db1b",
+      "bytes": 85466,
+      "width": 1024,
+      "height": 656
+    },
+    {
+      "path": "docs/verification/m1/native/darwin-arm64-inspection.png",
+      "sha256": "f99ee5f9f09e6867757d41007754d9c79c974e2c48859f62f63bd6fb7488305e",
+      "bytes": 90517,
+      "width": 1024,
+      "height": 656
+    },
+    {
+      "path": "docs/verification/m1/native/darwin-arm64-slides.png",
+      "sha256": "c7adba3d8de75c4af8fe5ec10aaf2527f5780a9f0628272be0f1b7b08b1f17d8",
+      "bytes": 61108,
+      "width": 1024,
+      "height": 656
+    },
+    {
+      "path": "docs/verification/m1/native/darwin-arm64.json",
+      "sha256": "c5ff813a62ed826a50992442bf15f5545a9b1f2f4f544afc77c2c1cdae3dd578",
+      "bytes": 1393
+    },
+    {
+      "path": "docs/verification/m1/native/linux-x64-draft-dark.png",
+      "sha256": "de5262f47df79a2a299ce3683201fc501b2c9a768e132669535119c5fb68d2f1",
+      "bytes": 68097,
+      "width": 1280,
+      "height": 813
+    },
+    {
+      "path": "docs/verification/m1/native/linux-x64-home.png",
+      "sha256": "d03d8577344bd80d3585c79c877155d00b936784596533222345d3b556d60d5e",
+      "bytes": 107308,
+      "width": 1280,
+      "height": 811
+    },
+    {
+      "path": "docs/verification/m1/native/linux-x64-inspection.png",
+      "sha256": "0d9615301f87f53ddcd9f10622a1291690658e30ec32b1feb45738f976b36426",
+      "bytes": 88168,
+      "width": 1280,
+      "height": 811
+    },
+    {
+      "path": "docs/verification/m1/native/linux-x64-slides.png",
+      "sha256": "c28bd76116ac3661ec2e3e170ad4be29e2a7a0ebf9d17a412abc01ddf636c6c9",
+      "bytes": 58826,
+      "width": 1280,
+      "height": 811
+    },
+    {
+      "path": "docs/verification/m1/native/linux-x64.json",
+      "sha256": "f5d93acb7a8a45fa64d9999520dca307927d20fc0d2664040b5dd1b4de85d688",
+      "bytes": 1374
+    },
+    {
+      "path": "docs/verification/m1/native/win32-x64-draft-dark.png",
+      "sha256": "a3ea76c77eeb3e5a4c93a84b5d43dc3704ddcc552e12593fb33c5667287cee90",
+      "bytes": 40454,
+      "width": 1008,
+      "height": 655
+    },
+    {
+      "path": "docs/verification/m1/native/win32-x64-home.png",
+      "sha256": "4b81e31825db6ba16c59fa71d806e5ceee0d5da6e9ae90f40fdc1ac64acffb36",
+      "bytes": 53626,
+      "width": 1008,
+      "height": 655
+    },
+    {
+      "path": "docs/verification/m1/native/win32-x64-inspection.png",
+      "sha256": "b181bf06684db3c8922fa4320acab2d7900b74908b567fee48cacb2ba1ed1e57",
+      "bytes": 53042,
+      "width": 1008,
+      "height": 655
+    },
+    {
+      "path": "docs/verification/m1/native/win32-x64-slides.png",
+      "sha256": "f5b64324c2d44ef3a005ed41b0957fae32f34c276e65f70c661211aa9359518a",
+      "bytes": 38647,
+      "width": 1008,
+      "height": 655
+    },
+    {
+      "path": "docs/verification/m1/native/win32-x64.json",
+      "sha256": "b1f77d04275e3b494a1ded3ded658ae7a43ed1e6848bfcb41d3faadddf925b65",
+      "bytes": 1384
+    }
+  ],
+  "fixtures": [
+    {
+      "generator": "tests/core.test.ts",
+      "sha256": "ededc1c8afa7e8f23bcfaf455fcc493ddda27c69e0bee40e16bbad809612ad9e",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/render.test.ts",
+      "sha256": "a4fd65d80aafd6dd36184b6eac775b7a7a6ed2226591f04eda6bf54139c7fe80",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/cfb.test.ts",
+      "sha256": "402dbffb0efd845e762e0fa3a21b7f1a12b87829199f8f564c6a9fe615a114ae",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/ooxml.test.ts",
+      "sha256": "8a656b93c500ad99e21d54e332f4b080535e8f7383913446a9146efeeb3a5868",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/format-service.test.ts",
+      "sha256": "771fc90e440c8c24cff3ef0f3a52d92a34232dfe34d6682fabe23d84a2a91df9",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/file-service.test.ts",
+      "sha256": "bc7085eabc8c14a0f8f95a4d908edc0fa931efcd1695acf2773754f6593822fb",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/recovery.test.ts",
+      "sha256": "8ec5468d7255d86031768feaa6b1874aecfe5f82f1d626611cb5d7ef78c7aab6",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/ipc-policy.test.ts",
+      "sha256": "0239138f2331d68ffd99524474783ce761c4ac2e9626beff13bdffa9db31fb26",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/settings.test.ts",
+      "sha256": "973ebe89e17abd699479e432f982ae34cc70fc9d0d0364c8868f7674812df4d6",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/cfb_interop.py",
+      "sha256": "88dd98b9c327b03d6d634ce90c3d703cd62ebf13b6f13626b1e3f0d4dacca754",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/smoke_export.py",
+      "sha256": "fe3b05d8e7e214db80a0d05c33087bc9c47ec0f9b7f1a0b3221848073110228c",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "tests/export-fixtures.mjs",
+      "sha256": "9af229e9019ef62df9757ce6626fb0d6fffe1a891ae24556c9300b6d0be5b56d",
+      "source": "original synthetic fixtures; no user documents"
+    },
+    {
+      "generator": "scripts/smoke-desktop.mjs",
+      "sha256": "175b0cb9931fcf9c3774955c554d34d61d1ab8a7ca90993ecb7e6689cb37d607",
+      "source": "original synthetic fixtures; no user documents"
+    }
+  ],
+  "stages": [
+    {
+      "id": "M1.1",
+      "name": "工程与契约",
+      "status": "verified",
+      "scopeReference": "docs/M1.md"
+    },
+    {
+      "id": "M1.2",
+      "name": "核心模型",
+      "status": "verified",
+      "scopeReference": "docs/M1.md"
+    },
+    {
+      "id": "M1.3",
+      "name": "事务与历史",
+      "status": "verified",
+      "scopeReference": "docs/M1.md"
+    },
+    {
+      "id": "M1.4",
+      "name": "ZIP/XML/OPC 容器",
+      "status": "verified",
+      "scopeReference": "docs/M1.md"
+    },
+    {
+      "id": "M1.5",
+      "name": "CFB 旧版容器",
+      "status": "verified",
+      "scopeReference": "docs/M1.md"
+    },
+    {
+      "id": "M1.6",
+      "name": "格式识别与能力契约",
+      "status": "verified",
+      "scopeReference": "docs/M1.md"
+    },
+    {
+      "id": "M1.7",
+      "name": "文件提交、备份与恢复",
+      "status": "verified",
+      "scopeReference": "docs/M1.md"
+    },
+    {
+      "id": "M1.8",
+      "name": "原生桌面与 UI",
+      "status": "verified",
+      "scopeReference": "docs/M1.md"
+    },
+    {
+      "id": "M1.9",
+      "name": "渲染与字体接口",
+      "status": "verified",
+      "scopeReference": "docs/M1.md"
+    },
+    {
+      "id": "M1.10",
+      "name": "集成与三平台验收",
+      "status": "verified",
+      "scopeReference": "docs/M1.md"
+    }
+  ],
+  "knownLimits": [
+    "DOC/DOCX, XLS/XLSX and PPT/PPTX semantic import/edit/write and conversions remain M2/M3/M4 and mandatory legacy sub-milestones.",
+    ".oex is an internal JSON draft, not an Office format; drafts with unbundled resource payloads are rejected.",
+    "Canvas grapheme positions are estimated; no Office layout, pagination, shaping or formula-calculation accuracy claim.",
+    "Composition tests simulate DOM events; physical native IMEs and full accessibility/manual keyboard coverage remain unverified.",
+    "Native dialog responses are supplied by the harness; system file-picker interaction was not manually exercised.",
+    "Process-exit and injected-IO checks are not literal machine power-cut or storage-controller certification.",
+    "Portable Node cannot make rename conditional on the last observed inode; final external-writer race and filesystem-specific directory-sync limits remain documented.",
+    "Windows Server 2025 CI is not a Windows 10/11 installer certification; Intel macOS and other Linux distributions were not run.",
+    "The Windows settings symlink test is skipped explicitly; do not count it as passed.",
+    "Network policy and negative request tests are not an OS-level packet-capture audit; exact-version dependency review remains ongoing."
+  ],
+  "resolvedIntegrationIssues": [
+    {
+      "run": 45372636240,
+      "source": "14acfdab34565d770f6ab37f1fe3417f3e19395e",
+      "issue": "Windows autocrlf altered reviewed lock/notice bytes",
+      "resolution": ".gitattributes pins lock/inventory LF and preserves original notice bytes without weakening hashes."
+    },
+    {
+      "run": 45372636240,
+      "source": "14acfdab34565d770f6ab37f1fe3417f3e19395e",
+      "issue": "Linux screenshot preceded initial compositor surface; CJK fonts absent",
+      "resolution": "Await visible window/rendered frames; narrowly bounded capture retries; CI installs OS CJK/emoji fonts. Final run needed zero capture retries."
+    },
+    {
+      "run": 45374916841,
+      "source": "616b60cb1524f92064a98f086ccfa0dc3cff3347",
+      "issue": "Superseded before native completion by corrected asynchronous UI assertions",
+      "resolution": "Final harness waits for rendered Undo/Redo results; same exact text and Canvas outcomes are required. Superseded run is not final acceptance evidence."
+    }
+  ]
+}

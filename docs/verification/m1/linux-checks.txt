@@ -1,0 +1,76 @@
+Source commit: 7d0522dcd2a8f6db676a6878429da2ca31a839f6
+CI: https://github.com/xzcode/office-ex/actions/runs/45375454826
+Verbatim selected CI output; setup/cache/credentials output omitted.
+
+2026-11-24T10:32:15.1638677Z Image: ubuntu-24.04
+2026-11-24T10:32:15.1640013Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261116.133/images/ubuntu/Ubuntu2404-Readme.md
+2026-11-24T10:32:28.2406897Z node: v24.22.3
+2026-11-24T10:32:28.2407244Z npm: 11.19.1
+2026-11-24T10:32:31.3486352Z found 0 vulnerabilities
+2026-11-24T10:32:59.1031674Z ✔ FS-01: capabilities are window/document bound, duplicate-aware and revocable (24.313693ms)
+2026-11-24T10:32:59.1180274Z ✔ FS-02: Save As requires a distinct path and an explicit overwrite grant (16.522027ms)
+2026-11-24T10:32:59.1239682Z ✔ FS-02: a new atomic save, zero-byte save, and subsequent overwrite preserve identities (5.251235ms)
+2026-11-24T10:32:59.1320350Z ✔ FS-02: overwrite without a backup or with a failed backup leaves original intact (8.536581ms)
+2026-11-24T10:32:59.1389009Z ✔ FS-02: injected after-temp-open failure does not replace the original (5.757742ms)
+2026-11-24T10:32:59.1438777Z ✔ FS-02: injected after-write failure does not replace the original (6.071522ms)
+2026-11-24T10:32:59.1486751Z ✔ FS-02: injected after-validate failure does not replace the original (5.006741ms)
+2026-11-24T10:32:59.1591005Z ✔ FS-02: injected before-commit failure does not replace the original (10.174671ms)
+2026-11-24T10:32:59.1692170Z ✔ FS-02: validator rejection and cancellation after writing preserve original (9.662785ms)
+2026-11-24T10:32:59.1810929Z ✔ FS-02: external changes before save or during backup cause a conflict (11.767639ms)
+2026-11-24T10:32:59.1919205Z ✔ FS-02: queued saves use refreshed identity and an immutable input snapshot (11.177055ms)
+2026-11-24T10:32:59.2036116Z ✔ FS-02: independent grants to one path cannot both overwrite stale contents (11.666216ms)
+2026-11-24T10:32:59.2106231Z ✔ FS-02: a racing new target is never overwritten; revoked in-flight grant cannot commit (6.931806ms)
+2026-11-24T10:32:59.2211125Z ✔ FS-02: a post-link cleanup failure still reports a successful verified new save (10.391957ms)
+2026-11-24T10:32:59.2294100Z ✔ FS-02: changed parent directory is rejected and cleanup cannot unlink a foreign file (8.421283ms)
+2026-11-24T10:32:59.2321604Z ✔ FS-01/02: symlinks, hardlinks, directories and oversized sparse sources are rejected (2.178493ms)
+2026-11-24T10:32:59.2442652Z ✔ SEC-01/FS-01: only the live main frame of the expected WebContents may invoke IPC (4.365906ms)
+2026-11-24T10:32:59.2443772Z ✔ SEC-01: custom-scheme allowlist inspects scheme, hostname, port and credentials (0.320334ms)
+2026-11-24T10:32:59.2444808Z ✔ IPC argument counts reject unknown channels and ignored trailing payloads (0.244063ms)
+2026-11-24T10:32:59.2445848Z ✔ IPC identifiers and native path strings cannot inject paths or shell arguments (1.5646ms)
+2026-11-24T10:32:59.2447010Z ✔ IPC tab schema bounds counts and rejects duplicate IDs, coercion, accessors and unknown fields (1.202507ms)
+2026-11-24T10:32:59.2448497Z ✔ IPC save/checkpoint requests carry real content IDs and bounded immutable byte messages (0.609954ms)
+2026-11-24T10:32:59.2449527Z ✔ IPC preserves separate save-copy, close and recovery capability shapes (0.537791ms)
+2026-11-24T10:32:59.2450548Z ✔ IPC settings validation is atomic and rejects arrays masquerading as enum strings (0.413898ms)
+2026-11-24T10:32:59.2451700Z ✔ OS-open argument selection ignores executable/app/switch/URL arguments and bounds queue size (0.573889ms)
+2026-11-24T10:32:59.2499600Z ✔ FS-03: core content IDs, immutable bytes and safe filenames survive a new store instance (31.24217ms)
+2026-11-24T10:32:59.2512602Z ✔ FS-03: retains the newest three versions per document; backup hash IDs are accepted (45.57243ms)
+2026-11-24T10:32:59.2513841Z ✔ FS-03: disk quota pruning keeps the last good version if a new write fails (48.171191ms)
+2026-11-24T10:32:59.2514954Z ✔ FS-03: insufficient peak budget preserves the only good snapshot and enforces payload limits (11.566547ms)
+2026-11-24T10:32:59.2516932Z ✔ FS-03: corrupted payload, malformed envelope and unknown schema remain available for diagnosis (25.841644ms)
+2026-11-24T10:32:59.2519415Z ✔ FS-03: tampered staging bytes are detected before retention can delete old snapshots (24.999782ms)
+2026-11-24T10:32:59.2628837Z ✔ FS-03: saved revision cleanup is serialized with an in-flight checkpoint and preserves later edits (12.778494ms)
+2026-11-24T10:32:59.2693689Z ✔ FS-03: path traversal and symlinked recovery payloads are rejected without touching external files (6.849267ms)
+2026-11-24T10:32:59.2744379Z ✔ FS-03: replacing the private directory invalidates the store identity (3.825141ms)
+2026-11-24T10:32:59.2789732Z ✔ FS-03: startup staging cleanup preserves committed and unrelated files (5.086568ms)
+2026-11-24T10:32:59.2859180Z ✔ FS-03: trusted parent aliases canonicalize once while linked recovery directories are rejected (6.411067ms)
+2026-11-24T10:32:59.2966275Z ✔ Settings defaults, theme and language survive an atomic write and reload (14.742927ms)
+2026-11-24T10:32:59.2967532Z ✔ A rejected settings transaction changes neither memory nor persisted preferences (3.979715ms)
+2026-11-24T10:32:59.2968840Z ✔ Concurrent settings changes merge against the last committed transaction (10.246904ms)
+2026-11-24T10:32:59.2969579Z ✔ A failed preference commit preserves memory, cleans staging and does not poison the queue (3.32758ms)
+2026-11-24T10:32:59.2970268Z ✔ Malformed, oversized and coercible persisted settings are ignored as a whole (7.163623ms)
+2026-11-24T10:32:59.2970862Z ✔ Recent-file capabilities withhold paths and return defensive state copies (4.495268ms)
+2026-11-24T10:32:59.2982013Z ✔ A settings symlink is never followed during load (1.691485ms)
+2026-11-24T10:32:59.3064265Z ℹ tests 43
+2026-11-24T10:32:59.3064929Z ℹ suites 0
+2026-11-24T10:32:59.3065438Z ℹ pass 43
+2026-11-24T10:32:59.3065793Z ℹ fail 0
+2026-11-24T10:32:59.3066164Z ℹ cancelled 0
+2026-11-24T10:32:59.3066570Z ℹ skipped 0
+2026-11-24T10:32:59.3066936Z ℹ todo 0
+2026-11-24T10:32:59.3067392Z ℹ duration_ms 412.307237
+2026-11-24T10:33:00.3599769Z Built Office EX desktop + sandboxed renderer/worker in /home/runner/work/office-ex/office-ex/dist
+2026-11-24T10:33:11.5714334Z PASS Native window + sandbox, context isolation, no renderer Node
+2026-11-24T10:33:11.6353983Z PASS CSP rejects remote/local fetch; new windows denied
+2026-11-24T10:33:11.6388625Z PASS Forged capability and synthetic dropped file rejected
+2026-11-24T10:33:11.9264854Z PASS Draft → worker serialization → atomic save → re-read
+2026-11-24T10:33:11.9752338Z PASS Undo restores saved content identity and clean state
+2026-11-24T10:33:12.0233502Z PASS Composition commit is one undo transaction (event simulation)
+2026-11-24T10:33:12.7582674Z PASS Three independent draft tabs: typed cells/formula source, Canvas shape/undo, isolated histories
+2026-11-24T10:33:13.2009556Z PASS Concurrent edit remains dirty after snapshot save
+2026-11-24T10:33:13.4228563Z PASS Overwrite preserves previous version in private backups
+2026-11-24T10:33:13.7569142Z PASS DOCX container inspection + byte-exact Save As with source unchanged
+2026-11-24T10:33:13.9000787Z PASS Wrong-extension draft save fails without changing source or dirty state
+2026-11-24T10:33:35.5488684Z PASS Real 30-second automatic recovery checkpoint
+2026-11-24T10:33:36.1193379Z PASS Crash recovery reopens an unsaved copy; settings persist; source remains unchanged
+2026-11-24T10:33:36.1379864Z PASS Dirty close cancellation keeps document open
+2026-11-24T10:33:36.1722389Z PASS Confirmed discard closes the session

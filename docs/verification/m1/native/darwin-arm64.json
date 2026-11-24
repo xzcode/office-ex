@@ -1,0 +1,27 @@
+{
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "24.22.3",
+  "checks": [
+    "Native window + sandbox, context isolation, no renderer Node",
+    "CSP rejects remote/local fetch; new windows denied",
+    "Forged capability and synthetic dropped file rejected",
+    "Draft → worker serialization → atomic save → re-read",
+    "Undo restores saved content identity and clean state",
+    "Composition commit is one undo transaction (event simulation)",
+    "Three independent draft tabs: typed cells/formula source, Canvas shape/undo, isolated histories",
+    "Concurrent edit remains dirty after snapshot save",
+    "Overwrite preserves previous version in private backups",
+    "DOCX container inspection + byte-exact Save As with source unchanged",
+    "Wrong-extension draft save fails without changing source or dirty state",
+    "Real 30-second automatic recovery checkpoint",
+    "Crash recovery reopens an unsaved copy; settings persist; source remains unchanged",
+    "Dirty close cancellation keeps document open",
+    "Confirmed discard closes the session"
+  ],
+  "startedAt": "2026-11-24T10:31:26.144Z",
+  "electron": "45.4.1",
+  "chromium": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) OfficeEX/0.1.0-dev.1 Chrome/156.0.8078.100 Electron/45.4.1 Safari/537.36",
+  "status": "passed",
+  "finishedAt": "2026-11-24T10:32:02.557Z"
+}

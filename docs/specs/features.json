@@ -1,79 +1,310 @@
 {
   "schemaVersion": 1,
   "baseline": "2026-11-24",
-  "statusNote": "Grouped P0 tracking items; all individual MUST rules in normative docs also apply. No feature marked verified. The existing OOXML output spike is not full editor support.",
+  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed.",
   "features": [
     {
       "id": "ARC-01",
       "milestone": "M1",
       "priority": "P0",
       "acceptance": "模块边界及类型契约",
-      "status": "planned",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "docs/verification/m1/report.json",
+        "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+      ],
+      "implementationPaths": [
+        "scripts/check-architecture.mjs",
+        "tsconfig.json",
+        "packages/contracts/src/index.ts",
+        "package.json",
+        "package-lock.json"
+      ],
+      "m1Acceptance": {
+        "status": "verified",
+        "scope": "M1 公共模块与类型契约、显式无环依赖、纯领域编译、worker 解析边界。",
+        "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+        "verifiedOn": "2026-11-24",
+        "evidence": [
+          "docs/verification/m1/report.json",
+          "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+        ]
+      },
+      "remainingScope": [
+        "Future legacy/PDF/editor packages must keep passing the same architecture gate; their absence in M1 is not a missing M1 implementation."
+      ]
     },
     {
       "id": "MOD-01",
       "milestone": "M1",
       "priority": "P0",
       "acceptance": "统一模型/版本/命令与历史",
-      "status": "planned",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "docs/verification/m1/report.json",
+        "https://github.com/xzcode/office-ex/actions/runs/45375454826",
+        "tests/core.test.ts",
+        "tests/render.test.ts"
+      ],
+      "implementationPaths": [
+        "packages/core/src/model.ts",
+        "packages/core/src/session.ts",
+        "packages/core/src/resources.ts",
+        "packages/contracts/src/index.ts",
+        "packages/writer/src/index.ts",
+        "packages/sheets/src/index.ts",
+        "packages/slides/src/index.ts"
+      ],
+      "m1Acceptance": {
+        "status": "verified",
+        "scope": "M1 三种 schema v1 模型、资源与样式、原子命令、增量历史、revision/contentId、保存票据和过期任务保护。",
+        "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+        "verifiedOn": "2026-11-24",
+        "evidence": [
+          "docs/verification/m1/report.json",
+          "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+        ]
+      },
+      "remainingScope": [
+        "Office-format semantic import/export remains M2–M4.",
+        "Office EX draft serialization deliberately rejects documents with resource payload references until assets can be packaged; resource-store ownership/hash contracts are implemented and tested, but asset persistence must not be advertised.",
+        "Schema v1 is the only current persisted schema; migration mechanics are tested with synthetic prior-version input, not a released historical format."
+      ]
     },
     {
       "id": "FMT-05",
       "milestone": "M1",
       "priority": "P0",
       "acceptance": "安全 OPC ZIP/XML 容器",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/verification/m1/report.json",
+        "https://github.com/xzcode/office-ex/actions/runs/45375454826",
+        "tests/ooxml.test.ts",
+        "tests/format-service.test.ts",
+        "tests/smoke_export.py"
+      ],
+      "implementationPaths": [
+        "packages/ooxml/src/zip.ts",
+        "packages/ooxml/src/xml.ts",
+        "packages/ooxml/src/opc.ts",
+        "packages/ooxml/src/limits.ts"
+      ],
+      "m1Acceptance": {
+        "status": "verified",
+        "scope": "M1 有界 ZIP/XML/OPC 读写、类型与关系图、原包和未知部件保留；不含完整 Office 语义映射。",
+        "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+        "verifiedOn": "2026-11-24",
+        "evidence": [
+          "docs/verification/m1/report.json",
+          "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+        ]
+      },
+      "remainingScope": [
+        "Normative FMT-05 also includes DOCX body/styles/numbering/sections/media mapping, XLSX workbook/cells/styles/formulas/dates/merges mapping and PPTX scene/layout/master/theme mapping; these remain M2–M4.",
+        "Semantic editing that preserves unknown nodes and dependencies within changed parts requires the future domain adapter. M1 accepts explicit whole-part replacements while blocking source-object mutation and signed/macro package edits; it does not claim unknown-node-safe semantic editing."
+      ]
     },
     {
       "id": "LEG-01",
       "milestone": "M1",
       "priority": "P0",
       "acceptance": "安全 CFB 读写",
-      "status": "planned",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "docs/verification/m1/report.json",
+        "https://github.com/xzcode/office-ex/actions/runs/45375454826",
+        "tests/cfb.test.ts",
+        "tests/cfb_interop.py",
+        "tests/format-service.test.ts"
+      ],
+      "implementationPaths": [
+        "packages/cfb/src/index.ts"
+      ],
+      "m1Acceptance": {
+        "status": "verified",
+        "scope": "M1 MS-CFB v3/v4 容器、FAT/DIFAT/MiniFAT、目录/storage/stream、元数据、有界校验与独立互读。",
+        "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+        "verifiedOn": "2026-11-24",
+        "evidence": [
+          "docs/verification/m1/report.json",
+          "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+        ]
+      },
+      "remainingScope": [
+        "MS-DOC, BIFF8 MS-XLS and MS-PPT semantic record mapping/writing and actual historical Office application tests remain LEG-02/03/04/06. CFB correctness is not evidence of DOC/XLS/PPT editor support."
+      ]
     },
     {
       "id": "FS-02",
       "milestone": "M1",
       "priority": "P0",
       "acceptance": "原子保存与冲突",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/verification/m1/report.json",
+        "https://github.com/xzcode/office-ex/actions/runs/45375454826",
+        "tests/file-service.test.ts",
+        "tests/core.test.ts"
+      ],
+      "implementationPaths": [
+        "apps/desktop/src/file-service.ts",
+        "apps/desktop/src/main.ts",
+        "packages/core/src/session.ts"
+      ],
+      "m1Acceptance": {
+        "status": "verified",
+        "scope": "M1 受测本地文件提交、授权、冲突、临时文件、重读/同步、原子提交、覆盖前备份和失败保原件。",
+        "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+        "verifiedOn": "2026-11-24",
+        "evidence": [
+          "docs/verification/m1/report.json",
+          "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+        ]
+      },
+      "remainingScope": [
+        "Document the portable Node final identity-check/rename gap: no OS-level rename-if-inode-unchanged guarantee is claimed; retain the mandatory backup and conflict checks.",
+        "Known remote filesystem types and UNC paths are rejected, but mapped or unusual filesystems are not comprehensively certified. Directory sync availability is reported to the UI.",
+        "Physical power-loss/storage-controller fault behavior is not established by injected IO tests; platform/installer/release validation remains QA-06."
+      ]
     },
     {
       "id": "FS-03",
       "milestone": "M1",
       "priority": "P0",
       "acceptance": "恢复",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/verification/m1/report.json",
+        "https://github.com/xzcode/office-ex/actions/runs/45375454826",
+        "tests/recovery.test.ts"
+      ],
+      "implementationPaths": [
+        "apps/desktop/src/recovery.ts",
+        "packages/ui/src/renderer.ts",
+        "apps/desktop/src/main.ts"
+      ],
+      "m1Acceptance": {
+        "status": "verified",
+        "scope": "M1 真实 30 秒恢复、校验包络、3 份/256MiB 保留、版本水位、进程退出恢复为未保存副本。",
+        "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+        "verifiedOn": "2026-11-24",
+        "evidence": [
+          "docs/verification/m1/report.json",
+          "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+        ]
+      },
+      "remainingScope": [
+        "Injected ENOSPC-style failures and process-exit recovery do not establish literal machine power-cut behavior or every real filesystem permission/disk-full failure mode.",
+        "Recovery schema/hash validation is separate from Office semantic compatibility; unsupported future schemas remain rejected and preserved.",
+        "UI recovery currently concerns internal drafts. Full imported Office editing/recovery follows the semantic adapter milestones."
+      ]
     },
     {
       "id": "SEC-01",
       "milestone": "M1",
       "priority": "P0",
       "acceptance": "隔离 IPC 与零网络",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/verification/m1/report.json",
+        "https://github.com/xzcode/office-ex/actions/runs/45375454826",
+        "tests/ipc-policy.test.ts",
+        "tests/file-service.test.ts"
+      ],
+      "implementationPaths": [
+        "apps/desktop/src/main.ts",
+        "apps/desktop/src/preload.ts",
+        "apps/desktop/src/ipc-policy.ts",
+        "packages/ui/src/format-worker.ts",
+        "scripts/check-architecture.mjs"
+      ],
+      "m1Acceptance": {
+        "status": "verified",
+        "scope": "M1 实际 Electron sandbox/context isolation、禁 Node、受限 IPC、固定本地资源、拒绝外部连接和文档 worker。",
+        "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+        "verifiedOn": "2026-11-24",
+        "evidence": [
+          "docs/verification/m1/report.json",
+          "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+        ]
+      },
+      "remainingScope": [
+        "Do not describe a negative fetch test as a complete operating-system packet capture or proof that every Chromium/OS background service emits zero traffic. The application has deny-by-default resource/network policy and no account/telemetry/updater code.",
+        "Ongoing exact-version runtime/dependency security review remains required; no exhaustive security audit or formal sandbox certification is claimed."
+      ]
     },
     {
       "id": "SEC-02",
       "milestone": "M1",
       "priority": "P0",
       "acceptance": "恶意文件拒绝",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/verification/m1/report.json",
+        "https://github.com/xzcode/office-ex/actions/runs/45375454826",
+        "tests/ooxml.test.ts",
+        "tests/cfb.test.ts",
+        "tests/format-service.test.ts"
+      ],
+      "implementationPaths": [
+        "packages/ooxml/src/zip.ts",
+        "packages/ooxml/src/xml.ts",
+        "packages/ooxml/src/opc.ts",
+        "packages/cfb/src/index.ts",
+        "packages/format-service/src/index.ts"
+      ],
+      "m1Acceptance": {
+        "status": "verified",
+        "scope": "M1 ZIP/XML/CFB 与有限旧格式包封的恶意输入拒绝、有界解析和内容不执行；不含未来语义解析器。",
+        "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+        "verifiedOn": "2026-11-24",
+        "evidence": [
+          "docs/verification/m1/report.json",
+          "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+        ]
+      },
+      "remainingScope": [
+        "Full DOC/XLS/PPT record-body semantics, nested OfficeArt/slide edit chains, formula AST/evaluation budgets and decoded image/media limits apply when those parsers/decoders are introduced in M2–M4.",
+        "M1 does not execute document macros/scripts/OLE/DDE/XLM or decode embedded Office media. Container inspection is not proof that an entire document body is semantically valid.",
+        "Retain SEC-02 as implemented with verified M1 subset; do not mark the whole future parsing surface verified."
+      ]
     },
     {
       "id": "UI-01",
       "milestone": "M1",
       "priority": "P0",
       "acceptance": "桌面主题与标签",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/verification/m1/report.json",
+        "https://github.com/xzcode/office-ex/actions/runs/45375454826",
+        "tests/settings.test.ts",
+        "tests/render.test.ts"
+      ],
+      "implementationPaths": [
+        "packages/ui/index.html",
+        "packages/ui/styles.css",
+        "packages/ui/src/renderer.ts",
+        "packages/ui/src/font-metrics.ts",
+        "apps/desktop/src/main.ts",
+        "apps/desktop/src/settings.ts"
+      ],
+      "m1Acceptance": {
+        "status": "verified",
+        "scope": "M1 单窗口、多标签、首页与最近文件、三种草稿预览、只读报告、主题语言、保存关闭和基础交互。",
+        "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+        "verifiedOn": "2026-11-24",
+        "evidence": [
+          "docs/verification/m1/report.json",
+          "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+        ]
+      },
+      "remainingScope": [
+        "The UI exposes M1 draft/model exercises and read-only container inspection. Full document pagination/editor, spreadsheet grid/calculation and slide editing are M2–M4.",
+        "The IME smoke uses DOM composition events. Physical native input-method behavior, screen-reader accessibility and full keyboard-only end-to-end usability are not established by that event simulation.",
+        "Canvas font metrics mark cluster precision as estimated; full mixed-direction shaping and Office layout fidelity remain later rendering gates."
+      ]
     },
     {
       "id": "WRT-01",
@@ -243,5 +474,18 @@
       "status": "planned",
       "evidence": []
     }
-  ]
+  ],
+  "milestones": {
+    "M1": {
+      "status": "verified",
+      "sourceCommit": "7d0522dcd2a8f6db676a6878429da2ca31a839f6",
+      "sourceTree": "25ea2dd3dfadad3c161798f36fef7896eb64fcc8",
+      "verifiedOn": "2026-11-24",
+      "scope": "M1.1–M1.10 infrastructure as defined by docs/M1.md; no six-format editor or installer claim",
+      "evidence": [
+        "docs/verification/m1/report.json",
+        "https://github.com/xzcode/office-ex/actions/runs/45375454826"
+      ]
+    }
+  }
 }

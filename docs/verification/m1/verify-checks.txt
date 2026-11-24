@@ -1,0 +1,122 @@
+Source commit: 7d0522dcd2a8f6db676a6878429da2ca31a839f6
+CI: https://github.com/xzcode/office-ex/actions/runs/45375454826
+Verbatim selected CI output; setup/cache/credentials output omitted.
+
+2026-11-24T10:30:42.0548742Z Image: ubuntu-24.04
+2026-11-24T10:30:42.0550372Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261116.376/images/ubuntu/Ubuntu2404-Readme.md
+2026-11-24T10:30:44.4268847Z node: v24.22.3
+2026-11-24T10:30:44.4270019Z npm: 11.19.1
+2026-11-24T10:30:49.9469220Z Create Python 3.12.14 folder
+2026-11-24T10:30:55.2948613Z found 0 vulnerabilities
+2026-11-24T10:30:58.4324643Z Architecture verified: 12 workspaces, 29 source files; public APIs, declared dependencies, acyclic graph, pure domain.
+2026-11-24T10:30:59.3265517Z ✔ LEG-01: v3 nested storages, metadata, mini and normal streams round-trip (9.511187ms)
+2026-11-24T10:30:59.3284897Z ✔ LEG-01: v4 nested storages, metadata, mini and normal streams round-trip (3.265977ms)
+2026-11-24T10:30:59.3316694Z ✔ LEG-01: empty container and only empty streams need no MiniFAT (1.171966ms)
+2026-11-24T10:30:59.3374769Z ✔ LEG-01: extended DIFAT covers more than 109 FAT sectors (496.775708ms)
+2026-11-24T10:30:59.3376209Z ✔ LEG-01: sibling ordering uses UTF-16 length then simple case, with unique names (1.583491ms)
+2026-11-24T10:30:59.3377480Z ✔ SEC-02: rejects truncated files, invalid header geometry and unsupported versions (3.963968ms)
+2026-11-24T10:30:59.3378737Z ✔ SEC-02: rejects FAT self-cycles, sector overlap and wrong stream length (2.00339ms)
+2026-11-24T10:30:59.3379962Z ✔ SEC-02: rejects MiniFAT overlap, cycles and truncated declared allocations (1.108593ms)
+2026-11-24T10:30:59.3381157Z ✔ SEC-02: rejects directory graph cycles, orphans, stream children, bad order and names (1.287011ms)
+2026-11-24T10:30:59.3382496Z ✔ SEC-03: file/entry/stream/materialization/depth budgets and cancellation are enforced (6.672672ms)
+2026-11-24T10:30:59.3383917Z ✔ LEG-01: v4 rejects unsafe 64-bit sizes; v3 follows recommended legacy high-word handling (0.884343ms)
+2026-11-24T10:30:59.3385292Z ✔ LEG-01: reserved root/stream metadata and storage allocations obey MS-CFB 2.6 (0.463763ms)
+2026-11-24T10:30:59.3625219Z ✔ MOD-01: three canonical serializable models validate and have stable IDs (6.210452ms)
+2026-11-24T10:30:59.3626903Z ✔ MOD-01/ARC-02: reject unknown schema, duplicate IDs, accessors, cycles and unsafe keys (1.551592ms)
+2026-11-24T10:30:59.3628621Z ✔ MOD-03: a failing multi-operation transaction has no model, history or dirty side effects (2.093285ms)
+2026-11-24T10:30:59.3630390Z ✔ MOD-03: undo/redo revisions advance while saved-content identity restores clean state (1.871872ms)
+2026-11-24T10:30:59.3631821Z ✔ MOD-03: incremental history is bounded and snapshots share unchanged branches (19.739639ms)
+2026-11-24T10:30:59.3633738Z ✔ MOD-04: save tickets keep edits during asynchronous saves dirty and reject forged completion (0.780639ms)
+2026-11-24T10:30:59.3635191Z ✔ MOD-03: document sessions, histories, and feature permissions remain isolated (2.118089ms)
+2026-11-24T10:30:59.3637070Z ✔ MOD-02/WRT-03: IME-sized text edits preserve emoji, combining sequences, UTF-16 and undo (1.535041ms)
+2026-11-24T10:30:59.3638594Z ✔ SHT-01/MOD-02: sparse typed values retain empty string, zero and formula source, reject XLS overflow (2.092998ms)
+2026-11-24T10:30:59.3640086Z ✔ SLD-01/MOD-03: shape order and stable IDs survive a single drag transaction and undo (2.672811ms)
+2026-11-24T10:30:59.3641523Z ✔ MOD-04: derived work cancels superseded tasks and discards stale revisions (0.688843ms)
+2026-11-24T10:30:59.3644093Z ✔ MOD-01: schema migrations preserve their input on failure and refuse unknown future versions (0.628183ms)
+2026-11-24T10:30:59.3645730Z ✔ MOD-01: SHA-256 agrees with independent Node crypto across padding/block boundaries (5.325475ms)
+2026-11-24T10:30:59.3647267Z ✔ MOD-01: resource ownership validates hashes, budgets, identity and complete cleanup proof (2.057789ms)
+2026-11-24T10:30:59.3648787Z ✔ WRT-02: style cascade resolves inheritance, direct formatting, cycles and missing references (1.044953ms)
+2026-11-24T10:30:59.3650250Z ✔ FS-01: capabilities are window/document bound, duplicate-aware and revocable (19.182207ms)
+2026-11-24T10:30:59.3651781Z ✔ FS-02: Save As requires a distinct path and an explicit overwrite grant (21.245355ms)
+2026-11-24T10:30:59.3657705Z ✔ FS-02: a new atomic save, zero-byte save, and subsequent overwrite preserve identities (10.693805ms)
+2026-11-24T10:30:59.3659367Z ✔ FS-02: overwrite without a backup or with a failed backup leaves original intact (4.95959ms)
+2026-11-24T10:30:59.3660821Z ✔ FS-02: injected after-temp-open failure does not replace the original (2.934077ms)
+2026-11-24T10:30:59.3662160Z ✔ FS-02: injected after-write failure does not replace the original (2.990226ms)
+2026-11-24T10:30:59.3663708Z ✔ FS-02: injected after-validate failure does not replace the original (4.471526ms)
+2026-11-24T10:30:59.3665062Z ✔ FS-02: injected before-commit failure does not replace the original (9.052557ms)
+2026-11-24T10:30:59.3666428Z ✔ FS-02: validator rejection and cancellation after writing preserve original (9.920831ms)
+2026-11-24T10:30:59.3667805Z ✔ FS-02: external changes before save or during backup cause a conflict (8.036985ms)
+2026-11-24T10:30:59.3669172Z ✔ FS-02: queued saves use refreshed identity and an immutable input snapshot (33.512867ms)
+2026-11-24T10:30:59.3670600Z ✔ FS-02: independent grants to one path cannot both overwrite stale contents (17.197744ms)
+2026-11-24T10:30:59.3672027Z ✔ FS-02: a racing new target is never overwritten; revoked in-flight grant cannot commit (13.534781ms)
+2026-11-24T10:30:59.3673792Z ✔ FS-02: a post-link cleanup failure still reports a successful verified new save (5.04626ms)
+2026-11-24T10:30:59.3675229Z ✔ FS-02: changed parent directory is rejected and cleanup cannot unlink a foreign file (7.595236ms)
+2026-11-24T10:30:59.3676819Z ✔ FS-01/02: symlinks, hardlinks, directories and oversized sparse sources are rejected (2.580634ms)
+2026-11-24T10:30:59.3752930Z ✔ FMT-01/M1: detects six format envelopes, preserves source hashes, leaves semantic capabilities C0 (88.268899ms)
+2026-11-24T10:30:59.3784916Z ✔ FMT-01: extension does not select parser; CFB lookup respects case-equivalent root names (13.847465ms)
+2026-11-24T10:30:59.3799965Z ✔ DOC detector rejects unknown/pre97 FIB versions, missing table streams and ambiguous root types (1.956553ms)
+2026-11-24T10:30:59.3801709Z ✔ XLS detector bounds BOF and EOF records and identifies encryption without executing content (3.942498ms)
+2026-11-24T10:30:59.3803481Z ✔ PPT detector enforces CurrentUser and UserEdit record lengths and versions (2.805195ms)
+2026-11-24T10:30:59.3805325Z ✔ encrypted OOXML requires both CFB root streams and enough cleartext header bytes (2.041689ms)
+2026-11-24T10:30:59.3806863Z ✔ Office EX draft saves validated models and rejects unknown schema or envelope fields (3.979234ms)
+2026-11-24T10:30:59.3808266Z ✔ format boundary utilities reject out-of-bounds binary input and unsafe save plans (0.858058ms)
+2026-11-24T10:30:59.3809974Z ✔ diagnostics share the contracts DTO and sort without locale-sensitive collation (0.303378ms)
+2026-11-24T10:30:59.3857785Z ✔ SEC-01/FS-01: only the live main frame of the expected WebContents may invoke IPC (1.281752ms)
+2026-11-24T10:30:59.3860710Z ✔ SEC-01: custom-scheme allowlist inspects scheme, hostname, port and credentials (0.492849ms)
+2026-11-24T10:30:59.3861941Z ✔ IPC argument counts reject unknown channels and ignored trailing payloads (0.374665ms)
+2026-11-24T10:30:59.3863352Z ✔ IPC identifiers and native path strings cannot inject paths or shell arguments (0.468793ms)
+2026-11-24T10:30:59.3865024Z ✔ IPC tab schema bounds counts and rejects duplicate IDs, coercion, accessors and unknown fields (1.698497ms)
+2026-11-24T10:30:59.3877826Z ✔ IPC save/checkpoint requests carry real content IDs and bounded immutable byte messages (0.745838ms)
+2026-11-24T10:30:59.3879341Z ✔ IPC preserves separate save-copy, close and recovery capability shapes (2.795406ms)
+2026-11-24T10:30:59.3881041Z ✔ IPC settings validation is atomic and rejects arrays masquerading as enum strings (0.34916ms)
+2026-11-24T10:30:59.3883462Z ✔ OS-open argument selection ignores executable/app/switch/URL arguments and bounds queue size (0.689725ms)
+2026-11-24T10:30:59.6952140Z ✔ ZIP STORE/DEFLATE round trip and CRC fixture (8.228963ms)
+2026-11-24T10:30:59.6980551Z ✔ Python zipfile independently reads our archive and creates a DEFLATE input (45.056618ms)
+2026-11-24T10:30:59.6984083Z ✔ ZIP data descriptors are checked rather than skipped (2.848147ms)
+2026-11-24T10:30:59.6987596Z ✔ ZIP path, truncation, headers, symlinks and CRC attacks are rejected (0.646229ms)
+2026-11-24T10:30:59.6989071Z ✔ ZIP checks declared and actual expansion, cumulative budgets and cancellation (3.967864ms)
+2026-11-24T10:30:59.7005303Z ✔ ZIP overlapping records, duplicate names and hidden bytes are rejected (0.473812ms)
+2026-11-24T10:30:59.7020752Z ✔ XML namespace identity, UTF-16 and serializer preserve unknown XML (8.935496ms)
+2026-11-24T10:30:59.7036742Z ✔ XML rejects DTD, custom entities, XInclude, invalid encodings and recovered malformed documents (4.050284ms)
+2026-11-24T10:30:59.7044951Z ✔ XML enforces depth, attribute/node, byte and cancellation budgets before DOM construction (0.420812ms)
+2026-11-24T10:30:59.7065140Z ✔ OPC detects document kind from relationships and content types, independent of prefixes and main path (22.209183ms)
+2026-11-24T10:30:59.7087645Z ✔ OPC resolves relative and case-equivalent targets and reports external relationships without fetching (9.039657ms)
+2026-11-24T10:30:59.7090080Z ✔ OPC rejects relationship collisions, missing targets, equivalent names and malformed XML (16.082401ms)
+2026-11-24T10:30:59.7091617Z ✔ OPC identifies Strict and preserves untouched unknown parts and the no-edit archive (13.871174ms)
+2026-11-24T10:30:59.7100454Z ✔ OPC blocks uncontrolled source mutation and signed-package edits (15.896966ms)
+2026-11-24T10:30:59.7234901Z ✔ FS-03: core content IDs, immutable bytes and safe filenames survive a new store instance (45.995198ms)
+2026-11-24T10:30:59.7238582Z ✔ FS-03: retains the newest three versions per document; backup hash IDs are accepted (36.220683ms)
+2026-11-24T10:30:59.7239740Z ✔ FS-03: disk quota pruning keeps the last good version if a new write fails (24.423227ms)
+2026-11-24T10:30:59.7241128Z ✔ FS-03: insufficient peak budget preserves the only good snapshot and enforces payload limits (9.407915ms)
+2026-11-24T10:30:59.7586978Z ✔ FS-03: corrupted payload, malformed envelope and unknown schema remain available for diagnosis (35.08941ms)
+2026-11-24T10:30:59.7706568Z ✔ FS-03: tampered staging bytes are detected before retention can delete old snapshots (11.877434ms)
+2026-11-24T10:30:59.7823425Z ✔ FS-03: saved revision cleanup is serialized with an in-flight checkpoint and preserves later edits (11.649257ms)
+2026-11-24T10:30:59.7884780Z ✔ FS-03: path traversal and symlinked recovery payloads are rejected without touching external files (4.543274ms)
+2026-11-24T10:30:59.7913857Z ✔ FS-03: replacing the private directory invalidates the store identity (4.279718ms)
+2026-11-24T10:30:59.7979054Z ✔ FS-03: startup staging cleanup preserves committed and unrelated files (5.803216ms)
+2026-11-24T10:30:59.8055036Z ✔ FS-03: trusted parent aliases canonicalize once while linked recovery directories are rejected (6.70147ms)
+2026-11-24T10:30:59.8142616Z ✔ MOD-02: geometry conversions use exact base units and explicit integer rounding (1.498143ms)
+2026-11-24T10:30:59.8144142Z ✔ M1.9: local rotation and inverse hit-testing share the same geometry (0.774201ms)
+2026-11-24T10:30:59.8145630Z ✔ M1.9: viewport zoom and device scaling never alter document EMU (1.046854ms)
+2026-11-24T10:30:59.8146994Z ✔ M1.9: hit testing respects paint order, ellipse edges and line distance (0.418568ms)
+2026-11-24T10:30:59.8148511Z ✔ M1.9: font shaping contract preserves grapheme indices, RTL visual order and fallback diagnostics (17.354149ms)
+2026-11-24T10:30:59.8149798Z ✔ M1.9: font measurement caching is bounded and keys include the environment (0.670424ms)
+2026-11-24T10:30:59.8366094Z ✔ Settings defaults, theme and language survive an atomic write and reload (11.654409ms)
+2026-11-24T10:30:59.8408951Z ✔ A rejected settings transaction changes neither memory nor persisted preferences (4.435169ms)
+2026-11-24T10:30:59.8531850Z ✔ Concurrent settings changes merge against the last committed transaction (12.145457ms)
+2026-11-24T10:30:59.8598994Z ✔ A failed preference commit preserves memory, cleans staging and does not poison the queue (6.492505ms)
+2026-11-24T10:30:59.8659253Z ✔ Malformed, oversized and coercible persisted settings are ignored as a whole (5.950554ms)
+2026-11-24T10:30:59.8716341Z ✔ Recent-file capabilities withhold paths and return defensive state copies (5.742604ms)
+2026-11-24T10:30:59.8730294Z ✔ A settings symlink is never followed during load (1.44708ms)
+2026-11-24T10:30:59.8839184Z ℹ tests 99
+2026-11-24T10:30:59.8839711Z ℹ suites 0
+2026-11-24T10:30:59.8840195Z ℹ pass 99
+2026-11-24T10:30:59.8840653Z ℹ fail 0
+2026-11-24T10:30:59.8841113Z ℹ cancelled 0
+2026-11-24T10:30:59.8841876Z ℹ skipped 0
+2026-11-24T10:30:59.8842424Z ℹ todo 0
+2026-11-24T10:30:59.8842985Z ℹ duration_ms 1324.632618
+2026-11-24T10:31:00.2350008Z PASS: original TypeScript DOCX/XLSX XML parts; independent ZIP/read checks and 4 rejection cases.
+2026-11-24T10:31:00.9477323Z CFB v3/v4 independent interop passed: olefile 0.47; nested, empty, mini, 4096 boundary, 8MiB DIFAT; independent small/large stream edits
+2026-11-24T10:31:01.1264430Z Dependency audit passed: 66 locked npm packages, 23 installed notice files; fflate, @xmldom/xmldom runtime libraries.
+2026-11-24T10:31:01.5549979Z found 0 vulnerabilities
