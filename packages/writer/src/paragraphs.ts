@@ -3,7 +3,7 @@
  * This first slice operates on top-level, text-only paragraphs; unsupported inline objects
  * and tables are never silently flattened. All changes go through DocumentSession.
  */
-import { assert, assertId, assertUnicode, assertGraphemeRange } from '@office-ex/contracts';
+import { assert, assertId, assertUnicode, assertGraphemeRange, graphemeBoundaries } from '@office-ex/contracts';
 import { patchCommand, validateTextStyle, assertPlainData, cloneData, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type Paragraph, type TextRun, type WriterDocument } from '@office-ex/core';
 
 type ReadRun = DeepReadonly<TextRun>;
@@ -69,6 +69,13 @@ export function replaceParagraphRange(snapshot:DocumentSnapshot,paragraphId:stri
   assertGraphemeRange(p.text,start,end);assertUnicode(replacement);
   assert(replacement.length<=1_000_000,'limit','Replacement exceeds text budget');
   if(p.text.slice(start,end)===replacement)return patchCommand(snapshot,'WRT-03',[]);
+  // Typical typing inside one run keeps its ID and style instead of fragmenting the model.
+  let cursor=0;
+  for(let index=0;index<p.runs.length;index++){
+    const run=p.runs[index]!,next=cursor+run.text.length;
+    if(start>=cursor&&end<=next){const value=run.text.slice(0,start-cursor)+replacement+run.text.slice(end-cursor);if(value.length<=1_000_000)return patchCommand(snapshot,'WRT-03',[{op:'set',path:['sections',p.section,'blocks',p.block,'runs',index,'text'],value}]);}
+    cursor=next;
+  }
   const allocate=allocator(operationId),used=new Set<string>(),template=templateAt(p.runs,start);
   const left=sliceRuns(p.runs,0,start,used,allocate);
   const right=sliceRuns(p.runs,end,p.text.length,used,allocate);
@@ -88,12 +95,25 @@ export function formatParagraphRange(snapshot:DocumentSnapshot,paragraphId:strin
 }
 /** One Enter operation creates a paragraph, retaining paragraph properties and run styles. */
 export function splitParagraph(snapshot:DocumentSnapshot,paragraphId:string,offset:number,operationId:string):DocumentCommand{
-  const p=locate(snapshot,paragraphId);assertGraphemeRange(p.text,offset,offset);
-  const allocate=allocator(operationId),used=new Set<string>(),template=templateAt(p.runs,offset);
-  const left=nonEmpty(sliceRuns(p.runs,0,offset,used,allocate),template,allocate);
-  const right=nonEmpty(sliceRuns(p.runs,offset,p.text.length,used,allocate),template,allocate);
+  return splitParagraphRange(snapshot,paragraphId,offset,offset,operationId,operationId+'-paragraph');
+}
+/** Enter replaces a selected range and splits the paragraph in one transaction. */
+export function splitParagraphRange(snapshot:DocumentSnapshot,paragraphId:string,start:number,end:number,operationId:string,newParagraphId:string):DocumentCommand{
+  const p=locate(snapshot,paragraphId);assertGraphemeRange(p.text,start,end);assertId(newParagraphId);
+  const allocate=allocator(operationId),used=new Set<string>(),template=templateAt(p.runs,start);
+  const left=nonEmpty(sliceRuns(p.runs,0,start,used,allocate),template,allocate);
+  const right=nonEmpty(sliceRuns(p.runs,end,p.text.length,used,allocate),template,allocate);
   const original=cloneData(p.paragraph);
-  return patchCommand(snapshot,'WRT-03',[{op:'splice',path:['sections',p.section,'blocks'],index:p.block,deleteCount:1,items:[{...original,runs:left},{...original,id:allocate(),runs:right}]}]);
+  return patchCommand(snapshot,'WRT-03',[{op:'splice',path:['sections',p.section,'blocks'],index:p.block,deleteCount:1,items:[{...original,runs:left},{...original,id:newParagraphId,runs:right}]}]);
+}
+/** A native input change becomes one grapheme-safe minimal replacement. */
+export function paragraphEditDiff(before:string,after:string):{start:number;end:number;replacement:string}|undefined{
+  if(before===after)return undefined;
+  const a=graphemeBoundaries(before),b=graphemeBoundaries(after);
+  let prefix=0,suffix=0;
+  while(prefix<a.length-1&&prefix<b.length-1&&before.slice(a[prefix],a[prefix+1])===after.slice(b[prefix],b[prefix+1]))prefix++;
+  while(suffix<a.length-1-prefix&&suffix<b.length-1-prefix&&before.slice(a[a.length-2-suffix],a[a.length-1-suffix])===after.slice(b[b.length-2-suffix],b[b.length-1-suffix]))suffix++;
+  return {start:a[prefix]!,end:a[a.length-1-suffix]!,replacement:after.slice(b[prefix],b[b.length-1-suffix])};
 }
 /** Join adjacent paragraphs in the same section; preceding paragraph properties win. */
 export function joinParagraphs(snapshot:DocumentSnapshot,firstId:string,secondId:string):DocumentCommand{

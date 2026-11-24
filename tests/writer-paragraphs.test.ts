@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OfficeError } from '@office-ex/contracts';
 import { createDocument, DocumentSession, type WriterDocument } from '@office-ex/core';
-import { paragraphText, replaceParagraphRange, formatParagraphRange, splitParagraph, joinParagraphs, setParagraphAlignment, insertPageBreakAfter } from '@office-ex/writer';
+import { paragraphText, replaceParagraphRange, formatParagraphRange, splitParagraph, splitParagraphRange, paragraphEditDiff, joinParagraphs, setParagraphAlignment, insertPageBreakAfter } from '@office-ex/writer';
 function session(){
   const model=createDocument('writer','writer-test');
   model.sections[0]!.blocks=[{id:'p',type:'paragraph',runs:[
@@ -76,4 +76,22 @@ test('WRT-03 direct formatting rejects accessor-backed data without invoking it'
   let invoked=false;
   assert.throws(()=>formatParagraphRange(s.snapshot(),'p',0,1,{get bold():boolean{invoked=true;return true;}},'fmt'),fails('invalid'));
   assert.equal(invoked,false);assert.equal(s.revision,0);
+});
+
+test('WRT-03 native input diff preserves combining sequences, unaffected runs and stable ID during repeated typing',()=>{
+  assert.deepEqual(paragraphEditDiff('e','e\u0301'),{start:0,end:1,replacement:'e\u0301'});
+  assert.deepEqual(paragraphEditDiff('A😀BC','A😀XC'),{start:3,end:4,replacement:'X'});
+  const s=new DocumentSession(createDocument('writer','typing'));
+  for(const text of ['a','ab','abc','abc😀']){
+    const old=paragraphText(s.snapshot(),'paragraph-1'),diff=paragraphEditDiff(old,text)!;
+    s.execute(replaceParagraphRange(s.snapshot(),'paragraph-1',diff.start,diff.end,diff.replacement,'op'+text.length));
+  }
+  const p=blocks(s)[0]!;if(p.type!=='paragraph')throw Error();
+  assert.equal(p.runs.length,1);assert.equal(p.runs[0]!.id,'run-1');assert.equal(paragraphText(s.snapshot(),'paragraph-1'),'abc😀');
+});
+test('WRT-03 Enter replaces selection and splits in one undoable transaction',()=>{
+  const s=session(),original=s.snapshot().document;
+  s.execute(splitParagraphRange(s.snapshot(),'p',0,3,'split','new-p'));
+  assert.equal(paragraphText(s.snapshot(),'p'),'');assert.equal(paragraphText(s.snapshot(),'new-p'),'😀 e\u0301 τέλος');
+  s.undo();assert.deepEqual(s.snapshot().document,original);
 });

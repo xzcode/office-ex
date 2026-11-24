@@ -109,3 +109,5 @@ export class FontMeasurementCache {
   clear(): void { this.#entries.clear(); }
   get size(): number { return this.#entries.size; }
 }
+
+export * from './writer-layout.js';
