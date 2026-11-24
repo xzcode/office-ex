@@ -55,7 +55,7 @@ function toggled(el:Element):boolean{
 function readRunStyle(el:Element):TextStyle{
   requireElement(el,'rPr');attrs(el);const style:TextStyle={},seen=new Set<string>();
   for(const child of elements(el)){
-    valid(child.namespaceURI===W&&!seen.has(child.localName),'Duplicate or foreign run property');seen.add(child.localName);
+    valid(child.namespaceURI===W&&child.localName!==null&&!seen.has(child.localName),'Duplicate or foreign run property');seen.add(child.localName);
     switch(child.localName){
       case 'b':style.bold=toggled(child);break;
       case 'i':style.italic=toggled(child);break;
@@ -71,7 +71,7 @@ function readRunStyle(el:Element):TextStyle{
 function readParagraphStyle(el:Element):TextStyle{
   requireElement(el,'pPr');attrs(el);const style:TextStyle={},seen=new Set<string>();
   for(const child of elements(el)){
-    valid(child.namespaceURI===W&&!seen.has(child.localName),'Duplicate or foreign paragraph property');seen.add(child.localName);
+    valid(child.namespaceURI===W&&child.localName!==null&&!seen.has(child.localName),'Duplicate or foreign paragraph property');seen.add(child.localName);
     switch(child.localName){
       case 'jc':{attrs(child,['w:val']);empty(child);const v=prop(child,'val');valid(v==='left'||v==='center'||v==='right'||v==='both','Unsupported alignment');style.alignment=v==='left'?'start':v==='right'?'end':v==='both'?'justify':v;break;}
       case 'ind':attrs(child,['w:left']);empty(child);style.indent=numberProp(child,'left',-31680,31680)*EMU_PER_TWIP;break;
@@ -180,7 +180,8 @@ function writeParagraphStyle(style:DeepReadonly<TextStyle>):string{
 }
 function writeText(text:string):string{
   valid(!text.includes('\r'),'CR must be represented explicitly by a supported line break');
-  return text.split(/(\n|\t)/).map(value=>value==='\n'?'<w:br/>':value==='\t'?'<w:tab/>':'<w:t xml:space="preserve">'+escapeXml(value)+'</w:t>').join('');
+  if(!text)return '<w:t xml:space="preserve"></w:t>';
+  return text.split(/(\n|\t)/).filter(value=>value!=='').map(value=>value==='\n'?'<w:br/>':value==='\t'?'<w:tab/>':'<w:t xml:space="preserve">'+escapeXml(value)+'</w:t>').join('');
 }
 function mainXml(candidate:unknown):{model:WriterDocument;xml:string}{
   const checked=validateDocument(candidate);valid(checked.kind==='writer','Expected Writer model');

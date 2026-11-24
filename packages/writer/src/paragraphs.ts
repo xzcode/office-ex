@@ -4,7 +4,7 @@
  * and tables are never silently flattened. All changes go through DocumentSession.
  */
 import { assert, assertId, assertUnicode, assertGraphemeRange } from '@office-ex/contracts';
-import { patchCommand, validateTextStyle, cloneData, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type Paragraph, type TextRun, type WriterDocument } from '@office-ex/core';
+import { patchCommand, validateTextStyle, assertPlainData, cloneData, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type Paragraph, type TextRun, type WriterDocument } from '@office-ex/core';
 
 type ReadRun = DeepReadonly<TextRun>;
 type ReadParagraph = DeepReadonly<Paragraph>;
@@ -77,7 +77,7 @@ export function replaceParagraphRange(snapshot:DocumentSnapshot,paragraphId:stri
 const CHARACTER_KEYS=['fontFamily','fontSize','bold','italic','underline','color'];
 /** Split affected runs at grapheme-safe range endpoints and apply direct character style. */
 export function formatParagraphRange(snapshot:DocumentSnapshot,paragraphId:string,start:number,end:number,style:TextStyle,operationId:string):DocumentCommand{
-  const p=locate(snapshot,paragraphId);assertGraphemeRange(p.text,start,end);validateTextStyle(style);
+  const p=locate(snapshot,paragraphId);assertGraphemeRange(p.text,start,end);assertPlainData(style);validateTextStyle(style);
   assert(Object.keys(style).every(k=>CHARACTER_KEYS.includes(k)),'unsupported','Only direct character properties are supported');
   if(start===end||!Object.keys(style).length)return patchCommand(snapshot,'WRT-03',[]);
   const allocate=allocator(operationId),used=new Set<string>();

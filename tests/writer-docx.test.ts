@@ -73,3 +73,15 @@ test('WRT-04 export rejects named styles, tables, unknown identity and unreprese
   const invalid=fixture();invalid.sections[0]!.blocks=[{id:'p',type:'paragraph',runs:[{id:'r',type:'text',text:'a\rb'}]}];
   assert.throws(()=>writeWriterDocx(invalid),fails('unsupported'));
 });
+
+test('WRT-04 control-only and empty runs round-trip without invented text',()=>{
+  const doc=createDocument('writer','control-only');
+  doc.sections[0]!.blocks=[{id:'p',type:'paragraph',runs:[
+    {id:'tab',type:'tab'},{id:'line',type:'line-break'},{id:'empty',type:'text',text:''}
+  ]}];
+  const bytes=writeWriterDocx(doc),source=openWriterDocx(bytes,doc.documentId,doc.title);
+  const block=source.document.sections[0]!.blocks[0]!;
+  if(block.type!=='paragraph')throw Error();
+  assert.deepEqual(block.runs.map(run=>run.type==='text'?run.text:run.type),['\t','\n','']);
+  assert.deepEqual(saveWriterDocx(source,source.document),bytes);
+});

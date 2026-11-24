@@ -70,3 +70,10 @@ test('WRT-03 unsupported inline objects are blocked rather than flattened',()=>{
   assert.throws(()=>replaceParagraphRange(s.snapshot(),'p',0,1,'x','op'),fails('unsupported'));
   assert.equal(s.dirty,false);assert.equal(s.revision,0);
 });
+
+test('WRT-03 direct formatting rejects accessor-backed data without invoking it',()=>{
+  const s=session();
+  let invoked=false;
+  assert.throws(()=>formatParagraphRange(s.snapshot(),'p',0,1,{get bold():boolean{invoked=true;return true;}},'fmt'),fails('invalid'));
+  assert.equal(invoked,false);assert.equal(s.revision,0);
+});
