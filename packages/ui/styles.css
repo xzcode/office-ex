@@ -7,3 +7,7 @@
 :root[lang=ja-JP]{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans CJK JP',sans-serif}
 .brand,.mini-grid,.slide-preview,.parts-table td:last-child,kbd{direction:ltr}
 #settings-dialog{width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto}#settings-dialog label{gap:12px;align-items:center}#settings-dialog select{min-width:0;max-width:58%}#region-sample{unicode-bidi:isolate}#settings-dialog .muted{margin-block:8px 16px}.tab-title,.recent-item{unicode-bidi:plaintext}.toolbar-actions button{overflow-wrap:anywhere}.format-item small{min-width:0;overflow-wrap:anywhere}.nav-item{min-width:0}.nav-item>span:nth-child(2){min-width:0;overflow-wrap:anywhere}
+
+/* Keep translated labels readable when the source label expands. */
+:root[lang=ko-KR]{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans CJK KR',sans-serif}
+.toolbar{height:auto;min-height:61px;gap:12px;padding-block:9px;flex-wrap:wrap}.toolbar-actions{flex-wrap:wrap;min-width:0}.section-heading{gap:12px;flex-wrap:wrap}.drop-zone>div{min-width:0;overflow-wrap:anywhere}.drop-zone button{flex-shrink:0;max-width:42%;overflow-wrap:anywhere}.draft-card{min-width:0;overflow-wrap:anywhere}.local-badge>span:last-child{min-width:0;overflow-wrap:anywhere}.format-item{min-width:0}.build-tag{overflow-wrap:anywhere}#settings-dialog label>span{min-width:0;overflow-wrap:anywhere}

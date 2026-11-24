@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// First four draft catalogs; all must pass review before formal release.
+// Original four candidate catalogs. All locales require terminology review before formal release.
 export const english = {
   "open": "Open file",
   "newDraft": "New draft",

@@ -52,6 +52,7 @@ function applyTheme():void{const dark=settings.theme==='dark'||settings.theme===
 function applyLanguage():void{
   for(const node of document.querySelectorAll<HTMLElement>('[data-i18n]')){const key=node.dataset.i18n;if(isMessageKey(key))node.textContent=t(key);}
   for(const node of document.querySelectorAll<HTMLElement>('[data-i18n-aria]')){const key=node.dataset.i18nAria;if(isMessageKey(key))node.setAttribute('aria-label',t(key));}
+  for(const id of ['language','region','document-language']){const select=$<HTMLSelectElement>('#'+id);for(const option of Array.from(select.options)){if(option.value!=='system'&&option.value!=='und')option.textContent=localeLabel(option.value,uiLocale())+' ('+option.value+')';}}
   applyTheme();
   if(notification)showMessage(t(notification.key),notification.error,notification.detail);
   $('#region-sample').textContent=number(12345.67,{minimumFractionDigits:2,maximumFractionDigits:2})+' · '+formatDate(regionLocale(),new Date(2026,10,24,12),{dateStyle:'medium'});
@@ -60,7 +61,7 @@ function fillLocaleSelects():void{
   for(const [id,values] of [['language',availableLocales()],['region',REGIONAL_LOCALES],['document-language',TARGET_LOCALES.map(x=>x[0])]] as const){
     const select=$<HTMLSelectElement>('#'+id);select.replaceChildren();
     const system=text('option',t('system'));system.value='system';system.dataset.i18n='system';select.append(system);
-    for(const locale of values){const item=text('option',localeLabel(locale)+' ('+locale+')');item.value=locale;select.append(item);}
+    for(const locale of values){const item=text('option',localeLabel(locale,uiLocale())+' ('+locale+')');item.value=locale;select.append(item);}
     if(id==='document-language'){const item=text('option','und');item.value='und';select.append(item);}
   }
 }

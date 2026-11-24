@@ -54,7 +54,16 @@ try{
   await page.locator('#language').selectOption('ja-JP');await page.waitForFunction(()=>document.documentElement.lang==='ja-JP');
   assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');
   await page.locator('#region').selectOption('de-DE');await page.waitForFunction(()=>document.querySelector('#region-sample')?.textContent?.includes('12.345,67'));
-  await page.locator('#language').selectOption('zh-TW');await page.waitForFunction(()=>document.documentElement.lang==='zh-TW');
+  const firstBatch=[['ko-KR','설정','파일'],['fr-FR','Paramètres','Fichier'],['de-DE','Einstellungen','Datei'],['es-ES','Configuración','Archivo'],['pt-BR','Configurações','Arquivo'],['ru-RU','Настройки','Файл'],['it-IT','Impostazioni','File'],['en-US','Settings','File'],['zh-TW','設定','檔案']];
+  for(const [locale,settingsLabel,fileMenu] of firstBatch){
+    await page.locator('#language').selectOption(locale);
+    await page.waitForFunction(expected=>document.documentElement.lang===expected,locale);
+    assert.equal(await page.locator('#settings-dialog h2').textContent(),settingsLabel);
+    assert.ok((await app.evaluate(({Menu})=>Menu.getApplicationMenu().items.map(x=>x.label))).includes(fileMenu));
+    assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');
+    assert.ok(await page.locator('#settings-dialog').evaluate(el=>el.scrollWidth<=el.clientWidth+2));
+  }
+  check('I18N all eleven first-batch catalogs switch with localized settings and native menus');
   await page.locator('#language').selectOption('zh-CN');await page.waitForFunction(()=>document.documentElement.lang==='zh-CN');
   await page.locator('#settings-dialog button[value=close]').click();
   assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');

@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: MIT
 import { english, simplified, traditional, japanese } from './catalogs.js';
+import { korean, french, german } from './catalogs-a1.js';
+import { spanish, portuguese } from './catalogs-a2.js';
+import { russian, italian } from './catalogs-a3.js';
+export { formatTemplate, formatPlural, formatSelect, pseudoLocalize } from './messages.js';
+import { formatTemplate } from './messages.js';
 export type MessageKey = keyof typeof english;
 export type Catalog = Readonly<Record<MessageKey,string>>;
-const catalogs = { 'en-US':english, 'zh-CN':simplified, 'zh-TW':traditional, 'ja-JP':japanese } satisfies Record<string,Catalog>;
+const catalogs = { 'en-US':english, 'zh-CN':simplified, 'zh-TW':traditional, 'ja-JP':japanese, 'ko-KR':korean, 'fr-FR':french, 'de-DE':german, 'es-ES':spanish, 'pt-BR':portuguese, 'ru-RU':russian, 'it-IT':italian } satisfies Record<string,Catalog>;
 export type UiLocale = keyof typeof catalogs;
 export type LanguagePreference = UiLocale | 'system';
 export const TARGET_LOCALES = [
@@ -44,14 +49,15 @@ export function resolveRegion(preference:RegionalPreference, system:readonly str
 export function localeDirection(locale:string):'ltr'|'rtl'{const c=canonical(locale);if(!c)return 'ltr';return ['ar','he','fa','ur'].includes(new Intl.Locale(c).language)?'rtl':'ltr';}
 export function isMessageKey(key:unknown):key is MessageKey{return typeof key==='string'&&Object.hasOwn(english,key);}
 export function message(locale:UiLocale,key:MessageKey,args:Readonly<Record<string,string|number>>={}):string {
-  const value:string=catalogs[locale][key]??english[key];
-  return value.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g,(_match:string,name:string)=>{
-    if(!Object.hasOwn(args,name))throw new Error('Missing message parameter: '+name);
-    const v=args[name];if(typeof v!=='string'&&typeof v!=='number')throw new Error('Invalid message parameter: '+name);
-    return String(v);
-  });
+  if(!isMessageKey(key))throw new Error('Unknown message key');
+  const value:string=isUiLocale(locale)?catalogs[locale][key]:english[key];
+  return formatTemplate(value,args);
 }
-export function localeLabel(locale:string):string{return TARGET_LOCALES.find(x=>x[0]===locale)?.[1]??locale;}
+export function localeLabel(locale:string,ui?:UiLocale):string{
+  const name=TARGET_LOCALES.find(x=>x[0]===locale)?.[1];
+  if(!ui)return name??locale;
+  try{const translated=new Intl.DisplayNames([ui],{type:'language',languageDisplay:'standard',fallback:'code'}).of(locale);return name&&translated&&name!==translated?name+' · '+translated:name??translated??locale;}catch{return name??locale;}
+}
 export function validateCatalogs():void{
   const required=Object.keys(english).sort().join('|');
   const placeholders=(s:string)=>[...s.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/g)].map(m=>m[1]).sort().join('|');
