@@ -13,7 +13,7 @@ const CONTENT_ID = /^[A-Za-z0-9_.:-]{1,256}$/;
 const RECOVERY_ID = /^[A-Za-z0-9_-]{1,128}\.[0-9]+\.[a-f0-9-]{36}\.oex-recovery$/;
 const ARITY: Readonly<Record<string, number>> = Object.freeze({
   'office:initialize': 0, 'office:open': 0, 'office:recent': 1, 'office:drop': 1,
-  'office:tabs': 1, 'office:save-draft': 1, 'office:save-copy': 1,
+  'office:tabs': 1, 'office:save-draft': 1, 'office:save-docx': 1, 'office:save-copy': 1,
   'office:confirm-close': 1, 'office:release': 2, 'office:finish-close': 0,
   'office:settings': 1, 'office:recover': 1, 'office:discard-recovery': 1,
   'office:checkpoint': 1,
@@ -88,6 +88,14 @@ export function parseDraftSave(value: unknown): DraftSaveRequest {
   bytes(item.bytes); revision(item.revision); contentId(item.contentId); string(item.title, 1024, 'document title');
   if (typeof item.saveAs !== 'boolean') invalid('Invalid Save As flag');
   return { documentId: item.documentId, ...(item.sourceToken === undefined ? {} : { sourceToken: item.sourceToken }), bytes: item.bytes, revision: item.revision, contentId: item.contentId, saveAs: item.saveAs, title: item.title };
+}
+/** DOCX IPC accepts only a bounded serialized model, never a caller-chosen ZIP.
+ * Semantic verification occurs in the independent verifier renderer.
+ */
+export function parseDocxSave(value:unknown):DraftSaveRequest {
+  const request=parseDraftSave(value);
+  if(!request.contentId.startsWith(request.documentId+':content:')||!/^\d+$/.test(request.contentId.slice(request.documentId.length+9)))invalid('DOCX snapshot identity does not match the document');
+  return request;
 }
 export function parsePreservedCopy(value: unknown): { documentId: string; sourceToken: string } {
   const item = fields(value, ['documentId', 'sourceToken']); ipcId(item.documentId); ipcId(item.sourceToken);

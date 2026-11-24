@@ -5,7 +5,9 @@ import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { docxParts, writeZip } from '@office-ex/ooxml';
+import { docxParts, writeZip, writeWriterDocx, openWriterDocx } from '@office-ex/ooxml';
+import { createDocument } from '@office-ex/core';
+import { serializeDraft } from '@office-ex/format-service';
 
 const work=await mkdtemp(join(tmpdir(),'office-ex-native-'));
 const profile=join(work,'profile');await mkdir(profile);
@@ -130,6 +132,72 @@ try{
   await dialogOpen(originalPath);await page.waitForSelector('.parts-table');assert.match(await page.locator('#content').textContent(),/DOCX/);assert.match(await page.locator('#content').textContent(),/尚未导入/);
   await dialogSave(copyPath);await page.locator('#save').click();await waitFor(async()=>{try{return (await readFile(copyPath)).length>0;}catch{return false;}},'original copy');assert.equal(bytesHash(await readFile(copyPath)),bytesHash(original));assert.equal(bytesHash(await readFile(originalPath)),bytesHash(original));check('DOCX container inspection + byte-exact Save As with source unchanged');
   await screenshot('inspection');
+  // A valid file token alone cannot bypass the unsupported DOCX profile.
+  const unauthorized=await page.evaluate(async()=>{
+    const opened=await window.office.openFile();
+    if(!opened.ok||!opened.value)throw Error('fixture open failed');
+    return {documentId:opened.value.documentId,sourceToken:opened.value.token};
+  });
+  const blockedModel=createDocument('writer',unauthorized.documentId,'Blocked');
+  const blocked=await page.evaluate(async({request,data})=>window.office.saveDocx({...request,bytes:Uint8Array.from(data)}),{
+    request:{...unauthorized,revision:0,contentId:unauthorized.documentId+':content:0',saveAs:false,title:'Blocked'},
+    data:Array.from(serializeDraft(blockedModel))
+  });
+  assert.equal(blocked.ok,false);assert.equal(blocked.error.code,'unsupported');
+  assert.equal(bytesHash(await readFile(originalPath)),bytesHash(original));
+  assert.equal(await page.evaluate(()=>typeof window.docxVerification),'undefined');
+  check('Host verifier rejects semantic overwrite of unsupported DOCX even with an authorized source token');
+
+  // Create a real DOCX through the native editor and independent save verifier.
+  const docxPath=join(work,'editable.docx'),docxCopyPath=join(work,'editable-copy.docx');
+  const docxText=async path=>{
+    const bytes=await readFile(path);
+    const model=openWriterDocx(bytes,'test-reader','Verification').document;
+    return model.sections[0].blocks.filter(b=>b.type==='paragraph').map(p=>p.runs.filter(r=>r.type==='text').map(r=>r.text).join('')).join('\n');
+  };
+  await page.locator('#home').click();await page.locator('#new-docx').click();
+  await inputEquals('#draft-text','','New native DOCX editor');
+  await page.locator('#draft-text').fill('Writer DOCX 中文 😀');
+  await dialogSave(docxPath);await page.locator('#save').click();
+  await waitFor(async()=>{try{return await docxText(docxPath)==='Writer DOCX 中文 😀';}catch{return false;}},'native DOCX creation',30000);
+  await page.waitForFunction(()=>!document.querySelector('#save').disabled&&document.querySelector('#document-status').textContent.includes('已保存'));
+  const firstDocx=await readFile(docxPath);
+  assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1);
+  await screenshot('writer-docx');
+  check('New DOCX commits a real independently readable Office archive through an isolated host verifier');
+
+  await dialogSave(docxCopyPath);await page.locator('#save-as').click();
+  await waitFor(async()=>{try{return bytesHash(await readFile(docxCopyPath))===bytesHash(firstDocx);}catch{return false;}},'unchanged DOCX Save As',30000);
+  await page.waitForFunction(()=>!document.querySelector('#save').disabled);
+  assert.equal(bytesHash(await readFile(docxPath)),bytesHash(firstDocx));
+  const beforeClose=await page.locator('.tab').count();
+  await page.locator('.tab[aria-selected=true] .tab-close').click();
+  await page.waitForFunction(count=>document.querySelectorAll('.tab').length===count-1,beforeClose);
+  await dialogOpen(docxCopyPath);await inputEquals('#draft-text','Writer DOCX 中文 😀','Reopened native DOCX');
+  const backupCount=(await readdir(join(profile,'backups'))).length;
+  await page.locator('#draft-text').fill('Edited DOCX 中文');
+  await page.locator('#save').click();
+  await waitFor(async()=>{try{return await docxText(docxCopyPath)==='Edited DOCX 中文';}catch{return false;}},'edited DOCX native save',30000);
+  await page.waitForFunction(()=>!document.querySelector('#save').disabled&&document.querySelector('#document-status').textContent.includes('已保存'));
+  assert.ok((await readdir(join(profile,'backups'))).length>backupCount);
+  assert.equal(bytesHash(await readFile(docxPath)),bytesHash(firstDocx));
+  check('DOCX Save As is byte-exact when unchanged; reopen/edit/overwrite preserves the source and backup');
+
+  // An external writer changed the authorized original: commit must fail closed.
+  const externalModel=createDocument('writer','external','External');
+  externalModel.sections[0].blocks=[{id:'p',type:'paragraph',runs:[{id:'r',type:'text',text:'External change'}]}];
+  const external=writeWriterDocx(externalModel);
+  await page.locator('#draft-text').fill('Must not replace the external change');
+  await writeFile(docxCopyPath,external);
+  await page.locator('#save').click();await page.waitForSelector('#message.error',{timeout:30000});
+  assert.equal(bytesHash(await readFile(docxCopyPath)),bytesHash(external));
+  assert.match(await page.locator('#document-status').textContent(),/未保存/);
+  await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1,checkboxChecked:false});});
+  const beforeDiscard=await page.locator('.tab').count();
+  await page.locator('.tab[aria-selected=true] .tab-close').click();
+  await page.waitForFunction(count=>document.querySelectorAll('.tab').length===count-1,beforeDiscard);
+  check('External DOCX change blocks native overwrite and retains unsaved model');
+
   await page.locator('.tab').first().click();assert.equal(await page.locator('#draft-text').inputValue(),'Edit made while saving');
   // Bad save destination keeps the document dirty, usable and the old file unchanged.
   const stable=await readFile(draftCopyPath);await page.locator('#draft-text').fill('Dirty content before simulated crash');

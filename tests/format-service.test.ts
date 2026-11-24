@@ -5,9 +5,9 @@ import { createHash } from 'node:crypto';
 import { OfficeError, type Diagnostic } from '@office-ex/contracts';
 import { createDocument } from '@office-ex/core';
 import { BoundedReader, planPreservingSave, sniffContainer, sortedDiagnostics } from '@office-ex/format-common';
-import { inspectFile, parseDraft, serializeDraft } from '@office-ex/format-service';
+import { inspectFile, inspectForEditor, parseDraft, serializeDraft, prepareWriterDocxSave } from '@office-ex/format-service';
 import { writeCfb } from '@office-ex/cfb';
-import { docxParts, xlsxParts, writeZip } from '@office-ex/ooxml';
+import { docxParts, xlsxParts, writeZip, writeWriterDocx, openWriterDocx, openOpc } from '@office-ex/ooxml';
 
 const encoder = new TextEncoder();
 const parts = (strings: Record<string, string>): Map<string, Uint8Array> => new Map(Object.entries(strings).map(([name, value]) => [name, encoder.encode(value)]));
@@ -135,4 +135,54 @@ test('diagnostics share the contracts DTO and sort without locale-sensitive coll
   const diagnostics: Diagnostic[] = ['z', 'A', 'a'].map(code => ({ code, featureId: 'FMT-01', severity: 'warning', messageKey: 'test', safeAction: 'none', sourceLocation: { part: 'word/document.xml', offset: 3 } }));
   assert.deepEqual(sortedDiagnostics(diagnostics).map(item => item.code), ['A','a','z']);
   assert.deepEqual(diagnostics.map(item => item.code), ['z','A','a']);
+});
+
+function editorFixture(id:string,text:string){
+  const model=createDocument('writer',id,'Editor fixture');
+  model.sections[0]!.blocks=[{id:'p',type:'paragraph',runs:[{id:'r',type:'text',text,style:{bold:true}}]}];
+  return model;
+}
+test('WRT-04 desktop inspection enables only the narrow DOCX profile and correct source extension',async()=>{
+  const bytes=writeWriterDocx(editorFixture('source','中文 日本語 😀'));
+  const structural=await inspectFile(bytes,'file.docx');
+  assert.equal(structural.report.readOnly,true);assert.equal(structural.editableWriter,undefined);
+  const result=await inspectForEditor(bytes,'file.docx','tab-1');
+  assert.equal(result.editableWriter?.documentId,'tab-1');
+  assert.equal(result.report.readOnly,false);
+  assert.ok(result.report.features.some(f=>f.featureId==='WRT-04'&&f.read&&f.write));
+  assert.equal(result.report.features.find(f=>f.featureId==='FMT-04')?.level,'C0');
+  assert.equal((await inspectForEditor(bytes,'file.doc','tab-2')).editableWriter,undefined);
+  assert.equal((await inspectForEditor(bytes,'file','tab-2')).report.readOnly,true);
+  const unknown=writeZip(parts(docxParts([{runs:[{text:'outside narrow profile'}]}])));
+  assert.equal((await inspectForEditor(unknown,'unknown.docx','tab-3')).report.readOnly,true);
+});
+test('WRT-04 save verifier creates real DOCX from snapshots; unchanged source is byte-exact and edits preserve the OPC envelope',async()=>{
+  const model=editorFixture('tab-1','before 😀');
+  const generated=prepareWriterDocxSave(serializeDraft(model),'tab-1');
+  const result=await inspectForEditor(generated,'source.docx','tab-2');
+  assert.ok(result.editableWriter);
+  const current=structuredClone(result.editableWriter);
+  const unchanged=prepareWriterDocxSave(serializeDraft(current),'tab-2',generated);
+  assert.deepEqual(unchanged,generated);
+  const p=current.sections[0]!.blocks[0]!;
+  if(p.type!=='paragraph'||p.runs[0]?.type!=='text')throw Error('expected run');
+  p.runs[0].text='edited 中文';
+  const updated=prepareWriterDocxSave(serializeDraft(current),'tab-2',generated);
+  const a=openOpc(generated),b=openOpc(updated);
+  for(const [path,data] of a.parts)if(path!==a.mainPart)assert.deepEqual(b.parts.get(path),data);
+  const read=openWriterDocx(updated,'tab-2','source.docx').document.sections[0]!.blocks[0]!;
+  assert.equal(read.type,'paragraph');if(read.type!=='paragraph'||read.runs[0]?.type!=='text')throw Error();
+  assert.equal(read.runs[0].text,'edited 中文');assert.equal(read.runs[0].style?.bold,true);
+});
+test('WRT-04 save verifier rejects raw archive input, mismatched model IDs, other document kinds and unsupported source',()=>{
+  const model=editorFixture('tab-1','safe');
+  const snapshot=serializeDraft(model);
+  assert.throws(()=>prepareWriterDocxSave(snapshot,'other'),code('invalid'));
+  assert.throws(()=>prepareWriterDocxSave(serializeDraft(createDocument('sheets','tab-1')),'tab-1'),code('invalid'));
+  const archive=writeWriterDocx(model);
+  assert.throws(()=>prepareWriterDocxSave(archive,'tab-1'),code('invalid'));
+  const unsupported=writeZip(parts(docxParts([{runs:[{text:'unsupported original'}]}])));
+  const before=digest(unsupported);
+  assert.throws(()=>prepareWriterDocxSave(snapshot,'tab-1',unsupported),code('unsupported'));
+  assert.equal(digest(unsupported),before);
 });

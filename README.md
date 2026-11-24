@@ -83,3 +83,7 @@ npm run smoke:desktop
 - [M0 历史基线](docs/M0.md)与 [M0 验证](docs/M0_VERIFICATION.md)
 
 规范和追踪矩阵区分计划、实现与验证。所有兼容性声明都需要对应格式、功能、样本和实际环境证据。
+
+### M2 Writer 第三批开发预览（开发分支）
+
+新增窄范围 DOCX 新建/打开/编辑/保存/另存候选功能。未知内容、普通复杂 Word 文件以及未完成的 XLS/PPT/DOC 等仍只读结构检查。现有 .oex 内部草稿保留；不是改扩展名转换。完整验证和限制见 [M2 Writer](docs/M2-WRITER.md)，不得在原生 CI 未通过前宣称本批完整验收。

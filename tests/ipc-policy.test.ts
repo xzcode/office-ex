@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { OfficeError } from '@office-ex/contracts';
 import {
   TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId,
-  parseDroppedPath, parseTabStates, parseDraftSave, parsePreservedCopy, parseCheckpoint,
+  parseDroppedPath, parseTabStates, parseDraftSave, parseDocxSave, parsePreservedCopy, parseCheckpoint,
   parseRelease, parseSettingsPatch, parseRecoveryId, commandLineFiles,
 } from '../apps/desktop/src/ipc-policy.js';
 const fails = (code: string) => (error: unknown): boolean => error instanceof OfficeError && error.code === code;
@@ -63,4 +63,19 @@ test('OS-open argument selection ignores executable/app/switch/URL arguments and
   assert.deepEqual(commandLineFiles(['electron','/app/path','--inspect=9222','hello.docx','https://evil.example/a.docx','note.txt','hello.docx'],true,cwd), [resolve(cwd,'hello.docx')]);
   assert.deepEqual(commandLineFiles(['OfficeEX','deck.ppt'],false,cwd), [resolve(cwd,'deck.ppt')]);
   assert.equal(commandLineFiles(['OfficeEX',...Array.from({length:40},(_,i)=>`${i}.xls`)],false,cwd).length,32);
+});
+
+test('DOCX save IPC accepts only bounded snapshot requests bound to the registered document identity',()=>{
+  const request={...save,contentId:'tab-1:content:42',sourceToken:'source-1'};
+  assert.deepEqual(parseDocxSave(request),request);
+  assert.doesNotThrow(()=>assertIpcArity('office:save-docx',[request]));
+  assert.throws(()=>assertIpcArity('office:save-docx',[request,'extra']),fails('invalid'));
+  for(const invalid of [
+    {...request,contentId:'different:content:42'},
+    {...request,contentId:'tab-1:content:'},
+    {...request,contentId:'tab-1:content:1x'},
+    {...request,sourceBytes:new Uint8Array([1])},
+    {...request,targetPath:'/tmp/file.docx'}
+  ])assert.throws(()=>parseDocxSave(invalid),fails('invalid'));
+  assert.throws(()=>parseDocxSave({...request,bytes:new Uint8Array(new SharedArrayBuffer(4))}),fails('unsafe'));
 });

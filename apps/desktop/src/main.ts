@@ -7,9 +7,10 @@ import { resolve, join, basename, extname, isAbsolute } from 'node:path';
 import { asFailure, OfficeError, type Result } from '@office-ex/contracts';
 import type { TabState, MenuAction, OpenFileResult } from '@office-ex/ui';
 import { FileAuthority, MAX_FILE_BYTES } from './file-service.js';
-import { TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId as id, parseDroppedPath, parseTabStates, parseDraftSave, parsePreservedCopy, parseRelease, parseSettingsPatch, parseRecoveryId, parseCheckpoint, commandLineFiles } from './ipc-policy.js';
+import { TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId as id, parseDroppedPath, parseTabStates, parseDraftSave, parseDocxSave, parsePreservedCopy, parseRelease, parseSettingsPatch, parseRecoveryId, parseCheckpoint, commandLineFiles } from './ipc-policy.js';
 import { RecoveryStore } from './recovery.js';
 import { SettingsStore } from './settings.js';
+import { createDocxVerifier, type DocxVerifier } from './docx-verifier.js';
 
 const ORIGIN = TRUSTED_APP_ORIGIN;
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; worker-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -31,6 +32,7 @@ let queuedOpens=0;
 let settings:SettingsStore;
 let recovery:RecoveryStore;
 let backups:RecoveryStore;
+let verifyDocx:DocxVerifier;
 const authority = new FileAuthority();
 const tabs = new Map<string,TabState>();
 const originals = new Map<string,Uint8Array>();
@@ -141,6 +143,81 @@ function installMenu():void {
   menu.push({label:t('menuView'),submenu:[{role:'togglefullscreen',label:t('menuFullscreen')},{role:'resetZoom',label:t('menuResetZoom')},{role:'zoomIn',label:t('menuZoomIn')},{role:'zoomOut',label:t('menuZoomOut')}]});
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
 }
+/** Shared atomic commit path. DOCX output is created by a host-owned sandbox,
+ * not trusted from the ordinary renderer. The existing OEX flow is unchanged.
+ */
+async function saveEditable(format:'oex'|'docx',candidate:unknown,owner:BrowserWindow){
+  const request=format==='docx'?parseDocxSave(candidate):parseDraftSave(candidate);
+  const tab=tabs.get(request.documentId);
+  if(!tab)throw new OfficeError('invalid','Unknown document session');
+  if(runningSaves.has(request.documentId))throw new OfficeError('conflict','Save is already running');
+  if(format==='docx'&&request.revision>tab.revision)throw new OfficeError('conflict','DOCX snapshot is newer than the registered session');
+  runningSaves.add(request.documentId);
+  let createdTarget:string|undefined,committed=false;
+  const reservation='save:'+request.documentId;
+  const assertOwner=()=>{if(window!==owner||owner.isDestroyed()||!tabs.has(request.documentId))throw new OfficeError('cancelled','The document window was closed');};
+  try{
+    assertOwner();
+    let token=request.sourceToken;
+    const grant=token?authority.get(token,owner.id,request.documentId):undefined;
+    if(grant&&extname(grant.path).toLowerCase()!=='.'+format)throw new OfficeError('unsafe','Save format must match the source capability');
+    let output=request.bytes;
+    if(format==='docx'){
+      // Omitting an existing file capability cannot turn an imported file into
+      // an unrestricted new-document save. The original is obtained only here.
+      if(!token){
+        for(const cachedToken of originals.keys()){
+          let existing=false;
+          try{authority.get(cachedToken,owner.id,request.documentId);existing=true;}catch{/* different document */}
+          if(existing)throw new OfficeError('unsafe','Existing DOCX session requires its source capability');
+        }
+      }
+      const original=token?originals.get(token):undefined;
+      if(token&&(!original||!grant?.identity||byteHash(original)!==grant.identity.sha256))throw new OfficeError('conflict','DOCX source snapshot is unavailable or inconsistent');
+      output=await verifyDocx({documentId:request.documentId,bytes:request.bytes,...(original?{sourceBytes:original}: {})});
+      assertOwner();
+    }
+    if(!token||request.saveAs){
+      const name=request.title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,160)||'Untitled';
+      const baseName=name.toLowerCase().endsWith('.'+format)?name.slice(0,-format.length-1):name;
+      const chosen=await dialog.showSaveDialog(owner,{defaultPath:baseName+'.'+format,filters:[{name:format==='docx'?t('docxDocument'):t('draftLabel'),extensions:[format]}],properties:['showOverwriteConfirmation','createDirectory']});
+      assertOwner();
+      if(chosen.canceled||!chosen.filePath)return null;
+      if(extname(chosen.filePath).toLowerCase()!=='.'+format)throw new OfficeError('invalid','Save destination must retain the selected file format');
+      let exists=false;
+      try{await lstat(chosen.filePath);exists=true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+      if(exists){
+        const confirm=await dialog.showMessageBox(owner,{type:'warning',buttons:[t('cancel'),t('replace')],defaultId:0,cancelId:0,message:t('replaceTarget'),detail:basename(chosen.filePath)});
+        assertOwner();if(confirm.response!==1)return null;
+      }
+      token=await authority.authorizeTarget(chosen.filePath,owner.id,request.documentId,exists,request.sourceToken);
+      createdTarget=token;
+    }
+    assertOwner();
+    const expected=byteHash(output),previousBytes=originals.get(request.sourceToken??token)?.byteLength??0;
+    reserveCache(reservation,Math.max(0,output.byteLength-previousBytes));
+    const result=await authority.commit(token,owner.id,request.documentId,output,{
+      backup:async(previous,identity)=>{await backups.put(request.documentId,'backup:'+identity.sha256,request.revision,previous);},
+      validate:async reread=>{
+        // Verify exact bytes generated/reopened by the semantic worker before
+        // the file service's final identity check and same-directory replace.
+        if(byteHash(reread)!==expected)throw new OfficeError('invalid','Save verification failed');
+      }
+    });
+    committed=true;originals.set(token,output.slice());
+    if(request.sourceToken&&request.sourceToken!==token){authority.revokeToken(request.sourceToken,owner.id,request.documentId);originals.delete(request.sourceToken);}
+    cacheReservations.delete(reservation);
+    const warnings:string[]=[];
+    try{await recovery.clearSaved(request.documentId,request.revision);}catch{warnings.push('recovery-cleanup-failed');}
+    try{await settings.addRecent(authority.get(token,owner.id,request.documentId).path,result.name);}catch{warnings.push('recent-update-failed');}
+    return {token,name:result.name,durability:result.durability,warnings};
+  }finally{
+    cacheReservations.delete(reservation);
+    if(createdTarget&&!committed){try{authority.revokeToken(createdTarget,owner.id,request.documentId);}catch{/* already revoked */}}
+    runningSaves.delete(request.documentId);
+  }
+}
+
 function installIpc():void {
   handle('office:initialize',async()=>{rendererReady=true;setTimeout(()=>{void drainPendingFiles();},0);return {settings:settings.publicValue(),recovery:await recovery.list(),platform:process.platform,systemLocales:systemLanguages()};});
   handle('office:open',async()=>{
@@ -155,42 +232,8 @@ function installIpc():void {
     const next = parseTabStates(candidate);
     tabs.clear(); for(const value of next) tabs.set(value.id,value);
   });
-  handle('office:save-draft',async(_event,candidate)=>{
-    const request=parseDraftSave(candidate);
-    if(!tabs.has(request.documentId))throw new OfficeError('invalid','Unknown document session');
-    if(runningSaves.has(request.documentId))throw new OfficeError('conflict','Save is already running');
-    runningSaves.add(request.documentId);
-    let createdTarget:string|undefined,committed=false;
-    const reservation=`save:${request.documentId}`;
-    try {
-      let token=request.sourceToken as string|undefined;
-      if(token && extname(authority.get(token,window!.id,request.documentId).path).toLowerCase()!=='.oex') throw new OfficeError('unsafe','Office files cannot be overwritten by draft serialization');
-      if(!token || request.saveAs) {
-        const name=request.title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,160)||'Untitled';
-        const chosen=await dialog.showSaveDialog(window!,{defaultPath:`${name.replace(/\.oex$/i,'')}.oex`,filters:[{name:t('draftLabel'),extensions:['oex']}],properties:['showOverwriteConfirmation','createDirectory']});
-        if(chosen.canceled||!chosen.filePath)return null;
-        if(extname(chosen.filePath).toLowerCase()!=='.oex')throw new OfficeError('invalid','Drafts must use the .oex extension');
-        let exists=false;
-        try {await lstat(chosen.filePath);exists=true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
-        if(exists){const confirm=await dialog.showMessageBox(window!,{type:'warning',buttons:[t('cancel'),t('replace')],defaultId:0,cancelId:0,message:t('replaceTarget'),detail:basename(chosen.filePath)});if(confirm.response!==1)return null;}
-        token=await authority.authorizeTarget(chosen.filePath,window!.id,request.documentId,exists,request.sourceToken as string|undefined);createdTarget=token;
-      }
-      const bytes=request.bytes; const expected=byteHash(bytes);
-      const previousBytes=originals.get(request.sourceToken??token)?.byteLength??0;
-      reserveCache(reservation,Math.max(0,bytes.byteLength-previousBytes));
-      const result=await authority.commit(token,window!.id,request.documentId,bytes,{backup:async(previous,identity)=>{await backups.put(request.documentId as string,`backup:${identity.sha256}`,request.revision,previous);},validate:async reread=>{
-        // Worker already serialized and re-read the model; main checks the exact planned bytes.
-        if(byteHash(reread)!==expected)throw new OfficeError('invalid','Save verification failed');
-      }});
-      committed=true;originals.set(token,bytes.slice());
-      if(request.sourceToken&&request.sourceToken!==token){authority.revokeToken(request.sourceToken,window!.id,request.documentId);originals.delete(request.sourceToken);}
-      cacheReservations.delete(reservation);
-      const warnings:string[]=[];
-      try{await recovery.clearSaved(request.documentId,request.revision);}catch{warnings.push('recovery-cleanup-failed');}
-      try{await settings.addRecent(authority.get(token,window!.id,request.documentId).path,result.name);}catch{warnings.push('recent-update-failed');}
-      return {token,name:result.name,durability:result.durability,warnings};
-    } finally {cacheReservations.delete(reservation);if(createdTarget&&!committed){try{authority.revokeToken(createdTarget,window!.id,request.documentId);}catch{/* already revoked */}}runningSaves.delete(request.documentId);}
-  });
+  handle('office:save-draft',async(event,candidate)=>saveEditable('oex',candidate,trusted(event)));
+  handle('office:save-docx',async(event,candidate)=>saveEditable('docx',candidate,trusted(event)));
   handle('office:save-copy',async(_event,candidate)=>{
     const request=parsePreservedCopy(candidate);
     if(!tabs.has(request.documentId))throw new OfficeError('unsafe','Unknown document session');
@@ -267,6 +310,7 @@ if(ownsProfile)app.whenReady().then(async()=>{
   session.defaultSession.webRequest.onBeforeRequest((details,callback)=>{
     try{const url=new URL(details.url);callback({cancel:!localOrigin(url)||!resources.has(url.pathname==='/'?'/index.html':url.pathname)});}catch{callback({cancel:true});}
   });
+  verifyDocx=await createDocxVerifier(bundle,join(__dirname,'docx-verifier-preload.cjs'));
   installIpc();installMenu();
   const createWindow=async():Promise<void>=>{
     if(window&&!window.isDestroyed())return;

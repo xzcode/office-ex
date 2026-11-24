@@ -1,12 +1,12 @@
-/** Sandbox-side adapter composition. M1 detects containers; semantic Office import is M2–M4. */
+/** Sandbox-side adapter composition. Structural inspection stays independent of semantic profiles. */
 import { OfficeError } from '@office-ex/contracts';
-import { validateDocument, type OfficeDocument } from '@office-ex/core';
+import { validateDocument, type OfficeDocument, type WriterDocument } from '@office-ex/core';
 import { BoundedReader, sniffContainer, sortedDiagnostics, type Detection, type FormatId, type FormatDiagnostic, type CompatibilityReport } from '@office-ex/format-common';
-import { openOpc } from '@office-ex/ooxml';
+import { openOpc, openWriterDocx, writeWriterDocx, saveWriterDocx } from '@office-ex/ooxml';
 import { readCfb } from '@office-ex/cfb';
 
 export interface ContainerEntry { name: string; size: number; sha256: string }
-export interface Inspection { detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument }
+export interface Inspection { detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument }
 const MAX_INPUT = 100 * 1024 * 1024;
 const MAX_DRAFT = 32 * 1024 * 1024;
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -143,4 +143,41 @@ export async function inspectFile(bytes: Uint8Array, filename = '', signal?: Abo
     {featureId:'FMT-04',read:Boolean(draft),write:Boolean(draft),preserve:true,blocked:!draft,level:draft ? 'C2':'C0'}
   ]};
   return {detection,report,entries,sha256:await sha256(bytes),...(draft ? {draft} : {})};
+}
+
+/** The desktop editor opts in only to the narrow, independently tested DOCX profile.
+ * Structural inspection remains available for every file outside that profile.
+ * A .docx extension is required for native editing, not for container detection.
+ */
+export async function inspectForEditor(bytes:Uint8Array,filename:string,documentId:string,signal?:AbortSignal):Promise<Inspection>{
+  const inspection=await inspectFile(bytes,filename,signal);
+  if(inspection.detection.format!=='docx'||!/\.docx$/i.test(filename)||bytes.byteLength>MAX_DRAFT)return inspection;
+  try{
+    const source=openWriterDocx(bytes,documentId,filename,{signal});
+    const editableWriter=validateDocument(source.document) as WriterDocument;
+    const diagnostics=sortedDiagnostics([
+      ...inspection.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),
+      {code:'DOCX_PROFILE_ACTIVE',featureId:'WRT-04',messageKey:'format.docxProfile',severity:'info',safeAction:'none'}
+    ]);
+    return {...inspection,editableWriter,detection:{...inspection.detection,diagnostics},report:{
+      ...inspection.report,readOnly:false,diagnostics,
+      features:[...inspection.report.features,{featureId:'WRT-04',read:true,write:true,preserve:true,blocked:false,level:'C2'}]
+    }};
+  }catch(error){
+    if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code))return inspection;
+    throw error;
+  }
+}
+/** Called only by the main-owned sandbox verifier when committing desktop DOCX.
+ * The request contains an OEX snapshot, not caller-chosen output bytes. Existing
+ * DOCX source bytes come exclusively from the host's authorized immutable cache.
+ */
+export function prepareWriterDocxSave(snapshotBytes:Uint8Array,documentId:string,sourceBytes?:Uint8Array):Uint8Array{
+  const model=parseDraft(snapshotBytes);
+  if(model.kind!=='writer'||model.documentId!==documentId)throw new OfficeError('invalid','DOCX save requires the matching Writer session');
+  if(sourceBytes!==undefined&&(!(sourceBytes instanceof Uint8Array)||!sourceBytes.byteLength||sourceBytes.byteLength>MAX_DRAFT))
+    throw new OfficeError('limit','DOCX source exceeds editable profile budget');
+  const output=sourceBytes===undefined?writeWriterDocx(model):saveWriterDocx(openWriterDocx(sourceBytes,documentId,model.title),model);
+  if(output.byteLength>MAX_DRAFT)throw new OfficeError('limit','DOCX output exceeds editable profile budget');
+  return output;
 }

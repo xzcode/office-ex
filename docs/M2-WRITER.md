@@ -34,3 +34,11 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 受测源码 84db8010c281f4eefdb80b7250b57148b3876f44，[CI 45426118923](https://github.com/xzcode/office-ex/actions/runs/45426118923)。基础 verify-writer 已通过：13 workspaces、39 源文件，129/129 自动化测试成功，0 失败、0 跳过；新增 8 项布局/输入用例覆盖自动分页、空段、显式换页、选区与命中、样式、CJK 断行、取消与资源预算、grapheme diff 和原子分段。独立 python-docx 语义互读和依赖许可审查通过。
 
 记录时任务状态：verify-writer: success; native-macos: queued; native-other (windows-2025): in_progress; native-other (ubuntu-24.04): in_progress。尚未完成的原生任务不得记为通过。当前只在独立 Writer 分支，未合并 master。排版属于估算 LTR profile，完整 Word 排版、真实 IME、复杂脚本与 DOCX 桌面安全读写仍待后续验收。
+
+## 第三批：DOCX 桌面打开与安全保存（实现候选）
+
+- 新增明确的「新建 DOCX」入口；OEX 草稿和 DOCX 原格式会话各自保留独立格式，禁止仅更改扩展名。DOCX 会话标题显示文件名，另存改变文件关联。恢复快照仍为 OEX，恢复为未保存副本，不自动覆盖原 DOCX。
+- `inspectForEditor` 在结构检查之后尝试窄 profile 语义读取；只有实际 Transitional DOCX、正确扩展名、明确支持内容及 32 MiB 以内源文件进入编辑。普通 Word 文件、未知部件/属性、复杂样式、图片表格、签名宏及其他格式维持只读和原样另存。能力报告仅标记 WRT-04 窄范围 C2 候选，不提升六格式整体兼容等级。
+- `office:save-docx` 传递受限 OEX 模型快照而不是调用者提供的 DOCX 输出。主进程校验窗口、会话、内容身份、文件 token 和原始摘要；独立临时隐藏 sandboxed Chromium 窗口采用单独非持久 session、专用 preload、CSP、固定本地资源白名单及 Web Worker。主进程从授权缓存取得原文档，worker 负责导入/序列化/重开，主进程只接收验证器来源的有界字节；正常 renderer 无验证器 IPC 权限。复用原子提交、备份、身份冲突检测及恢复清理。没有引入外部生产依赖。
+- 11 套候选语言新增 3 个键（158/locale）并更新首页、M2 标记及能力说明。DOCX 原格式支持仍是狭窄的文本/直接格式/基本页面参数；未实现完整 Word 兼容、格式化工具栏扩展、图片、表格、文档语言方向元数据、DOC 及完整 WYSIWYG。
+- 新增 4 项核心/IPC 回归与 native smoke 的直接越权请求阻断、新建、另存、复开、编辑、备份及外部文件冲突；正式结果以本批 CI 为准。仍须独立读者及参考 Microsoft Office 验收；未假定所有原生任务成功。

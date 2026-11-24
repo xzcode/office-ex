@@ -10,7 +10,7 @@ import { availableLocales, TARGET_LOCALES, REGIONAL_LOCALES, resolveLocale, reso
 import { CanvasFontMetrics } from './font-metrics.js';
 
 type WorkerType='inspect'|'serialize'|'recover';
-interface Tab {id:string;name:string;token?:string;session?:DocumentSession;inspection?:Inspection;busy:boolean;error?:{code:string;message:string};lastCheckpoint?:string;selectedShape?:string;writerState?:WriterViewState}
+interface Tab {id:string;name:string;token?:string;session?:DocumentSession;inspection?:Inspection;busy:boolean;error?:{code:string;message:string};lastCheckpoint?:string;selectedShape?:string;writerState?:WriterViewState;format?:'docx'|'oex'}
 const $=<T extends HTMLElement>(selector:string):T=>document.querySelector<T>(selector)!;
 const bridge:DesktopBridge=window.office;
 const tabs=new Map<string,Tab>();
@@ -33,8 +33,10 @@ function notify(key:MessageKey,error=false,detail?:string):void{notification={ke
 function run(work:()=>Promise<unknown>):void{void work().catch(errorMessage);}
 function isSaving(session:DocumentSession|undefined):boolean{return session?.saveState==='saving';}
 function current():Tab|undefined{return active?tabs.get(active):undefined;}
+function displayTitle(tab:Tab):string{return tab.format==='docx'?tab.name:tab.session?.snapshot().document.title??tab.name;}
+function formatLabel(tab:Tab):string{return t(tab.format==='docx'?'docxDocument':'draftLabel');}
 function cancelTask(id:string):void{const task=tasks.get(id);if(task){task.worker.terminate();clearTimeout(task.timer);tasks.delete(id);task.reject(new OfficeError('cancelled','Task cancelled'));}}
-function task<T>(id:string,type:WorkerType,payload:{bytes?:Uint8Array;filename?:string;document?:unknown}):Promise<T>{
+function task<T>(id:string,type:WorkerType,payload:{bytes?:Uint8Array;filename?:string;documentId?:string;document?:unknown}):Promise<T>{
   cancelTask(id);
   if(tasks.size>=4)return Promise.reject(new OfficeError('limit','Worker concurrency budget exceeded'));
   return new Promise((resolve,reject)=>{
@@ -47,7 +49,7 @@ function task<T>(id:string,type:WorkerType,payload:{bytes?:Uint8Array;filename?:
     worker.postMessage({id:request,type,...payload});
   });
 }
-async function syncTabs():Promise<void>{unwrap(await bridge.updateTabs([...tabs.values()].map(tab=>({id:tab.id,title:tab.session?.snapshot().document.title??tab.name,dirty:tab.session?.dirty??false,revision:tab.session?.revision??0}))));}
+async function syncTabs():Promise<void>{unwrap(await bridge.updateTabs([...tabs.values()].map(tab=>({id:tab.id,title:displayTitle(tab),dirty:tab.session?.dirty??false,revision:tab.session?.revision??0}))));}
 function applyTheme():void{const dark=settings.theme==='dark'||settings.theme==='system'&&matchMedia('(prefers-color-scheme:dark)').matches;document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.lang=uiLocale();document.documentElement.dir=localeDirection(uiLocale());}
 function applyLanguage():void{
   for(const node of document.querySelectorAll<HTMLElement>('[data-i18n]')){const key=node.dataset.i18n;if(isMessageKey(key))node.textContent=t(key);}
@@ -74,13 +76,13 @@ function chrome():void{
   const list=$('#tablist');list.replaceChildren();
   for(const tab of tabs.values()){
     const element=document.createElement('div');element.className='tab';element.setAttribute('role','tab');element.setAttribute('aria-selected',String(tab.id===active));element.tabIndex=0;
-    const title=tab.session?.snapshot().document.title??tab.name;
+    const title=displayTitle(tab);
     element.append(text('span',`${tab.session?.dirty?'• ':''}${title}`,'tab-title'));
     element.onclick=()=>{if(composing){notify('finishComposition');return;}active=tab.id;render();};element.onkeydown=e=>{if(composing){notify('finishComposition');return;}if(e.key==='Enter'||e.key===' '){e.preventDefault();active=tab.id;render();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const ids=[...tabs.keys()],i=ids.indexOf(tab.id);active=ids[(i+((e.key==='ArrowRight')===(localeDirection(uiLocale())==='ltr')?1:ids.length-1))%ids.length]!;render();const selected=document.querySelector<HTMLElement>('.tab[aria-selected=true]');selected?.focus();}};
     const close=button('×',()=>run(async()=>{await closeTab(tab.id);}),'tab-close');close.setAttribute('aria-label',`${t('close')} ${title}`);close.onclick=e=>{e.stopPropagation();run(async()=>{await closeTab(tab.id);});};element.append(close);list.append(element);
   }
   const tab=current(),session=tab?.session;
-  $('#breadcrumb').textContent=tab?(session?`${t(session.snapshot().document.kind)} / ${t('draftLabel')}`:t('diagnostics')):t('workspace');
+  $('#breadcrumb').textContent=tab?(session?`${t(session.snapshot().document.kind)} / ${formatLabel(tab)}`:t('diagnostics')):t('workspace');
   $<HTMLButtonElement>('#undo').disabled=!session?.canUndo||Boolean(tab?.busy)||session.saveState==='saving';$<HTMLButtonElement>('#redo').disabled=!session?.canRedo||Boolean(tab?.busy)||session.saveState==='saving';
   $<HTMLButtonElement>('#save').disabled=!tab||tab.busy||session?.saveState==='saving'||(!session&&!tab.inspection);$<HTMLButtonElement>('#save').textContent=tab&&!session?t('copy'):t('save');
   $<HTMLButtonElement>('#save-as').disabled=!tab||tab.busy||session?.saveState==='saving'||(!session&&!tab.inspection);
@@ -94,6 +96,9 @@ function home():void{
   const heading=document.createElement('div');heading.className='section-heading';heading.append(text('h2',t('newHeading')),text('span',t('draftHint')));content.append(heading);
   const cards=document.createElement('div');cards.className='cards';
   for(const [kind,mark,desc] of [['writer','W','writerSub'],['sheets','S','sheetsSub'],['slides','P','slidesSub']] as const){const b=button('',()=>run(()=>newDraft(kind)),'draft-card');b.dataset.kind=kind;b.append(text('span',mark,'card-mark'),text('strong',t(kind)),text('small',t(desc)));cards.append(b);}content.append(cards);
+  const docxActions=document.createElement('div');docxActions.className='docx-new-row';
+  const createDocx=button(t('docxNew'),()=>run(()=>newDraft('writer',undefined,'docx')),'solid');createDocx.id='new-docx';
+  docxActions.append(createDocx,text('span',t('docxNote'),'muted'));content.append(docxActions);
   const drop=document.createElement('div');drop.className='drop-zone';const labels=document.createElement('div');labels.append(text('strong',t('dropTitle')),text('p',t('dropHint')));drop.append(text('span','⇧','drop-icon'),labels,button(t('choose'),()=>run(openDialog)));content.append(drop);
   const note=document.createElement('div');note.className='boundary-note';note.append(text('span','ⓘ'),text('span',t('boundary')));content.append(note);
   const formats=document.createElement('div');formats.className='section-heading';formats.append(text('h2',t('formats')),text('span',t('stage')));content.append(formats);
@@ -102,9 +107,9 @@ function home():void{
 function execute(tab:Tab,command:DocumentCommand,rerender=true):boolean{try{tab.session!.execute(command);message('');if(rerender)render();else chrome();run(syncTabs);return true;}catch(error){errorMessage(error);return false;}}
 function documentView(tab:Tab):void{
   const session=tab.session!,snapshot=session.snapshot(),model=snapshot.document,content=$('#content');content.replaceChildren();
-  const header=document.createElement('div');header.className='document-header';const title=document.createElement('input');title.id='draft-title';title.dir='auto';title.value=model.title;title.maxLength=1024;title.setAttribute('aria-label',t('draftTitle'));
-  title.onchange=()=>execute(tab,{documentId:session.documentId,expectedRevision:session.revision,type:'document.rename',payload:{title:title.value}},false);
-  header.append(title,text('span',t('draftLabel'),'status-chip'));content.append(header);
+  const header=document.createElement('div');header.className='document-header';const title=document.createElement('input');title.id='draft-title';title.dir='auto';title.value=displayTitle(tab);title.maxLength=1024;title.readOnly=tab.format==='docx';title.setAttribute('aria-label',t('draftTitle'));
+  title.onchange=()=>{if(tab.format==='docx')return;execute(tab,{documentId:session.documentId,expectedRevision:session.revision,type:'document.rename',payload:{title:title.value}},false);};
+  header.append(title,text('span',formatLabel(tab),'status-chip'));content.append(header);
   const card=document.createElement('div');card.className='workspace-card';
   if(model.kind==='writer'){
     tab.writerState??={start:0,end:0,pageIndex:0};
@@ -124,7 +129,7 @@ function documentView(tab:Tab):void{
     canvas.onclick=event=>{const box=canvas.getBoundingClientRect();tab.selectedShape=hitTest(slide.shapes,{x:(event.clientX-box.left)/box.width*model.size.width,y:(event.clientY-box.top)/box.height*model.size.height});render();};
     card.append(text('p',t('shapeNote'),'muted'),button(t('addShape'),()=>{const s=session.snapshot();if(s.document.kind!=='slides')return;const list=s.document.slides[0]!;execute(tab,insertShapes(s,list.id,list.shapes.length,[{id:crypto.randomUUID(),type:'rect',geometry:{x:1_000_000+(list.shapes.length%5)*600_000,y:1_000_000+(list.shapes.length%5)*400_000,width:3_000_000,height:1_500_000,rotation:0},fill:{kind:'rgba',red:67,green:111,blue:202,alpha:255}}]));}));
   }
-  content.append(card,text('p',t('draftNote'),'boundary-note'));
+  content.append(card,text('p',t(tab.format==='docx'?'docxNote':'draftNote'),'boundary-note'));
   const details=document.createElement('div');details.className='info-row';details.append(text('span',`${t('revision')}: ${session.revision}`),text('span',`${t('history')}: ${number(session.historyUsage.items)} · ${number(Math.ceil(session.historyUsage.bytes/1024))} KB`));
   // A real browser font measurement verifies the native provider without claiming pagination fidelity.
   const measured=measureText(new CanvasFontMetrics(),'Office EX 中文',{fontFamily:'sans-serif',fontSize:152400});details.append(text('span',`${t('canvas')}: ${number(measured.metrics.advance/EMU_PER_CSS_PIXEL,{maximumFractionDigits:1,minimumFractionDigits:1})} px`));content.append(details);
@@ -140,15 +145,16 @@ function inspectionView(tab:Tab):void{
 }
 function render():void{if(composing)return;applyLanguage();recent();chrome();const tab=current();if(!tab){home();return;}if(tab.busy){const content=$('#content');const loading=document.createElement('div');loading.className='loading';loading.append(text('span','','spinner'),text('span',t('reading')),button(t('cancel'),()=>{cancelTask(tab.id);tab.busy=false;render();}));content.replaceChildren(loading);return;}if(tab.error){$('#content').replaceChildren(text('h1',tab.name),text('p',t(errorKey(tab.error.code)),'diagnostic error'));return;}if(tab.session)documentView(tab);else if(tab.inspection)inspectionView(tab);}
 async function refreshSettings():Promise<void>{const init=unwrap(await bridge.initialize());settings=init.settings;systemLocales=init.systemLocales;applyLanguage();recent();}
-async function newDraft(kind:DocumentKind,model?:OfficeDocument):Promise<void>{if(composing){notify('finishComposition');return;}if(tabs.size>=32)throw new OfficeError('limit',t('limitTabs'));const id=crypto.randomUUID();const document=model?validateDocument({...model,documentId:id,title:`${model.title} (${t('restore')})`}):createDocument(kind,id,`${t('untitled')} ${t(kind)}`);const tab:Tab={id,name:document.title,session:new DocumentSession(document),busy:false};tabs.set(id,tab);active=id;await syncTabs();message('');render();}
+async function newDraft(kind:DocumentKind,model?:OfficeDocument,format:'oex'|'docx'='oex'):Promise<void>{if(composing){notify('finishComposition');return;}if(tabs.size>=32)throw new OfficeError('limit',t('limitTabs'));const id=crypto.randomUUID();const document=model?validateDocument({...model,documentId:id,title:`${model.title} (${t('restore')})`}):createDocument(kind,id,`${t('untitled')} ${t(kind)}`);if(format==='docx'&&document.kind!=='writer')throw new OfficeError('invalid','DOCX requires a Writer document');const tab:Tab={id,name:document.title,session:new DocumentSession(document),busy:false,format};tabs.set(id,tab);active=id;await syncTabs();message('');render();}
 async function openDialog():Promise<void>{if(composing){notify('finishComposition');return;}const file=unwrap(await bridge.openFile());if(file)await openFile(file);}
 async function openFile(file:OpenFileResult):Promise<void>{
   if(composing){if(!file.duplicate&&!tabs.has(file.documentId))unwrap(await bridge.releaseDocument(file.documentId,false));notify('finishComposition');return;}
   if(file.duplicate&&tabs.has(file.documentId)){active=file.documentId;render();return;}
   if(tabs.size>=32){unwrap(await bridge.releaseDocument(file.documentId,false));throw new OfficeError('limit',t('limitTabs'));}
   const tab:Tab={id:file.documentId,name:file.name,token:file.token,busy:true};tabs.set(tab.id,tab);active=tab.id;await syncTabs();message('');render();
-  try{const inspection=await task<Inspection>(tab.id,'inspect',{bytes:file.bytes,filename:file.name});if(!tabs.has(tab.id))return;tab.inspection=inspection;
-    if(inspection.draft){const model=validateDocument(inspection.draft);tab.session=new DocumentSession(model,{saved:true});}
+  try{const inspection=await task<Inspection>(tab.id,'inspect',{bytes:file.bytes,filename:file.name,documentId:file.documentId});if(!tabs.has(tab.id))return;tab.inspection=inspection;
+    if(inspection.editableWriter){const model=validateDocument(inspection.editableWriter);if(model.kind!=='writer'||model.documentId!==tab.id)throw new OfficeError('invalid','Invalid DOCX model identity');tab.session=new DocumentSession(model,{saved:true});tab.format='docx';}
+    else if(inspection.draft){const model=validateDocument(inspection.draft);tab.session=new DocumentSession(model,{saved:true});tab.format='oex';}
   }catch(error){if(!tabs.has(tab.id))return;const f=asFailure(error);tab.error=f;}
   finally{tab.busy=false;if(tabs.has(tab.id)){await syncTabs();await refreshSettings();render();}}
 }
@@ -158,8 +164,10 @@ async function save(tab:Tab|undefined,saveAs=false):Promise<boolean>{
   if(!tab.session){const result=unwrap(await bridge.saveCopy({documentId:tab.id,sourceToken:tab.token!}));if(!result)return false;notify(result.warnings?.length?'savedMaintenanceWarning':result.durability==='synced'?'savedNote':'partialDirectorySync');return true;}
   const session=tab.session;let ticket:SaveTicket|undefined;
   try{ticket=session.beginSave();chrome();const bytes=await task<Uint8Array>(`${tab.id}-save`,'serialize',{document:ticket.document});
-    const result=unwrap(await bridge.saveDraft({documentId:tab.id,sourceToken:tab.token,bytes,revision:ticket.revision,contentId:ticket.contentId,saveAs,title:ticket.document.title}));
+    const request={documentId:tab.id,sourceToken:tab.token,bytes,revision:ticket.revision,contentId:ticket.contentId,saveAs,title:displayTitle(tab)};
+    const result=unwrap(await (tab.format==='docx'?bridge.saveDocx(request):bridge.saveDraft(request)));
     if(!result){session.cancelSave(ticket);return false;}tab.token=result.token;tab.name=result.name;session.completeSave(ticket);tab.lastCheckpoint=ticket.contentId;
+    if(tab.format==='docx'&&current()===tab){const title=$<HTMLInputElement>('#draft-title');if(title)title.value=tab.name;}
     await syncTabs();await refreshSettings();chrome();notify(result.warnings?.length?'savedMaintenanceWarning':result.durability==='synced'?'savedNote':'partialDirectorySync');return true;
   }catch(error){if(ticket&&session.saveState==='saving')session.cancelSave(ticket);throw error;}finally{chrome();}
 }

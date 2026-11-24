@@ -69,7 +69,7 @@ export function validateCatalogs():void{
 const diagnosticKeys:Readonly<Record<string,MessageKey>>={
   'format.semanticPending':'diagSemanticPending','format.macrosDisabled':'diagMacrosDisabled','format.signedReadOnly':'diagSignedReadOnly',
   'format.externalDisabled':'diagExternalDisabled','format.strictReadOnly':'diagStrictReadOnly','format.encryptedUnsupported':'diagEncryptedUnsupported',
-  'format.extensionMismatch':'diagExtensionMismatch'
+  'format.extensionMismatch':'diagExtensionMismatch','format.docxProfile':'docxNote'
 };
 export function diagnosticKey(key:string):MessageKey{return Object.hasOwn(diagnosticKeys,key)?diagnosticKeys[key]!:'diagUnknown';}
 const errorKeys:Readonly<Record<string,MessageKey>>={invalid:'errorInvalid',unsupported:'errorUnsupported',unsafe:'errorUnsafe',limit:'errorLimit',conflict:'errorConflict',cancelled:'cancelled',io:'errorIo',internal:'errorInternal'};
