@@ -10,22 +10,22 @@
 <body>
   <div id="app">
     <aside class="sidebar">
-      <button class="brand" id="home" aria-label="Office EX home"><span class="brand-icon">EX</span><span>Office<span class="brand-ex">EX</span></span></button>
-      <div class="build-tag">M1 · DEVELOPMENT PREVIEW</div>
-      <nav aria-label="Main"><button id="open" class="nav-item primary"><span>↗</span><span data-i18n="open">打开文件</span><kbd>⌘ O</kbd></button><button id="new-menu" class="nav-item"><span>＋</span><span data-i18n="newDraft">新建草稿</span></button></nav>
+      <button class="brand" id="home" aria-label="Office EX home" data-i18n-aria="homeLabel"><span class="brand-icon">EX</span><span>Office<span class="brand-ex">EX</span></span></button>
+      <div class="build-tag" data-i18n="previewTag">M1 · DEVELOPMENT PREVIEW</div>
+      <nav aria-label="Main" data-i18n-aria="mainNav"><button id="open" class="nav-item primary"><span>↗</span><span data-i18n="open">打开文件</span><kbd>⌘ O</kbd></button><button id="new-menu" class="nav-item"><span>＋</span><span data-i18n="newDraft">新建草稿</span></button></nav>
       <div class="sidebar-label" data-i18n="recent">最近打开</div><div id="recent-list" class="recent-list"></div>
       <div class="sidebar-spacer"></div>
       <div class="local-badge"><span class="online-dot"></span><span data-i18n="local">本地工作 · 离线优先</span></div>
       <button id="settings" class="nav-item settings-button"><span>⚙</span><span data-i18n="settings">设置</span></button>
     </aside>
     <main>
-      <header class="topbar"><div id="tablist" class="tablist" role="tablist" aria-label="Documents"></div><span class="stage-pill">M1</span></header>
-      <section class="toolbar" aria-label="Document actions"><div id="breadcrumb" data-i18n="workspace">工作台</div><div class="toolbar-actions"><button id="undo" data-i18n="undo" disabled>撤销</button><button id="redo" data-i18n="redo" disabled>重做</button><span class="separator"></span><button id="save-as" data-i18n="saveAs" disabled>另存为</button><button id="save" class="solid" data-i18n="save" disabled>保存</button></div></section>
+      <header class="topbar"><div id="tablist" class="tablist" role="tablist" aria-label="Documents" data-i18n-aria="documents"></div><span class="stage-pill">M1</span></header>
+      <section class="toolbar" aria-label="Document actions" data-i18n-aria="documentActions"><div id="breadcrumb" data-i18n="workspace">工作台</div><div class="toolbar-actions"><button id="undo" data-i18n="undo" disabled>撤销</button><button id="redo" data-i18n="redo" disabled>重做</button><span class="separator"></span><button id="save-as" data-i18n="saveAs" disabled>另存为</button><button id="save" class="solid" data-i18n="save" disabled>保存</button></div></section>
       <div id="message" class="message" role="status" aria-live="polite" hidden></div>
       <section id="content" class="content"></section>
       <footer><span id="status" data-i18n="ready">就绪</span><span id="document-status"></span><span>Office EX · 0.1.0-dev.1</span></footer>
     </main>
   </div>
-  <dialog id="settings-dialog"><form method="dialog"><header><h2 data-i18n="settings">设置</h2><button value="close" aria-label="Close">×</button></header><label><span data-i18n="theme">外观</span><select id="theme"><option value="system" data-i18n="system">跟随系统</option><option value="light" data-i18n="light">浅色</option><option value="dark" data-i18n="dark">深色</option></select></label><label><span data-i18n="language">语言</span><select id="language"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label><button id="clear-recent" type="button" data-i18n="clearRecent">清除最近文件记录</button><p class="muted" data-i18n="settingsNote">设置和恢复快照仅保存在本机。</p></form></dialog>
+  <dialog id="settings-dialog"><form method="dialog"><header><h2 data-i18n="settings">设置</h2><button value="close" aria-label="Close" data-i18n-aria="close">×</button></header><label><span data-i18n="theme">外观</span><select id="theme" data-i18n-aria="theme"><option value="system" data-i18n="system">跟随系统</option><option value="light" data-i18n="light">浅色</option><option value="dark" data-i18n="dark">深色</option></select></label><label><span data-i18n="language">语言</span><select id="language" data-i18n-aria="language"></select></label><label><span data-i18n="region">地区格式</span><select id="region" data-i18n-aria="region"></select></label><div class="muted"><span data-i18n="regionSample">地区格式预览</span>: <span id="region-sample" dir="auto"></span></div><label><span data-i18n="documentLanguage">新建文档语言（偏好）</span><select id="document-language" data-i18n-aria="documentLanguage"></select></label><p class="muted" data-i18n="documentLanguageNote"></p><button id="clear-recent" type="button" data-i18n="clearRecent">清除最近文件记录</button><p class="muted" data-i18n="settingsNote">设置和恢复快照仅保存在本机。</p></form></dialog>
 </body>
 </html>

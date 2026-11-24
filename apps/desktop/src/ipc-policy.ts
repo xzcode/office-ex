@@ -2,6 +2,7 @@
 /** Pure request/origin validation. Does not parse document contents or grant filesystem access. */
 import { isAbsolute, resolve } from 'node:path';
 import { OfficeError, isRecord } from '@office-ex/contracts';
+import { isLanguagePreference, isRegionalPreference, isDocumentLanguagePreference } from '@office-ex/i18n';
 import type { TabState, PublicSettings } from '@office-ex/ui';
 
 export const TRUSTED_APP_ORIGIN = 'office-ex://app';
@@ -102,14 +103,18 @@ export function parseRelease(documentId: unknown, discard: unknown): { documentI
   ipcId(documentId); if (typeof discard !== 'boolean') invalid('Invalid close request');
   return { documentId, discard };
 }
-export function parseSettingsPatch(value: unknown): { theme?: PublicSettings['theme']; language?: PublicSettings['language']; clearRecent?: boolean } {
-  const item = fields(value, ['theme', 'language', 'clearRecent']);
+export function parseSettingsPatch(value: unknown): { theme?: PublicSettings['theme']; language?: PublicSettings['language']; region?:PublicSettings['region']; documentLanguage?:PublicSettings['documentLanguage']; clearRecent?: boolean } {
+  const item = fields(value, ['theme', 'language', 'region', 'documentLanguage', 'clearRecent']);
   if (item.theme !== undefined && item.theme !== 'system' && item.theme !== 'light' && item.theme !== 'dark') invalid('Invalid theme');
-  if (item.language !== undefined && item.language !== 'zh-CN' && item.language !== 'en') invalid('Invalid language');
+  if(item.language!==undefined&&!isLanguagePreference(item.language))invalid('Invalid language');
+  if(item.region!==undefined&&!isRegionalPreference(item.region))invalid('Invalid region');
+  if(item.documentLanguage!==undefined&&!isDocumentLanguagePreference(item.documentLanguage))invalid('Invalid document language preference');
   if (item.clearRecent !== undefined && typeof item.clearRecent !== 'boolean') invalid('Invalid recent-history option');
   return {
     ...(item.theme === undefined ? {} : { theme: item.theme }),
     ...(item.language === undefined ? {} : { language: item.language }),
+    ...(item.region===undefined?{}:{region:item.region}),
+    ...(item.documentLanguage===undefined?{}:{documentLanguage:item.documentLanguage}),
     ...(item.clearRecent === undefined ? {} : { clearRecent: item.clearRecent }),
   };
 }

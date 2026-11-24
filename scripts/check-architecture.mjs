@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const failures = [];
 const fail = (file, message) => failures.push(`${relative(root, file)}: ${message}`);
-const pure = new Set(['contracts', 'core', 'writer', 'sheets', 'slides', 'render']);
+const pure = new Set(['contracts', 'core', 'writer', 'sheets', 'slides', 'render', 'i18n']);
 const allowed = {
   contracts: [], core: ['contracts'], writer: ['contracts', 'core'], sheets: ['contracts', 'core'], slides: ['contracts', 'core'],
   'format-common': ['contracts', 'core'], cfb: ['contracts', 'format-common'],
@@ -16,7 +16,7 @@ const allowed = {
   'legacy-doc': ['contracts', 'cfb', 'format-common', 'writer'], 'legacy-xls': ['contracts', 'cfb', 'format-common', 'sheets'], 'legacy-ppt': ['contracts', 'cfb', 'format-common', 'slides'],
   render: ['contracts', 'core', 'writer', 'sheets', 'slides'], pdf: ['contracts', 'render'],
   'format-service': ['contracts', 'core', 'format-common', 'ooxml', 'cfb', 'legacy-doc', 'legacy-xls', 'legacy-ppt', 'writer', 'sheets', 'slides'],
-  ui: ['contracts', 'core', 'format-common', 'writer', 'sheets', 'slides', 'render', 'format-service'], desktop: ['contracts', 'core', 'ui'],
+  i18n: [], ui: ['contracts', 'core', 'format-common', 'writer', 'sheets', 'slides', 'render', 'format-service', 'i18n'], desktop: ['contracts', 'core', 'ui', 'i18n'],
 };
 const approvedExternal = { ooxml: ['fflate', '@xmldom/xmldom'], desktop: ['electron'] };
 const exactVersion = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;

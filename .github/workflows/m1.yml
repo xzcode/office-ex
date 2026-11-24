@@ -1,7 +1,7 @@
 name: M1 infrastructure
 on:
   push:
-    branches: [master, m1-infrastructure-20261124]
+    branches: [master, m1-infrastructure-20261124, m2-i18n-20261124]
     paths-ignore: ['docs/**', 'README.md', 'AGENTS.md', 'THIRD_PARTY_NOTICES.md']
   pull_request:
   workflow_dispatch:

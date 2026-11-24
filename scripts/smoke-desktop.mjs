@@ -39,6 +39,7 @@ try{
   const prefs=await app.evaluate(({BrowserWindow})=>{const p=BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();return {sandbox:p.sandbox,contextIsolation:p.contextIsolation,nodeIntegration:p.nodeIntegration,webSecurity:p.webSecurity};});
   assert.deepEqual(prefs,{sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true});
   assert.deepEqual(await page.evaluate(()=>[typeof window.require,typeof window.process]),['undefined','undefined']);check('Native window + sandbox, context isolation, no renderer Node');
+  await page.locator('#settings').click();await page.locator('#language').selectOption('zh-CN');await page.waitForFunction(()=>document.documentElement.lang==='zh-CN');await page.locator('#settings-dialog button[value=close]').click();
   await screenshot('home');
   const denied=await page.evaluate(async()=>{const results=await Promise.allSettled([fetch('https://example.com/'),fetch('file:///etc/passwd')]);window.open('https://example.com/');return results.map(r=>r.status);});
   assert.deepEqual(denied,['rejected','rejected']);assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1);check('CSP rejects remote/local fetch; new windows denied');
@@ -48,6 +49,17 @@ try{
   await dialogSave(draftPath);await page.locator('#save').click();await waitFor(async()=>{try{return JSON.parse(await readFile(draftPath,'utf8')).document.sections[0].blocks[0].runs[0].text.includes('First saved');}catch{return false;}},'first draft save');
   await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));
   const firstDocument=JSON.parse(await readFile(draftPath,'utf8')).document;check('Draft → worker serialization → atomic save → re-read');
+  const languageBefore=await page.locator('#document-status').textContent();
+  await page.locator('#settings').click();
+  await page.locator('#language').selectOption('ja-JP');await page.waitForFunction(()=>document.documentElement.lang==='ja-JP');
+  assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');
+  await page.locator('#region').selectOption('de-DE');await page.waitForFunction(()=>document.querySelector('#region-sample')?.textContent?.includes('12.345,67'));
+  await page.locator('#language').selectOption('zh-TW');await page.waitForFunction(()=>document.documentElement.lang==='zh-TW');
+  await page.locator('#language').selectOption('zh-CN');await page.waitForFunction(()=>document.documentElement.lang==='zh-CN');
+  await page.locator('#settings-dialog button[value=close]').click();
+  assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');
+  assert.equal(await page.locator('#document-status').textContent(),languageBefore);
+  assert.deepEqual(JSON.parse(await readFile(draftPath,'utf8')).document,firstDocument);check('I18N live language and region switching preserves draft, revision and saved state');
   await page.locator('#draft-text').fill('Changed text');await page.locator('#undo').click();await inputEquals('#draft-text','中文草稿 😀\nFirst saved revision','Writer undo rendered');await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));check('Undo restores saved content identity and clean state');
   // Actual DOM composition event path: one transaction for the completed input.
   const revisionBefore=await page.locator('#document-status').textContent();
@@ -90,11 +102,11 @@ try{
   await dialogSave(join(work,'wrong.docx'));await page.locator('#save-as').click();await page.waitForSelector('#message.error');assert.equal(bytesHash(await readFile(draftCopyPath)),bytesHash(stable));assert.match(await page.locator('#document-status').textContent(),/未保存/);check('Wrong-extension draft save fails without changing source or dirty state');
   // Wait for the real 30-second checkpoint interval instead of calling a test-only API.
   await waitFor(async()=>{try{for(const name of await readdir(join(profile,'recovery'))){if(!name.endsWith('.oex-recovery'))continue;const b=await readFile(join(profile,'recovery',name));const doc=JSON.parse(b.subarray(4+b.readUInt32LE(0)).toString()).document;if(doc.sections?.[0]?.blocks?.[0]?.runs?.[0]?.text==='Dirty content before simulated crash')return true;}return false;}catch{return false;}},'automatic recovery checkpoint',40_000);check('Real 30-second automatic recovery checkpoint');
-  await page.locator('#settings').click();await page.locator('#theme').selectOption('dark');await page.locator('#language').selectOption('en');await page.locator('#settings-dialog button[value=close]').click();
+  await page.locator('#settings').click();await page.locator('#theme').selectOption('dark');await page.locator('#language').selectOption('en-US');await page.waitForFunction(()=>document.documentElement.lang==='en-US');await page.locator('#settings-dialog button[value=close]').click();
   await screenshot('draft-dark');
   // Hard process exit leaves the checkpoint for the next launch, bypassing normal close UI.
   await app.evaluate(({app})=>app.exit(0));await app.close().catch(()=>undefined);app=undefined;
-  await launch();assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');assert.equal(await page.locator('html').getAttribute('lang'),'en');
+  await launch();assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');assert.equal(await page.locator('html').getAttribute('lang'),'en-US');
   await page.getByRole('button',{name:'Recover a copy',exact:true}).first().click();await page.waitForSelector('#draft-text');assert.equal(await page.locator('#draft-text').inputValue(),'Dirty content before simulated crash');assert.match(await page.locator('#document-status').textContent(),/Unsaved/);assert.equal(bytesHash(await readFile(draftCopyPath)),bytesHash(stable));check('Crash recovery reopens an unsaved copy; settings persist; source remains unchanged');
   await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:2,checkboxChecked:false});});await page.locator('.tab-close').click();assert.equal(await page.locator('.tab').count(),1);check('Dirty close cancellation keeps document open');
   await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1,checkboxChecked:false});});await page.locator('.tab-close').click();await page.waitForFunction(()=>document.querySelectorAll('.tab').length===0);check('Confirmed discard closes the session');

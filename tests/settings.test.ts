@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { OfficeError } from '@office-ex/contracts';
 import { SettingsStore } from '../apps/desktop/src/settings.js';
 
-const defaults = { version: 1, theme: 'system', language: 'zh-CN', recent: [] };
+const defaults = { version: 2, theme: 'system', language: 'system', region: 'system', documentLanguage: 'system', recent: [] };
 const fails = (code: string) => (error: unknown): boolean => error instanceof OfficeError && error.code === code;
 async function directory(t: TestContext): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), 'office-ex-settings-'));
@@ -18,9 +18,9 @@ async function directory(t: TestContext): Promise<string> {
 test('Settings defaults, theme and language survive an atomic write and reload', async t => {
   const path = await directory(t), store = new SettingsStore(path);
   assert.deepEqual(await store.load(), defaults);
-  await store.update({ theme: 'dark', language: 'en' });
+  await store.update({ theme: 'dark', language: 'en-US' });
   const loaded = await new SettingsStore(path).load();
-  assert.deepEqual(loaded, { ...defaults, theme: 'dark', language: 'en' });
+  assert.deepEqual(loaded, { ...defaults, theme: 'dark', language: 'en-US' });
   assert.deepEqual((await readdir(path)).sort(), ['settings.json']);
 });
 
@@ -41,10 +41,10 @@ test('Concurrent settings changes merge against the last committed transaction',
   const first = resolve(path, 'one.docx'), second = resolve(path, 'two.xls');
   await Promise.all([
     store.update({ theme: 'dark' }), store.addRecent(first, 'one.docx'),
-    store.update({ language: 'en' }), store.addRecent(second, 'two.xls'),
+    store.update({ language: 'en-US' }), store.addRecent(second, 'two.xls'),
   ]);
   assert.equal(store.value().theme, 'dark');
-  assert.equal(store.value().language, 'en');
+  assert.equal(store.value().language, 'en-US');
   assert.deepEqual(store.value().recent.map(item => item.path), [second, first]);
   assert.deepEqual(await new SettingsStore(path).load(), store.value());
 });
@@ -54,12 +54,12 @@ test('A failed preference commit preserves memory, cleans staging and does not p
   await store.update({ theme: 'dark' });
   await rm(join(path, 'settings.json'));
   await mkdir(join(path, 'settings.json')); // A directory cannot be replaced by the settings file.
-  await assert.rejects(store.update({ theme: 'light', language: 'en' }), fails('io'));
+  await assert.rejects(store.update({ theme: 'light', language: 'en-US' }), fails('io'));
   assert.deepEqual(store.value(), { ...defaults, theme: 'dark' });
   assert.deepEqual(await readdir(path), ['settings.json']);
   await rm(join(path, 'settings.json'), { recursive: true });
-  await store.update({ language: 'en' });
-  assert.deepEqual(await new SettingsStore(path).load(), { ...defaults, theme: 'dark', language: 'en' });
+  await store.update({ language: 'en-US' });
+  assert.deepEqual(await new SettingsStore(path).load(), { ...defaults, theme: 'dark', language: 'en-US' });
 });
 
 test('Malformed, oversized and coercible persisted settings are ignored as a whole', async t => {
@@ -104,4 +104,15 @@ test('A settings symlink is never followed during load', { skip: process.platfor
   await writeFile(target, JSON.stringify({ ...defaults, theme: 'dark' }));
   await symlink(target, join(path, 'settings.json'));
   assert.deepEqual(await new SettingsStore(path).load(), defaults);
+});
+
+test('I18N settings v1 migration retains theme and recents and persists v2 on next edit', async t => {
+  const path=await directory(t), recent=[{id:'00000000-0000-0000-0000-000000000000',path:resolve(path,'old.doc'),name:'old.doc'}];
+  await writeFile(join(path,'settings.json'),JSON.stringify({version:1,theme:'dark',language:'en',recent}));
+  const store=new SettingsStore(path);
+  assert.deepEqual(await store.load(),{...defaults,theme:'dark',language:'en-US',recent});
+  await store.update({region:'de-DE',documentLanguage:'ja-JP',language:'zh-TW'});
+  assert.deepEqual(await new SettingsStore(path).load(),{...defaults,theme:'dark',language:'zh-TW',region:'de-DE',documentLanguage:'ja-JP',recent});
+  await assert.rejects(store.update({language:'ar'}),fails('invalid')); // Registry target, not a complete UI catalog.
+  await assert.rejects(store.update({region:'not-a-locale'}),fails('invalid'));
 });

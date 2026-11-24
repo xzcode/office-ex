@@ -1,3 +1,4 @@
+import { message as translate, resolveLocale, type MessageKey } from '@office-ex/i18n';
 import { app, BrowserWindow, Menu, dialog, ipcMain, protocol, session, nativeTheme } from 'electron';
 import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron';
 import { readFile, lstat, mkdir } from 'node:fs/promises';
@@ -111,38 +112,39 @@ async function drainPendingFiles():Promise<void>{
     while(pendingFiles.length&&rendererReady&&window&&!window.isDestroyed()){
       const owner:BrowserWindow=window,path=pendingFiles.shift()!;
       try{const file=await openSelected(path);if(window===owner&&!owner.isDestroyed())owner.webContents.send('office:file',file);}
-      catch{if(window===owner&&!owner.isDestroyed())dialog.showErrorBox('Office EX','文件无法打开 / Unable to open file');}
+      catch{if(window===owner&&!owner.isDestroyed())dialog.showErrorBox('Office EX',t('openFailed'));}
     }
   }finally{drainingFiles=false;}
 }
 function send(action:MenuAction):void { if (window && !window.isDestroyed()) window.webContents.send('office:action',action); }
+const systemLanguages=():string[]=>app.isReady()?app.getPreferredSystemLanguages().slice(0,32):['en-US'];
+const t=(key:MessageKey):string=>translate(resolveLocale(settings?.value().language??'system',systemLanguages()),key);
 function installMenu():void {
-  const en = settings.value().language === 'en';
   const menu:MenuItemConstructorOptions[] = [];
   if (process.platform === 'darwin') menu.push({role:'appMenu'});
-  menu.push({label:en?'File':'文件',submenu:[
-    {label:en?'New document draft':'新建文字草稿',accelerator:'CmdOrCtrl+N',click:()=>send('new-writer')},
-    {label:en?'New spreadsheet draft':'新建表格草稿',click:()=>send('new-sheets')},
-    {label:en?'New presentation draft':'新建演示草稿',click:()=>send('new-slides')},
+  menu.push({label:t('menuFile'),submenu:[
+    {label:t('menuNewWriter'),accelerator:'CmdOrCtrl+N',click:()=>send('new-writer')},
+    {label:t('menuNewSheets'),click:()=>send('new-sheets')},
+    {label:t('menuNewSlides'),click:()=>send('new-slides')},
     {type:'separator'},
-    {label:en?'Open…':'打开…',accelerator:'CmdOrCtrl+O',click:()=>send('open')},
-    {label:en?'Save':'保存',accelerator:'CmdOrCtrl+S',click:()=>send('save')},
-    {label:en?'Save As…':'另存为…',accelerator:'CmdOrCtrl+Shift+S',click:()=>send('save-as')},
-    {label:en?'Close tab':'关闭标签',accelerator:'CmdOrCtrl+W',click:()=>send('close-tab')},
-    {type:'separator'},{label:en?'Settings':'设置',accelerator:'CmdOrCtrl+,',click:()=>send('settings')},
+    {label:t('menuOpen'),accelerator:'CmdOrCtrl+O',click:()=>send('open')},
+    {label:t('save'),accelerator:'CmdOrCtrl+S',click:()=>send('save')},
+    {label:t('menuSaveAs'),accelerator:'CmdOrCtrl+Shift+S',click:()=>send('save-as')},
+    {label:t('menuCloseTab'),accelerator:'CmdOrCtrl+W',click:()=>send('close-tab')},
+    {type:'separator'},{label:t('settings'),accelerator:'CmdOrCtrl+,',click:()=>send('settings')},
   ]});
-  menu.push({label:en?'Edit':'编辑',submenu:[
-    {label:en?'Undo':'撤销',accelerator:'CmdOrCtrl+Z',click:()=>send('undo')},
-    {label:en?'Redo':'重做',accelerator:process.platform==='darwin'?'Cmd+Shift+Z':'Ctrl+Y',click:()=>send('redo')},
-    {type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}
+  menu.push({label:t('menuEdit'),submenu:[
+    {label:t('undo'),accelerator:'CmdOrCtrl+Z',click:()=>send('undo')},
+    {label:t('redo'),accelerator:process.platform==='darwin'?'Cmd+Shift+Z':'Ctrl+Y',click:()=>send('redo')},
+    {type:'separator'},{role:'cut',label:t('menuCut')},{role:'copy',label:t('menuCopy')},{role:'paste',label:t('menuPaste')},{role:'selectAll',label:t('menuSelectAll')}
   ]});
-  menu.push({label:en?'View':'视图',submenu:[{role:'togglefullscreen'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]});
+  menu.push({label:t('menuView'),submenu:[{role:'togglefullscreen',label:t('menuFullscreen')},{role:'resetZoom',label:t('menuResetZoom')},{role:'zoomIn',label:t('menuZoomIn')},{role:'zoomOut',label:t('menuZoomOut')}]});
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
 }
 function installIpc():void {
-  handle('office:initialize',async()=>{rendererReady=true;setTimeout(()=>{void drainPendingFiles();},0);return {settings:settings.publicValue(),recovery:await recovery.list(),platform:process.platform};});
+  handle('office:initialize',async()=>{rendererReady=true;setTimeout(()=>{void drainPendingFiles();},0);return {settings:settings.publicValue(),recovery:await recovery.list(),platform:process.platform,systemLocales:systemLanguages()};});
   handle('office:open',async()=>{
-    const result = await dialog.showOpenDialog(window!,{properties:['openFile'],filters:[{name:'Office documents / Office EX drafts',extensions},{name:'All files',extensions:['*']}]});
+    const result = await dialog.showOpenDialog(window!,{properties:['openFile'],filters:[{name:t('officeFiles'),extensions},{name:t('allFiles'),extensions:['*']}]});
     return result.canceled || !result.filePaths[0] ? null : openSelected(result.filePaths[0]);
   });
   handle('office:recent',async(_event,candidate)=>{id(candidate); return openSelected(settings.resolveRecent(candidate));});
@@ -165,12 +167,12 @@ function installIpc():void {
       if(token && extname(authority.get(token,window!.id,request.documentId).path).toLowerCase()!=='.oex') throw new OfficeError('unsafe','Office files cannot be overwritten by draft serialization');
       if(!token || request.saveAs) {
         const name=request.title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,160)||'Untitled';
-        const chosen=await dialog.showSaveDialog(window!,{defaultPath:`${name.replace(/\.oex$/i,'')}.oex`,filters:[{name:'Office EX draft',extensions:['oex']}],properties:['showOverwriteConfirmation','createDirectory']});
+        const chosen=await dialog.showSaveDialog(window!,{defaultPath:`${name.replace(/\.oex$/i,'')}.oex`,filters:[{name:t('draftLabel'),extensions:['oex']}],properties:['showOverwriteConfirmation','createDirectory']});
         if(chosen.canceled||!chosen.filePath)return null;
         if(extname(chosen.filePath).toLowerCase()!=='.oex')throw new OfficeError('invalid','Drafts must use the .oex extension');
         let exists=false;
         try {await lstat(chosen.filePath);exists=true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
-        if(exists){const confirm=await dialog.showMessageBox(window!,{type:'warning',buttons:['Cancel','Replace'],defaultId:0,cancelId:0,message:settings.value().language==='en'?'Replace the existing target?':'替换已有目标文件？',detail:basename(chosen.filePath)});if(confirm.response!==1)return null;}
+        if(exists){const confirm=await dialog.showMessageBox(window!,{type:'warning',buttons:[t('cancel'),t('replace')],defaultId:0,cancelId:0,message:t('replaceTarget'),detail:basename(chosen.filePath)});if(confirm.response!==1)return null;}
         token=await authority.authorizeTarget(chosen.filePath,window!.id,request.documentId,exists,request.sourceToken as string|undefined);createdTarget=token;
       }
       const bytes=request.bytes; const expected=byteHash(bytes);
@@ -200,11 +202,11 @@ function installIpc():void {
     const bytes=originals.get(request.sourceToken);
     if(!bytes)throw new OfficeError('invalid','Original bytes are unavailable');
     const suffix=extname(grant.path),extension=suffix.slice(1);
-    const chosen=await dialog.showSaveDialog(window!,{defaultPath:`${basename(grant.path,suffix)}-copy${suffix}`,filters:[{name:extension?'Original file format':'All files',extensions:[extension||'*']}],properties:['showOverwriteConfirmation','createDirectory']});
+    const chosen=await dialog.showSaveDialog(window!,{defaultPath:`${basename(grant.path,suffix)}-copy${suffix}`,filters:[{name:extension?t('originalFormat'):t('allFiles'),extensions:[extension||'*']}],properties:['showOverwriteConfirmation','createDirectory']});
     if(chosen.canceled||!chosen.filePath)return null;
     if(extname(chosen.filePath).toLowerCase()!==extname(grant.path).toLowerCase())throw new OfficeError('invalid','A preserved copy must retain its source extension');
     let exists=false;try{await lstat(chosen.filePath);exists=true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
-    if(exists){const confirmation=await dialog.showMessageBox(window!,{type:'warning',buttons:['Cancel','Replace'],defaultId:0,cancelId:0,message:'替换目标文件 / Replace target file?',detail:basename(chosen.filePath)});if(confirmation.response!==1)return null;}
+    if(exists){const confirmation=await dialog.showMessageBox(window!,{type:'warning',buttons:[t('cancel'),t('replace')],defaultId:0,cancelId:0,message:t('replaceTarget'),detail:basename(chosen.filePath)});if(confirmation.response!==1)return null;}
     target=await authority.authorizeTarget(chosen.filePath,window!.id,request.documentId,exists,request.sourceToken);
     const expected=byteHash(bytes);
     const result=await authority.commit(target,window!.id,request.documentId,bytes,{backup:async(previous,identity)=>{await backups.put(request.documentId as string,`backup:${identity.sha256}`,0,previous);},validate:async reread=>{if(byteHash(reread)!==expected)throw new OfficeError('invalid','Preserved copy verification failed');}});
@@ -215,8 +217,7 @@ function installIpc():void {
     id(candidate);const tab=tabs.get(candidate);
     if(runningSaves.has(candidate))return 'cancel' as const;
     if(!tab||!tab.dirty)return 'close' as const;
-    const en=settings.value().language==='en';
-    const choice=await dialog.showMessageBox(window!,{type:'question',buttons:en?['Save','Discard','Cancel']:['保存','放弃修改','取消'],defaultId:0,cancelId:2,message:en?'Save changes before closing?':'关闭前保存修改？',detail:tab.title});
+    const choice=await dialog.showMessageBox(window!,{type:'question',buttons:[t('save'),t('discardChanges'),t('cancel')],defaultId:0,cancelId:2,message:t('saveBeforeClose'),detail:tab.title});
     return (['save','discard','cancel'] as const)[choice.response]??'cancel';
   });
   handle('office:release',async(_event,candidate,discard)=>{
@@ -237,11 +238,11 @@ function installIpc():void {
     await recovery.put(r.documentId,r.contentId,r.revision,r.bytes);
   });
 }
-app.on('open-file',(event,path)=>{event.preventDefault();try{enqueueFile(path);if(!window&&createMainWindow)void createMainWindow().catch(()=>dialog.showErrorBox('Office EX','窗口无法打开 / Unable to open window'));}catch{dialog.showErrorBox('Office EX','文件无法打开 / Unable to open file');}});
+app.on('open-file',(event,path)=>{event.preventDefault();try{enqueueFile(path);if(!window&&createMainWindow)void createMainWindow().catch(()=>dialog.showErrorBox('Office EX',t('windowFailed')));}catch{dialog.showErrorBox('Office EX',t('openFailed'));}});
 app.on('second-instance',(_event,argv,cwd)=>{
   if(window&&!window.isDestroyed()){if(window.isMinimized())window.restore();window.focus();}
   for(const path of commandLineFiles(argv,Boolean(process.defaultApp),cwd)){try{enqueueFile(path);}catch{break;}}
-  if(!window&&createMainWindow)void createMainWindow().catch(()=>dialog.showErrorBox('Office EX','窗口无法打开 / Unable to open window'));
+  if(!window&&createMainWindow)void createMainWindow().catch(()=>dialog.showErrorBox('Office EX',t('windowFailed')));
 });
 app.on('before-quit',event=>{if(window&&!allowClose){event.preventDefault();send('close-window');}});
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});

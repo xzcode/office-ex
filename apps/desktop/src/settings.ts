@@ -4,23 +4,30 @@ import { constants } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { OfficeError, isRecord } from '@office-ex/contracts';
+import { isLanguagePreference, isRegionalPreference, isDocumentLanguagePreference, type LanguagePreference, type RegionalPreference, type DocumentLanguagePreference } from '@office-ex/i18n';
 import { parseSettingsPatch } from './ipc-policy.js';
-export interface Settings { version: 1; theme: 'system' | 'light' | 'dark'; language: 'zh-CN' | 'en'; recent: { id: string; path: string; name: string }[] }
+export interface Settings { version: 2; theme: 'system' | 'light' | 'dark'; language: LanguagePreference; region: RegionalPreference; documentLanguage: DocumentLanguagePreference; recent: { id: string; path: string; name: string }[] }
 const MAX_SETTINGS_BYTES = 128 * 1024;
-const defaults = (): Settings => ({ version: 1, theme: 'system', language: 'zh-CN', recent: [] });
+const defaults = (): Settings => ({ version: 2, theme: 'system', language: 'system', region: 'system', documentLanguage: 'system', recent: [] });
 function validPath(path: unknown): path is string { return typeof path === 'string' && path.length > 0 && path.length <= 8192 && !path.includes('\0') && isAbsolute(path); }
 function validName(name: unknown): name is string { return typeof name === 'string' && name.length > 0 && name.length <= 1024 && !name.includes('\0'); }
 function validate(value: unknown): Settings | null {
-  if (!isRecord(value) || Object.keys(value).some(key => !['version','theme','language','recent'].includes(key)) || value.version !== 1 ||
-      (value.theme !== 'system' && value.theme !== 'light' && value.theme !== 'dark') || (value.language !== 'zh-CN' && value.language !== 'en') ||
-      !Array.isArray(value.recent) || value.recent.length > 20) return null;
+  if (!isRecord(value)) return null;
+  const legacy=value.version===1;
+  if(Object.keys(value).some(key=>!(legacy?['version','theme','language','recent']:['version','theme','language','region','documentLanguage','recent']).includes(key)))return null;
+  if(legacy&&(value.language!=='zh-CN'&&value.language!=='en'))return null;
+  const language=legacy&&value.language==='en'?'en-US':value.language;
+  const region=legacy?'system':value.region, documentLanguage=legacy?'system':value.documentLanguage;
+  if((!legacy&&value.version!==2)||(value.theme!=='system'&&value.theme!=='light'&&value.theme!=='dark')||
+    !isLanguagePreference(language)||!isRegionalPreference(region)||!isDocumentLanguagePreference(documentLanguage)||
+    !Array.isArray(value.recent)||value.recent.length>20)return null;
   const recent: Settings['recent'] = [], ids = new Set<string>(), paths = new Set<string>();
   for (const item of value.recent) {
     if (!isRecord(item) || Object.keys(item).some(key => !['id','path','name'].includes(key)) || typeof item.id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(item.id) ||
         !validPath(item.path) || !validName(item.name) || ids.has(item.id) || paths.has(item.path)) return null;
     ids.add(item.id); paths.add(item.path); recent.push({id:item.id,path:item.path,name:item.name});
   }
-  return {version:1,theme:value.theme,language:value.language,recent};
+  return {version:2,theme:value.theme,language,region,documentLanguage,recent};
 }
 export class SettingsStore {
   private settings: Settings = defaults();
@@ -50,12 +57,14 @@ export class SettingsStore {
   }
   value(): Settings { return structuredClone(this.settings); }
   publicValue(): Omit<Settings,'recent'> & {recent: {id:string;name:string}[]} { return { ...this.settings, recent: this.settings.recent.map(({id,name}) => ({id,name})) }; }
-  async update(patch: {theme?:unknown;language?:unknown;clearRecent?:unknown}): Promise<void> {
+  async update(patch: {theme?:unknown;language?:unknown;region?:unknown;documentLanguage?:unknown;clearRecent?:unknown}): Promise<void> {
     // Validate the whole transaction before queuing; never coerce objects to enum strings.
     const checked = parseSettingsPatch(patch);
     await this.change(current => ({...current,
       ...(checked.theme === undefined ? {} : {theme:checked.theme}),
       ...(checked.language === undefined ? {} : {language:checked.language}),
+      ...(checked.region === undefined ? {} : {region:checked.region}),
+      ...(checked.documentLanguage === undefined ? {} : {documentLanguage:checked.documentLanguage}),
       ...(checked.clearRecent === true ? {recent:[]} : {}),
     }));
   }
