@@ -1,5 +1,5 @@
 # M2 Writer — 第一批：真实段落事务与 DOCX 窄语义适配
-2026-11-24。状态：实现候选，待本批 CI 验证。基线 e68578a（11 个候选 UI locale 已通过原生 CI 45380700385）。不修改已验证 M1 或国际化证据。
+2026-11-24。状态：首批核心实现已通过限定范围验收，M2 整阶段尚未完成。基线 e68578a（11 个候选 UI locale 已通过原生 CI 45380700385）。不修改已验证 M1 或国际化证据。
 
 ## 实现
 - packages/writer/src/paragraphs.ts：以段落 ID 和段落全局 UTF-16 offset 定位文本，使用 Intl.Segmenter 验证 grapheme 边界（跨 run）；保留未修改片段/样式，事务化替换、格式化、拆分、合并、对齐、显式分页符。插入继承前一 run（起点继承第一非空 run）；新节点使用调用者提供的唯一 operation ID 前缀。禁止在此 API 扁平化表格或非文本 inline。分合段使用前段样式，历史由 DocumentSession 管理。
@@ -16,3 +16,9 @@
 
 ## 下一批
 Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与实际富文本编辑；补齐文档语言/方向及字体回退、资源字节封装。再逐项实现普通 DOCX 的 styles/relationship/未知部件影响闭包，接入安全原格式保存，推进 M2-L DOC。首个正式版仍需六格式、22 locale、PDF 的全部 P0 门槛。
+
+## 本批验收
+
+受测源码 7692c0c7da8e561f3d15da71edf1ab8f2b314a06；[CI 45424554932](https://github.com/xzcode/office-ex/actions/runs/45424554932) 全部成功。Ubuntu 24.04 / Node 24.22.3 / Python 3.12.14：13 workspace、37 源文件；严格类型和架构检查通过；121 项自动化测试全部通过，0 失败、0 跳过（较上一阶段新增 13 项 Writer 用例）。独立 python-docx 读取新建和编辑后 DOCX，核对多语言正文、字体格式、对齐、分页段落与纸张宽度；旧 OOXML/CFB 互读、66 项锁定 npm 包及许可清单检查均通过。
+
+首轮 CI 45424318323 因 XML localName 允许 null 而编译失败；已显式检查空值，补充控制字符专用 run 与 accessor 安全测试，以上最终 CI 为实际证据。本轮不改桌面 UI/IPC/文件服务，因此未重新跑三平台原生 GUI。正式 M2、M2-L、复杂格式与 Microsoft Office 实测仍未通过完整验收。
