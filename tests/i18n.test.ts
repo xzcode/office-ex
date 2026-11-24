@@ -49,7 +49,7 @@ test('I18N structured plural forms follow actual language rules and region forma
 test('I18N structured select and template refuse unsafe parameters without evaluating content',()=>{
   assert.equal(formatSelect('readonly',{readonly:'Read only: {title}',other:'Other'},{title:'<b>user text</b>'}),'Read only: <b>user text</b>');
   assert.equal(formatSelect('__proto__',{other:'Other'}),'Other');
-  assert.throws(()=>formatTemplate('{name}',{get name(){throw Error('accessor must not execute');}}));
+  assert.throws(()=>formatTemplate('{name}',{get name():string{throw Error('accessor must not execute');}}));
   assert.throws(()=>formatTemplate('{count}',{count:Infinity}));
 });
 test('I18N pseudo messages expand visible labels while preserving parameters and optional RTL isolation',()=>{
