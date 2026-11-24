@@ -87,3 +87,7 @@ npm run smoke:desktop
 ### M2 Writer 第三批开发预览（开发分支）
 
 新增窄范围 DOCX 新建/打开/编辑/保存/另存候选功能。未知内容、普通复杂 Word 文件以及未完成的 XLS/PPT/DOC 等仍只读结构检查。现有 .oex 内部草稿保留；不是改扩展名转换。完整验证和限制见 [M2 Writer](docs/M2-WRITER.md)，不得在原生 CI 未通过前宣称本批完整验收。
+
+### M2 Writer 第四批开发预览
+
+新增字体、字号、颜色、已有命名样式工具，以及受限的 DOCX 样式和主题读取与原部件保留。普通 Word 文档的完整样式、复杂部件和旧 DOC 仍在开发中；当前候选范围及验收见 [M2 Writer](docs/M2-WRITER.md)。

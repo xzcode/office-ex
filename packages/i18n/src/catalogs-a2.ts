@@ -158,7 +158,13 @@ export const spanish = {
   "writerUnsupportedBlock": "Este bloque no se puede editar en esta vista previa.",
   "docxNew": "Nuevo documento DOCX",
   "docxDocument": "Documento DOCX",
-  "docxNote": "Perfil DOCX limitado: texto, formato directo y diseño básico de página. Los documentos no compatibles permanecen en solo lectura. La recuperación crea una copia de borrador interna."
+  "docxNote": "Perfil DOCX limitado: texto, formato directo, estilos compatibles y diseño básico. Se conservan el tema y los estilos originales; los documentos complejos son de solo lectura.",
+  "writerFontFamily": "Fuente",
+  "writerFontSize": "Tamaño (pt)",
+  "writerTextColor": "Color del texto",
+  "writerParagraphStyle": "Estilo de párrafo",
+  "writerCharacterStyle": "Estilo de carácter",
+  "writerChooseStyle": "Elegir estilo"
 } as const;
 export const portuguese = {
   "open": "Abrir arquivo",
@@ -318,5 +324,11 @@ export const portuguese = {
   "writerUnsupportedBlock": "Este bloco não pode ser editado nesta prévia.",
   "docxNew": "Novo documento DOCX",
   "docxDocument": "Documento DOCX",
-  "docxNote": "Perfil DOCX limitado: texto, formatação direta e layout básico de página. Documentos não compatíveis permanecem somente leitura. A recuperação cria uma cópia de rascunho interna."
+  "docxNote": "Perfil DOCX limitado: texto, formatação direta, estilos compatíveis e layout básico. O tema e os estilos originais são preservados; documentos complexos são somente leitura.",
+  "writerFontFamily": "Fonte",
+  "writerFontSize": "Tamanho (pt)",
+  "writerTextColor": "Cor do texto",
+  "writerParagraphStyle": "Estilo de parágrafo",
+  "writerCharacterStyle": "Estilo de caractere",
+  "writerChooseStyle": "Escolher estilo"
 } as const;

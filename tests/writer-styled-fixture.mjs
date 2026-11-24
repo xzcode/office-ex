@@ -1,0 +1,10 @@
+import {writeFileSync} from 'node:fs';
+import {styledFixture} from './writer-styled-fixture.ts';
+import {openWriterDocx,saveWriterDocx} from '@office-ex/ooxml';
+import {DocumentSession} from '@office-ex/core';
+import {formatParagraphRange,replaceParagraphRange} from '@office-ex/writer';
+const bytes=styledFixture(),source=openWriterDocx(bytes,'styled-interop','Styled');
+const session=new DocumentSession(source.document,{saved:true}),id=source.document.sections[0].blocks[0].id;
+session.execute(replaceParagraphRange(session.snapshot(),id,0,6,'Edited','edit'));
+session.execute(formatParagraphRange(session.snapshot(),id,0,6,{fontFamily:'Times New Roman',fontSize:177800,color:{kind:'rgba',red:170,green:34,blue:17,alpha:255}},'format'));
+writeFileSync(process.argv[2],bytes);writeFileSync(process.argv[3],saveWriterDocx(source,session.snapshot().document));

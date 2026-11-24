@@ -158,7 +158,7 @@ async function openFile(file:OpenFileResult):Promise<void>{
   }catch(error){if(!tabs.has(tab.id))return;const f=asFailure(error);tab.error=f;}
   finally{tab.busy=false;if(tabs.has(tab.id)){await syncTabs();await refreshSettings();render();}}
 }
-function flushInputs():void{const focused=document.activeElement;if(focused instanceof HTMLInputElement)focused.dispatchEvent(new Event('change'));}
+function flushInputs():void{const focused=document.activeElement;if(focused instanceof HTMLInputElement&&(focused.id==='draft-title'||focused.closest('.mini-grid')))focused.dispatchEvent(new Event('change'));}
 async function save(tab:Tab|undefined,saveAs=false):Promise<boolean>{
   if(!tab||tab.busy||composing||tab.session?.saveState==='saving')return false;flushInputs();await syncTabs();
   if(!tab.session){const result=unwrap(await bridge.saveCopy({documentId:tab.id,sourceToken:tab.token!}));if(!result)return false;notify(result.warnings?.length?'savedMaintenanceWarning':result.durability==='synced'?'savedNote':'partialDirectorySync');return true;}

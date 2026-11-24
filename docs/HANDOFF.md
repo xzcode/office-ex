@@ -88,3 +88,5 @@ M2 Writer 第二批基础回归 129/129 成功，源码 84db8010c281f4eefdb80b72
 M2 Writer 第三批候选：DOCX 窄 profile 桌面新建、打开编辑、保存、另存已接入，主进程独立隔离验证器负责生成/重开输出，授权缓存与既有原子保存/备份保护保留。11 个 locale 158 键。查看 docs/M2-WRITER.md 和当前分支 CI；后续再扩展普通 DOCX styles/资源、字体字号颜色工具、表格图片、完整排版、DOC 兼容。禁止把本 profile 宣传为任意 DOCX 可编辑。
 
 M2 Writer 第三批受测源码 c79feaf16191e01b890e16012f7daca98a0a30ef，基础回归 133/133 通过，CI https://github.com/xzcode/office-ex/actions/runs/45428117703；记录时 verify-writer: success; native-other (ubuntu-24.04): in_progress; native-macos: in_progress; native-other (windows-2025): in_progress。下一轮先检查本批原生验收，针对实际失败修复；然后扩展字体/字号/颜色工具、普通 DOCX styles/资源和表格图片，继续 DOC 旧格式。原格式编辑仅支持窄 profile，不宣传通用 Word 兼容；未合并 master。
+
+M2 Writer 第四批候选：第三批 CI 45428117703 三平台全部通过；第四批新增字体/字号/颜色工具、命名样式应用、保留式 styles/theme profile，11 locale 164 键。继续核对本批 CI 后扩展普通 Word 的默认/脚本样式、settings/numbering 依赖闭包、表格、图像及 DOC；不把受控 style fixture 当作全面 Word 兼容。详细边界见 docs/M2-WRITER.md。

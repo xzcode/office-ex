@@ -158,7 +158,13 @@ export const english = {
   "writerUnsupportedBlock": "This block is not editable in this preview.",
   "docxNew": "New DOCX document",
   "docxDocument": "DOCX document",
-  "docxNote": "Limited DOCX profile: text, direct formatting and basic page layout. Unsupported documents remain read-only. Recovery creates an internal draft copy."
+  "docxNote": "Limited DOCX profile: text, direct formatting, supported named styles and basic layout. Theme and style source parts are preserved; complex documents remain read-only.",
+  "writerFontFamily": "Font",
+  "writerFontSize": "Size (pt)",
+  "writerTextColor": "Text color",
+  "writerParagraphStyle": "Paragraph style",
+  "writerCharacterStyle": "Character style",
+  "writerChooseStyle": "Choose a style"
 } as const;
 export const simplified = {
   "open": "打开文件",
@@ -318,7 +324,13 @@ export const simplified = {
   "writerUnsupportedBlock": "此内容块暂不可编辑。",
   "docxNew": "新建 DOCX 文档",
   "docxDocument": "DOCX 文档",
-  "docxNote": "当前 DOCX 编辑仅支持文本、直接格式与基础页面布局。不支持的文档保持只读；恢复时创建内部草稿副本。"
+  "docxNote": "当前 DOCX 支持文本、直接格式、部分命名样式及基础排版。保留原始主题与样式部件，复杂文档仍只读。",
+  "writerFontFamily": "字体",
+  "writerFontSize": "字号（磅）",
+  "writerTextColor": "文字颜色",
+  "writerParagraphStyle": "段落样式",
+  "writerCharacterStyle": "字符样式",
+  "writerChooseStyle": "选择样式"
 } as const;
 export const traditional = {
   "open": "開啟檔案",
@@ -478,7 +490,13 @@ export const traditional = {
   "writerUnsupportedBlock": "此內容區塊暫不可編輯。",
   "docxNew": "新增 DOCX 文件",
   "docxDocument": "DOCX 文件",
-  "docxNote": "目前 DOCX 編輯僅支援文字、直接格式與基本頁面配置。不支援的文件保持唯讀；復原時建立內部草稿副本。"
+  "docxNote": "目前 DOCX 支援文字、直接格式、部分命名樣式與基本排版。保留原始佈景主題與樣式部件，複雜文件仍唯讀。",
+  "writerFontFamily": "字型",
+  "writerFontSize": "字級（點）",
+  "writerTextColor": "文字顏色",
+  "writerParagraphStyle": "段落樣式",
+  "writerCharacterStyle": "字元樣式",
+  "writerChooseStyle": "選擇樣式"
 } as const;
 export const japanese = {
   "open": "ファイルを開く",
@@ -638,5 +656,11 @@ export const japanese = {
   "writerUnsupportedBlock": "このブロックは現在のプレビューでは編集できません。",
   "docxNew": "DOCX 文書を新規作成",
   "docxDocument": "DOCX 文書",
-  "docxNote": "限定的な DOCX 対応：文字、直接書式、基本的なページレイアウト。未対応文書は読み取り専用で、復元時は内部ドラフトのコピーを作成します。"
+  "docxNote": "限定 DOCX 対応：文字、直接書式、対応する名前付きスタイルと基本レイアウト。テーマとスタイルの部品は保持し、複雑な文書は読み取り専用です。",
+  "writerFontFamily": "フォント",
+  "writerFontSize": "サイズ（pt）",
+  "writerTextColor": "文字色",
+  "writerParagraphStyle": "段落スタイル",
+  "writerCharacterStyle": "文字スタイル",
+  "writerChooseStyle": "スタイルを選択"
 } as const;

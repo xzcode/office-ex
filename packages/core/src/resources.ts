@@ -92,6 +92,7 @@ export function resolveTextStyle(defaults: TextStyle, styles: Readonly<Record<st
     if (!named) { diagnostics.push({ code: 'style.missing', severity: 'warning', featureId: 'WRT-02', sourceLocation: { nodeId: id }, messageKey: 'style.missing', safeAction: 'read-only' }); return; }
     ancestors.add(id); if (named.basedOn) append(named.basedOn, ancestors); ancestors.delete(id);
     validateTextStyle(named.properties); style = { ...style, ...cloneData(named.properties) };
+    for(const key of named.toggles??[]){assert((key==='bold'||key==='italic')&&!Object.hasOwn(named.properties,key),'invalid','Invalid style toggle');style[key]=!style[key];}
   };
   for (const id of namedIds) append(id, new Set());
   return freezeData({ style: { ...style, ...cloneData(direct) }, diagnostics });

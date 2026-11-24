@@ -122,6 +122,25 @@ export function joinParagraphs(snapshot:DocumentSnapshot,firstId:string,secondId
   const runs=[...first.runs,...second.runs].map(r=>cloneData(r));
   return patchCommand(snapshot,'WRT-03',[{op:'splice',path:['sections',first.section,'blocks'],index:first.block,deleteCount:2,items:[{...cloneData(first.paragraph),runs}]}]);
 }
+/** Apply an existing paragraph style without deleting direct formatting. */
+export function setParagraphNamedStyle(snapshot:DocumentSnapshot,paragraphId:string,styleId:string):DocumentCommand{
+  const p=locate(snapshot,paragraphId),model=writer(snapshot);
+  assertId(styleId);const style=Object.hasOwn(model.styles,styleId)?model.styles[styleId]:undefined;
+  assert(style?.kind==='paragraph','unsupported','Expected a supported paragraph style');
+  return patchCommand(snapshot,'WRT-03',[{op:'set',path:['sections',p.section,'blocks',p.block,'styleId'],value:styleId}]);
+}
+/** Apply an existing character style to a grapheme-safe selection. */
+export function setCharacterNamedStyle(snapshot:DocumentSnapshot,paragraphId:string,start:number,end:number,styleId:string,operationId:string):DocumentCommand{
+  const p=locate(snapshot,paragraphId),model=writer(snapshot);
+  assertGraphemeRange(p.text,start,end);assertId(styleId);
+  assert(Object.hasOwn(model.styles,styleId)&&model.styles[styleId]?.kind==='character','unsupported','Expected a supported character style');
+  if(start===end)return patchCommand(snapshot,'WRT-03',[]);
+  const allocate=allocator(operationId),used=new Set<string>();
+  const left=sliceRuns(p.runs,0,start,used,allocate);
+  const middle=sliceRuns(p.runs,start,end,used,allocate).map(r=>({...r,styleId}));
+  const right=sliceRuns(p.runs,end,p.text.length,used,allocate);
+  return runPatch(snapshot,p,[...left,...middle,...right]);
+}
 export function setParagraphAlignment(snapshot:DocumentSnapshot,paragraphId:string,alignment:NonNullable<TextStyle['alignment']>):DocumentCommand{
   const p=locate(snapshot,paragraphId);validateTextStyle({alignment});
   return patchCommand(snapshot,'WRT-03',[{op:'set',path:['sections',p.section,'blocks',p.block,'style'],value:{...p.paragraph.style,alignment}}]);

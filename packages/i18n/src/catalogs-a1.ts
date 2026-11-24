@@ -158,7 +158,13 @@ export const korean = {
   "writerUnsupportedBlock": "이 블록은 현재 미리보기에서 편집할 수 없습니다.",
   "docxNew": "새 DOCX 문서",
   "docxDocument": "DOCX 문서",
-  "docxNote": "제한된 DOCX 지원: 텍스트, 직접 서식 및 기본 페이지 배치. 지원하지 않는 문서는 읽기 전용이며 복구 시 내부 초안 복사본을 만듭니다."
+  "docxNote": "제한된 DOCX 지원: 텍스트, 직접 서식, 일부 명명된 스타일 및 기본 배치. 테마와 스타일 원본을 보존하며 복잡한 문서는 읽기 전용입니다.",
+  "writerFontFamily": "글꼴",
+  "writerFontSize": "크기 (pt)",
+  "writerTextColor": "글자 색",
+  "writerParagraphStyle": "문단 스타일",
+  "writerCharacterStyle": "문자 스타일",
+  "writerChooseStyle": "스타일 선택"
 } as const;
 export const french = {
   "open": "Ouvrir un fichier",
@@ -318,7 +324,13 @@ export const french = {
   "writerUnsupportedBlock": "Ce bloc ne peut pas être modifié dans cet aperçu.",
   "docxNew": "Nouveau document DOCX",
   "docxDocument": "Document DOCX",
-  "docxNote": "Profil DOCX limité : texte, mise en forme directe et mise en page de base. Les documents non pris en charge restent en lecture seule. La récupération crée une copie brouillon interne."
+  "docxNote": "Profil DOCX limité : texte, formatage direct, styles nommés pris en charge et mise en page de base. Thème et styles d'origine conservés ; documents complexes en lecture seule.",
+  "writerFontFamily": "Police",
+  "writerFontSize": "Taille (pt)",
+  "writerTextColor": "Couleur du texte",
+  "writerParagraphStyle": "Style de paragraphe",
+  "writerCharacterStyle": "Style de caractère",
+  "writerChooseStyle": "Choisir un style"
 } as const;
 export const german = {
   "open": "Datei öffnen",
@@ -478,5 +490,11 @@ export const german = {
   "writerUnsupportedBlock": "Dieser Block ist in dieser Vorschau nicht bearbeitbar.",
   "docxNew": "Neues DOCX-Dokument",
   "docxDocument": "DOCX-Dokument",
-  "docxNote": "Begrenztes DOCX-Profil: Text, direkte Formatierung und einfaches Seitenlayout. Nicht unterstützte Dokumente bleiben schreibgeschützt. Die Wiederherstellung erstellt eine interne Entwurfskopie."
+  "docxNote": "Begrenztes DOCX-Profil: Text, direkte Formatierung, unterstützte benannte Stile und einfaches Layout. Originale Design- und Stilteile bleiben erhalten; komplexe Dokumente sind schreibgeschützt.",
+  "writerFontFamily": "Schriftart",
+  "writerFontSize": "Größe (pt)",
+  "writerTextColor": "Textfarbe",
+  "writerParagraphStyle": "Absatzstil",
+  "writerCharacterStyle": "Zeichenstil",
+  "writerChooseStyle": "Stil auswählen"
 } as const;

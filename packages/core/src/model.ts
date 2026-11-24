@@ -6,7 +6,7 @@ export interface TextStyle {
   color?: Color; alignment?: 'start' | 'center' | 'end' | 'justify';
   indent?: number; spaceBefore?: number; spaceAfter?: number; lineHeight?: number;
 }
-export interface NamedStyle { id: string; name: string; basedOn?: string; properties: TextStyle }
+export interface NamedStyle { id: string; name: string; basedOn?: string; kind?: 'paragraph' | 'character'; toggles?: readonly ('bold' | 'italic')[]; properties: TextStyle }
 export interface ResourceRef { id: string; sha256: string; mimeType: string; byteLength: number }
 export interface DocumentBase {
   schemaVersion: 1; documentId: string; title: string;
@@ -149,9 +149,12 @@ export function validateDocument(value: unknown): OfficeDocument {
   const styles = model.styles;
   for (const [key, item] of Object.entries(styles)) {
     assertId(key);
-    const style = object(item, ['id', 'name', 'basedOn', 'properties']);
+    const style = object(item, ['id', 'name', 'basedOn', 'kind', 'toggles', 'properties']);
     assert(style.id === key, 'invalid', 'Style identifier mismatch'); text(style.name, 512, false);
     optionalId(style.basedOn, styles); validateTextStyle(style.properties);
+    if(style.kind!==undefined)assert(style.kind==='paragraph'||style.kind==='character','invalid','Invalid named style kind');
+    if(style.toggles!==undefined){assert(Array.isArray(style.toggles)&&style.toggles.length<=2&&new Set(style.toggles).size===style.toggles.length&&style.toggles.every(k=>(k==='bold'||k==='italic')&&!Object.hasOwn(style.properties as object,k)),'invalid','Invalid named style toggle');}
+    if(style.kind!==undefined&&style.basedOn!==undefined){const parent=styles[String(style.basedOn)];assert(isRecord(parent)&&parent.kind===style.kind,'invalid','Named style inheritance crosses style kinds');}
     const path = new Set<string>([key]);
     let parent = style.basedOn;
     while (parent !== undefined) {
@@ -166,7 +169,7 @@ export function validateDocument(value: unknown): OfficeDocument {
     const inline = object(candidate, ['id', 'type', 'text', 'styleId', 'style', 'resourceId', 'width', 'height']); id(inline.id);
     if (inline.type === 'text') {
       assert(!['resourceId', 'width', 'height'].some((key) => key in inline), 'invalid', 'Unexpected text run fields');
-      text(inline.text); optionalId(inline.styleId, styles); if (inline.style !== undefined) validateTextStyle(inline.style);
+      text(inline.text); optionalId(inline.styleId, styles); if(inline.styleId!==undefined){const ref=styles[String(inline.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='character'),'invalid','Text run requires a character style');} if (inline.style !== undefined) validateTextStyle(inline.style);
     } else if (inline.type === 'image' && !textOnly) {
       assert(!['text', 'style', 'styleId'].some((key) => key in inline), 'invalid', 'Unexpected image fields');
       assert(inline.resourceId !== undefined, 'invalid', 'Missing image resource'); optionalId(inline.resourceId, resources);
@@ -180,7 +183,7 @@ export function validateDocument(value: unknown): OfficeDocument {
     const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows']); id(value.id);
     if (value.type === 'paragraph') {
       assert(!('rows' in value) && !('columnWidths' in value), 'invalid', 'Unexpected paragraph fields');
-      optionalId(value.styleId, styles); if (value.style !== undefined) validateTextStyle(value.style);
+      optionalId(value.styleId, styles); if(value.styleId!==undefined){const ref=styles[String(value.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='paragraph'),'invalid','Paragraph requires a paragraph style');} if (value.style !== undefined) validateTextStyle(value.style);
       list(value.runs).forEach((item) => run(item));
     } else if (value.type === 'table') {
       assert(!['runs', 'style', 'styleId'].some((key) => key in value), 'invalid', 'Unexpected table fields');

@@ -158,7 +158,13 @@ export const russian = {
   "writerUnsupportedBlock": "Этот блок пока нельзя редактировать.",
   "docxNew": "Новый документ DOCX",
   "docxDocument": "Документ DOCX",
-  "docxNote": "Ограниченный профиль DOCX: текст, прямое форматирование и базовая разметка страниц. Неподдерживаемые документы доступны только для чтения. Восстановление создаёт внутреннюю копию черновика."
+  "docxNote": "Ограниченный DOCX: текст, прямое форматирование, поддерживаемые именованные стили и базовая разметка. Исходные темы и стили сохраняются; сложные документы доступны только для чтения.",
+  "writerFontFamily": "Шрифт",
+  "writerFontSize": "Размер (пт)",
+  "writerTextColor": "Цвет текста",
+  "writerParagraphStyle": "Стиль абзаца",
+  "writerCharacterStyle": "Стиль символов",
+  "writerChooseStyle": "Выбрать стиль"
 } as const;
 export const italian = {
   "open": "Apri file",
@@ -318,5 +324,11 @@ export const italian = {
   "writerUnsupportedBlock": "Questo blocco non è modificabile in questa anteprima.",
   "docxNew": "Nuovo documento DOCX",
   "docxDocument": "Documento DOCX",
-  "docxNote": "Profilo DOCX limitato: testo, formattazione diretta e layout di base. I documenti non supportati restano in sola lettura. Il recupero crea una copia della bozza interna."
+  "docxNote": "Profilo DOCX limitato: testo, formattazione diretta, stili supportati e layout di base. Temi e stili originali conservati; documenti complessi in sola lettura.",
+  "writerFontFamily": "Carattere",
+  "writerFontSize": "Dimensione (pt)",
+  "writerTextColor": "Colore del testo",
+  "writerParagraphStyle": "Stile di paragrafo",
+  "writerCharacterStyle": "Stile di carattere",
+  "writerChooseStyle": "Scegli stile"
 } as const;

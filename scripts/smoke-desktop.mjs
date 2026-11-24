@@ -8,6 +8,8 @@ import { createHash } from 'node:crypto';
 import { docxParts, writeZip, writeWriterDocx, openWriterDocx } from '@office-ex/ooxml';
 import { createDocument } from '@office-ex/core';
 import { serializeDraft } from '@office-ex/format-service';
+import { styledFixture } from '../tests/writer-styled-fixture.ts';
+import { openOpc } from '@office-ex/ooxml';
 
 const work=await mkdtemp(join(tmpdir(),'office-ex-native-'));
 const profile=join(work,'profile');await mkdir(profile);
@@ -158,10 +160,18 @@ try{
   await page.locator('#home').click();await page.locator('#new-docx').click();
   await inputEquals('#draft-text','','New native DOCX editor');
   await page.locator('#draft-text').fill('Writer DOCX 中文 😀');
+  await page.locator('#draft-text').evaluate(el=>{el.focus();el.setSelectionRange(0,6);el.dispatchEvent(new Event('select'));});
+  await page.locator('#writer-font-family').fill('Arial');await page.locator('#writer-font-family').press('Tab');
+  await page.locator('#writer-font-size').fill('14.5');await page.locator('#writer-font-size').press('Tab');
+  await page.locator('#writer-text-color').fill('#336699');
   await dialogSave(docxPath);await page.locator('#save').click();
   await waitFor(async()=>{try{return await docxText(docxPath)==='Writer DOCX 中文 😀';}catch{return false;}},'native DOCX creation',30000);
   await page.waitForFunction(()=>!document.querySelector('#save').disabled&&document.querySelector('#document-status').textContent.includes('已保存'));
   const firstDocx=await readFile(docxPath);
+  const firstRun=openWriterDocx(firstDocx,'test-reader','Verification').document.sections[0].blocks[0].runs[0];
+  assert.equal(firstRun.text,'Writer');assert.equal(firstRun.style.fontFamily,'Arial');
+  assert.equal(firstRun.style.fontSize,184150);assert.deepEqual(firstRun.style.color,{kind:'rgba',red:51,green:102,blue:153,alpha:255});
+  check('Writer font, half-point size and RGB toolbar edits survive real DOCX save');
   assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1);
   await screenshot('writer-docx');
   check('New DOCX commits a real independently readable Office archive through an isolated host verifier');
@@ -197,6 +207,28 @@ try{
   await page.locator('.tab[aria-selected=true] .tab-close').click();
   await page.waitForFunction(count=>document.querySelectorAll('.tab').length===count-1,beforeDiscard);
   check('External DOCX change blocks native overwrite and retains unsaved model');
+
+  // Native open and apply supported named styles while retaining source styles/theme.
+  const styledPath=join(work,'styled.docx'),styledCopy=join(work,'styled-copy.docx');
+  const styledBytes=styledFixture();await writeFile(styledPath,styledBytes);
+  await dialogOpen(styledPath);await inputEquals('#draft-text','Styled 中文 😀','Open styled native DOCX');
+  await page.locator('#draft-text').evaluate(el=>{el.focus();el.setSelectionRange(0,6);el.dispatchEvent(new Event('select'));});
+  assert.equal(await page.locator('#writer-paragraph-style').inputValue(),'Heading');
+  assert.equal(await page.locator('#writer-character-style').inputValue(),'Accent');
+  await page.locator('#writer-paragraph-style').selectOption('Normal');
+  await page.locator('#draft-text').fill('Modified styled text');
+  await dialogSave(styledCopy);await page.locator('#save-as').click();
+  await waitFor(async()=>{try{return (await docxText(styledCopy)).startsWith('Modified styled text');}catch{return false;}},'styled DOCX Save As',30000);
+  await page.waitForFunction(()=>!document.querySelector('#save').disabled&&document.querySelector('#document-status').textContent.includes('已保存'));
+  const styledOut=await readFile(styledCopy),originalOpc=openOpc(styledBytes),editedOpc=openOpc(styledOut);
+  for(const [name,data] of originalOpc.parts)if(name!==originalOpc.mainPart)assert.equal(bytesHash(editedOpc.parts.get(name)),bytesHash(data));
+  const styledModel=openWriterDocx(styledOut,'test-reader','Verification').document;
+  assert.equal(styledModel.sections[0].blocks[0].styleId,'Normal');assert.equal(styledModel.styles.Accent.kind,'character');
+  assert.equal(bytesHash(await readFile(styledPath)),bytesHash(styledBytes));
+  await screenshot('writer-styled-docx');
+  const styledCount=await page.locator('.tab').count();await page.locator('.tab[aria-selected=true] .tab-close').click();
+  await page.waitForFunction(count=>document.querySelectorAll('.tab').length===count-1,styledCount);
+  check('Styled DOCX opens in Writer, applies named paragraph style and preserves every non-main part');
 
   await page.locator('.tab').first().click();assert.equal(await page.locator('#draft-text').inputValue(),'Edit made while saving');
   // Bad save destination keeps the document dirty, usable and the old file unchanged.

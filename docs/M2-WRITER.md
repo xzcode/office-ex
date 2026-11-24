@@ -48,3 +48,11 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 受测源码 c79feaf16191e01b890e16012f7daca98a0a30ef；[CI 45428117703](https://github.com/xzcode/office-ex/actions/runs/45428117703)。基础 verify-writer 通过：13 workspaces、42 源文件，133/133 自动化测试成功，0 失败、0 跳过；新增 4 项覆盖语义编辑入口、正确扩展名、模型快照生成、无修改字节原样保留、未知源阻断及 IPC 身份和边界校验。独立 python-docx 读取新建与编辑后文件，依赖许可检查通过。
 
 记录时任务状态：verify-writer: success; native-other (ubuntu-24.04): in_progress; native-macos: in_progress; native-other (windows-2025): in_progress。未结束原生任务不得标记为通过。上一批 45426118923 的 Windows/Linux 原生任务已通过，macOS 因新工作流取消。完整桌面 DOCX 读写须以本批实际原生结果验收；未合并 master。普通 Word 文件的 styles/资源、图片表格、文档语言方向与完整 WYSIWYG 仍未实现，旧 DOC 的 M2-L 门槛不变。恢复 DOCX 快照为新的 OEX 草稿副本，避免覆盖原文件。
+
+## 第四批：格式工具栏与命名样式/主题 profile（实现候选）
+
+- 第三批受测 c79feaf 的 CI 45428117703 全部任务已结束并成功：133/133 基础回归，macOS、Windows、Linux 原生桌面验收通过。第四批独立验收，不复用前批证明。
+- Writer 在现有直接格式命令上新增字体名称输入/建议（不是已安装字体枚举）、半磅字号、RGB 颜色，及已有段落/字符样式选择。选区内只改指定属性；光标无选区时不执行直接字符格式。UI 显示选区起始 run 的有效属性；混合选区精细状态和新建样式仍待完善。11 locale 各 164 个消息键。
+- 扩展 `NamedStyle` 的可选 kind、bold/italic toggle，保留旧 OEX schema 可读。解析 docDefaults、支持的段落/字符命名样式、basedOn 链、明确的样式引用及样式内主题色/一致的主题字体。粗/斜体按命名样式 toggle 与直接格式区分。未知未使用样式保留但不暴露；已引用、默认或继承链上不可理解的样式阻断编辑。主题颜色限 RGB/系统色 lastClr，禁止 tint/shade、复杂字体映射与主题修改；直接正文主题属性仍不支持。链接/next 等样式元数据原样保留，编辑器暂不自动切换 next style。允许已知根元数据部件，保持字节，不更新其中统计字段；禁止未知关系、settings、numbering、复杂对象或外部依赖。
+- 只允许 source-owned 样式/主题 profile；样式定义和文档默认值不可修改，原格式保存只替换主部件，完整保留非主部件，原样另存字节不变，重开核验语义。样式/主题源不写入普通新建 DOCX；从 OEX 恢复的有命名样式文档暂不能转换为新 DOCX。未实现常见完整 Word 样式/主题、脚本映射、复杂格式、完整 WYSIWYG 和 DOC，不能声称所有 Word 文档可编辑。
+- 新增受控 DOCX 夹具与独立 python-docx 读取验收，包括命名样式/主题、直接覆盖、原始非正文部件、header/footer 偏移。新增基础及 native smoke 用例；实际结果见本批 CI，不把受控夹具当作 Microsoft Office 实测。无新生产依赖。
