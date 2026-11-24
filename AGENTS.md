@@ -1,6 +1,7 @@
 # Office EX development rules
 
-- Read docs/HANDOFF.md, docs/LICENSING.md and docs/specs/README.md with relevant normative specs before coding. The v1.0 spec supersedes older roadmap details.
+- Read docs/HANDOFF.md, docs/LICENSING.md and docs/specs/README.md with relevant normative specs before coding. The current v1.1 spec supersedes older roadmap details.
+- Multilingual support is a cross-cutting P0 release requirement: read docs/specs/09-i18n.md. Start M2-I18N before expanding Writer UI; all 22 planned UI locales must pass M5 gates. Keep UI language, regional formats and document language independent; no hardcoded new UI strings or network-dependent language resources. Do not reopen or relabel historical M1 evidence.
 - User requires DOC/XLS/PPT (Office 97–2003) in addition to DOCX/XLSX/PPTX. All six are P0 for the first formal release; use independent CFB/legacy adapters and shared editor models. Never silently force conversion or rename an extension. M2-L/M3-L/M4-L are mandatory release gates.
 - Use stable requirement IDs, preserve unknown source content safely, record actual evidence in features.json. Do not lower acceptance to make tests pass.
 - The user chose independent development on 2026-11-24. Never fork, embed or wrap another Office suite/editor engine. Do not introduce ONLYOFFICE, LibreOffice or a ready-made office editing suite as the production engine. Independent readers may be used for tests only.

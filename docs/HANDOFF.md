@@ -59,6 +59,8 @@ npm run start
 
 ## 接下来如何继续
 
+2026-11-24 新增 [I18N 多语言规范](specs/09-i18n.md)（v1.1），要求首个正式版支持 22 个 UI locale；I18N-01–05/QA-07 目前均为 planned。先开展 M2-I18N：抽出统一语言包和类型化消息键、系统/手动热切换、现有 zh-CN/en 设置迁移、地区与文档语言独立、RTL 逻辑布局和 Unicode/字体接口。M1 中英文基础不等于新规范完成，历史验收不修改。M3/M4 继续地区公式、B 批语言与 PDF，多语言 M5 门槛与六格式门槛并行，不可相互替代。
+
 下一阶段进入 M2 Writer：建立真正的段落／run 编辑、选区／IME、布局盒和分页，再实现 DOCX 语义映射与意图编辑保存。并行设计 MS-DOC 的 M2-L 子阶段，使用共享 CFB 与 Writer 模型。后续继续 M3/BIFF8 XLS、M4/PPT/PPTX/PDF；正式发布前完成六格式往返、转换、参考 Office 和各平台安装验证。
 
 每次修改继续以受测源码、日期、具体平台和样本更新证据。当前 `features.json` 的 `m1Acceptance` 已通过；较宽的文件、安全、UI 和格式需求整体仍为 `implemented`，其 `remainingScope` 是后续工作或已明确的保证边界，不应直接整体改成 `verified`。

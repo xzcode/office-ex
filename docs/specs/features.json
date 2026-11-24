@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "2026-11-24",
-  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed.",
+  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed. Spec v1.1 adds I18N-01–05 and QA-07 as planned cross-cutting P0 release requirements; historical M1 evidence is unchanged.",
   "features": [
     {
       "id": "ARC-01",
@@ -473,6 +473,60 @@
       "acceptance": "安全与原生安装",
       "status": "planned",
       "evidence": []
+    },
+    {
+      "id": "I18N-01",
+      "milestone": "M2-I18N",
+      "priority": "P0",
+      "acceptance": "22 个目标 locale、语言目录与批次",
+      "status": "planned",
+      "evidence": [],
+      "spec": "docs/specs/09-i18n.md"
+    },
+    {
+      "id": "I18N-02",
+      "milestone": "M2-I18N",
+      "priority": "P0",
+      "acceptance": "公共消息键/语言包、系统识别、热切换、迁移与离线安全",
+      "status": "planned",
+      "evidence": [],
+      "spec": "docs/specs/09-i18n.md"
+    },
+    {
+      "id": "I18N-03",
+      "milestone": "M3",
+      "priority": "P0",
+      "acceptance": "独立地区格式、地区公式输入及不变量",
+      "status": "planned",
+      "evidence": [],
+      "spec": "docs/specs/09-i18n.md"
+    },
+    {
+      "id": "I18N-04",
+      "milestone": "M2–M4",
+      "priority": "P0",
+      "acceptance": "Unicode/IME/RTL/复杂文字/字体、六格式语义及 PDF",
+      "status": "planned",
+      "evidence": [],
+      "spec": "docs/specs/09-i18n.md"
+    },
+    {
+      "id": "I18N-05",
+      "milestone": "M5",
+      "priority": "P0",
+      "acceptance": "22 locale 完整翻译与质量审查、跨平台多语言验收",
+      "status": "planned",
+      "evidence": [],
+      "spec": "docs/specs/09-i18n.md"
+    },
+    {
+      "id": "QA-07",
+      "milestone": "M5",
+      "priority": "P0",
+      "acceptance": "正式版国际化 P0 验收门槛",
+      "status": "planned",
+      "evidence": [],
+      "spec": "docs/specs/09-i18n.md"
     }
   ],
   "milestones": {

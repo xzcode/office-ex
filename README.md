@@ -22,6 +22,10 @@ M1.1–M1.10 已完成并通过阶段验收：Electron 桌面工作台、多标�
 
 旧版目标为 **Office 97–2003，XLS 使用 BIFF8**。共享 CFB 容器已进入 M1；DOC、XLS、PPT 的语义读写分别属于 **M2-L、M3-L、M4-L**，全部是首个正式版的强制门槛。能够识别容器不等于已经实现旧格式编辑。
 
+## 国际化规划
+
+当前仅有 M1 的简体中文/英文基础界面。自 M2-I18N 起实施共享语言包、自动识别系统语言、无需重启的切换、独立地区格式、文档语言与 RTL。首个正式版规划 22 个界面 locale（含简繁中、英、日、韩、欧洲主要语言、阿拉伯语、希伯来语、印地语及东南亚主要语言），并验收 Unicode/复杂文字、公式与 PDF 的语言兼容。完整语言表、实施阶段和门槛见 [国际化规范](docs/specs/09-i18n.md)。这些是新增规划，不是现有功能。
+
 ## 本地启动
 
 使用 Node.js **24.13.0 及以上的 24.x 版本**；CI 固定为 24.22.3。首次安装需要访问 npm 与 Electron 官方发行文件下载服务，应用运行时默认离线。
@@ -66,7 +70,8 @@ npm run smoke:desktop
 - [M1 实现、API、阶段和验证说明](docs/M1.md)
 - [M1 验收报告与原生截图](docs/verification/m1/README.md)
 - [M1 架构决策](docs/decisions/0001-m1-boundaries.md)
-- [开发规范 v1.0](docs/specs/README.md)
+- [开发规范 v1.1](docs/specs/README.md)
+- [多语言与地区适配规范](docs/specs/09-i18n.md)
 - [六格式契约](docs/specs/03-formats.md)
 - [功能追踪矩阵](docs/specs/features.json)
 - [开发交接](docs/HANDOFF.md)
