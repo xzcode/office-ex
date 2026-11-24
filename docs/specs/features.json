@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "2026-11-24",
-  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed. Spec v1.1 adds I18N-01–05 and QA-07 as planned cross-cutting P0 release requirements; historical M1 evidence is unchanged. M2-I18N initial implementation has four draft UI catalogs and shared settings/formatting; not yet verified, 22-locale release gate unchanged. A-batch second iteration implements 11 candidate UI catalogs, structured messages and pseudo fixtures; new CI and full 22-locale gates remain. M2 Writer first slice: paragraph transactions and narrow DOCX semantic adapter implemented; verification and later gates pending. M2 Writer first slice passed 121/121 regression and narrow DOCX independent interop on 7692c0c; remaining WRT, M2-L and release gates unchanged. M2 second slice adds bounded Writer layout and native paragraph controls with 11 localized catalogs; CI pending, full acceptance remains. M2 second slice automated core and interoperability checks passed on 84db801; native status separately tracked, full M2 acceptance remains. M2 Writer third slice connects narrow DOCX desktop editing and guarded native commits; actual CI status pending. Third slice verified automated and independent narrow-profile interoperability on c79feaf; native acceptance separately tracked. M2 third slice native CI 45428117703 all jobs passed; fourth slice extends named styles and toolbar, verification pending. M2 fourth slice core/style interop passed on 75cad7b; native acceptance separately tracked; full compatibility gates unchanged. M2 fourth slice native CI 45432375135 passed; fifth slice implements rectangular tables, row pagination and DOCX table profile; verification pending.",
+  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed. Spec v1.1 adds I18N-01–05 and QA-07 as planned cross-cutting P0 release requirements; historical M1 evidence is unchanged. M2-I18N initial implementation has four draft UI catalogs and shared settings/formatting; not yet verified, 22-locale release gate unchanged. A-batch second iteration implements 11 candidate UI catalogs, structured messages and pseudo fixtures; new CI and full 22-locale gates remain. M2 Writer first slice: paragraph transactions and narrow DOCX semantic adapter implemented; verification and later gates pending. M2 Writer first slice passed 121/121 regression and narrow DOCX independent interop on 7692c0c; remaining WRT, M2-L and release gates unchanged. M2 second slice adds bounded Writer layout and native paragraph controls with 11 localized catalogs; CI pending, full acceptance remains. M2 second slice automated core and interoperability checks passed on 84db801; native status separately tracked, full M2 acceptance remains. M2 Writer third slice connects narrow DOCX desktop editing and guarded native commits; actual CI status pending. Third slice verified automated and independent narrow-profile interoperability on c79feaf; native acceptance separately tracked. M2 third slice native CI 45428117703 all jobs passed; fourth slice extends named styles and toolbar, verification pending. M2 fourth slice core/style interop passed on 75cad7b; native acceptance separately tracked; full compatibility gates unchanged. M2 fourth slice native CI 45432375135 passed; fifth slice implements rectangular tables, row pagination and DOCX table profile; verification pending. M2 table slice initial core 145/145 and independent interop passed; final XML order correction passed substantive check/interop/license steps. Full native and release gates remain.",
   "features": [
     {
       "id": "ARC-01",
@@ -315,7 +315,9 @@
       "evidence": [
         "docs/M2-WRITER.md",
         "https://github.com/xzcode/office-ex/actions/runs/45424554932",
-        "https://github.com/xzcode/office-ex/actions/runs/45426118923"
+        "https://github.com/xzcode/office-ex/actions/runs/45426118923",
+        "https://github.com/xzcode/office-ex/actions/runs/45434512688",
+        "https://github.com/xzcode/office-ex/actions/runs/45434702537"
       ],
       "implementationPaths": [
         "packages/writer/src/paragraphs.ts",
@@ -329,7 +331,7 @@
         "tests/writer-tables.test.ts"
       ],
       "remainingScope": [
-        "Fifth slice implements rectangular table transactions and cell paragraphs, estimated whole-row pagination and guarded fixed-width DOCX tables. New CI pending.",
+        "Fifth slice: rectangular tables, cell paragraph edits, whole-row pagination and fixed-width DOCX profile. Initial 145/145 core tests passed; final schema-order correction has linked CI evidence. Native status tracked separately.",
         "Merged/nested/complex tables, row splitting across pages, images and resource packaging, full WYSIWYG, broader Word dependencies and legacy DOC remain."
       ],
       "m2InitialAcceptance": {
@@ -366,6 +368,26 @@
           },
           {
             "name": "native-other (ubuntu-24.04)",
+            "status": "in_progress",
+            "conclusion": null
+          }
+        ]
+      },
+      "m2TableAcceptance": {
+        "status": "verified",
+        "scope": "Rectangular table core and independent DOCX interoperability only; native acceptance tracked separately.",
+        "sourceCommit": "f72128a9f5c910811429e364399f8ee7487d7452",
+        "initialVerifiedCommit": "286cf545befab1b2c9a28644c0ab3e9a6a559227",
+        "initialTests": {
+          "total": 145,
+          "passed": 145,
+          "failed": 0,
+          "skipped": 0
+        },
+        "finalValidationStepsPassed": true,
+        "jobsAtRecord": [
+          {
+            "name": "verify-writer",
             "status": "in_progress",
             "conclusion": null
           }
@@ -381,7 +403,9 @@
       "evidence": [
         "docs/M2-WRITER.md",
         "https://github.com/xzcode/office-ex/actions/runs/45426118923",
-        "https://github.com/xzcode/office-ex/actions/runs/45432375135"
+        "https://github.com/xzcode/office-ex/actions/runs/45432375135",
+        "https://github.com/xzcode/office-ex/actions/runs/45434512688",
+        "https://github.com/xzcode/office-ex/actions/runs/45434702537"
       ],
       "implementationPaths": [
         "packages/render/src/writer-layout.ts",
@@ -397,7 +421,7 @@
         "tests/writer-tables.test.ts"
       ],
       "remainingScope": [
-        "Fifth slice implements rectangular table transactions and cell paragraphs, estimated whole-row pagination and guarded fixed-width DOCX tables. New CI pending.",
+        "Fifth slice: rectangular tables, cell paragraph edits, whole-row pagination and fixed-width DOCX profile. Initial 145/145 core tests passed; final schema-order correction has linked CI evidence. Native status tracked separately.",
         "Merged/nested/complex tables, row splitting across pages, images and resource packaging, full WYSIWYG, broader Word dependencies and legacy DOC remain."
       ],
       "m2LayoutAcceptance": {
@@ -455,6 +479,26 @@
             "conclusion": "success"
           }
         ]
+      },
+      "m2TableAcceptance": {
+        "status": "verified",
+        "scope": "Rectangular table core and independent DOCX interoperability only; native acceptance tracked separately.",
+        "sourceCommit": "f72128a9f5c910811429e364399f8ee7487d7452",
+        "initialVerifiedCommit": "286cf545befab1b2c9a28644c0ab3e9a6a559227",
+        "initialTests": {
+          "total": 145,
+          "passed": 145,
+          "failed": 0,
+          "skipped": 0
+        },
+        "finalValidationStepsPassed": true,
+        "jobsAtRecord": [
+          {
+            "name": "verify-writer",
+            "status": "in_progress",
+            "conclusion": null
+          }
+        ]
       }
     },
     {
@@ -467,7 +511,9 @@
         "docs/M2-WRITER.md",
         "https://github.com/xzcode/office-ex/actions/runs/45424554932",
         "https://github.com/xzcode/office-ex/actions/runs/45426118923",
-        "https://github.com/xzcode/office-ex/actions/runs/45432375135"
+        "https://github.com/xzcode/office-ex/actions/runs/45432375135",
+        "https://github.com/xzcode/office-ex/actions/runs/45434512688",
+        "https://github.com/xzcode/office-ex/actions/runs/45434702537"
       ],
       "implementationPaths": [
         "packages/writer/src/paragraphs.ts",
@@ -484,7 +530,7 @@
         "tests/writer-tables.test.ts"
       ],
       "remainingScope": [
-        "Fifth slice implements rectangular table transactions and cell paragraphs, estimated whole-row pagination and guarded fixed-width DOCX tables. New CI pending.",
+        "Fifth slice: rectangular tables, cell paragraph edits, whole-row pagination and fixed-width DOCX profile. Initial 145/145 core tests passed; final schema-order correction has linked CI evidence. Native status tracked separately.",
         "Merged/nested/complex tables, row splitting across pages, images and resource packaging, full WYSIWYG, broader Word dependencies and legacy DOC remain."
       ],
       "m2InitialAcceptance": {
@@ -553,6 +599,26 @@
             "conclusion": "success"
           }
         ]
+      },
+      "m2TableAcceptance": {
+        "status": "verified",
+        "scope": "Rectangular table core and independent DOCX interoperability only; native acceptance tracked separately.",
+        "sourceCommit": "f72128a9f5c910811429e364399f8ee7487d7452",
+        "initialVerifiedCommit": "286cf545befab1b2c9a28644c0ab3e9a6a559227",
+        "initialTests": {
+          "total": 145,
+          "passed": 145,
+          "failed": 0,
+          "skipped": 0
+        },
+        "finalValidationStepsPassed": true,
+        "jobsAtRecord": [
+          {
+            "name": "verify-writer",
+            "status": "in_progress",
+            "conclusion": null
+          }
+        ]
       }
     },
     {
@@ -565,7 +631,9 @@
         "docs/M2-WRITER.md",
         "https://github.com/xzcode/office-ex/actions/runs/45424554932",
         "https://github.com/xzcode/office-ex/actions/runs/45428117703",
-        "https://github.com/xzcode/office-ex/actions/runs/45432375135"
+        "https://github.com/xzcode/office-ex/actions/runs/45432375135",
+        "https://github.com/xzcode/office-ex/actions/runs/45434512688",
+        "https://github.com/xzcode/office-ex/actions/runs/45434702537"
       ],
       "implementationPaths": [
         "packages/ooxml/src/writer-docx.ts",
@@ -591,7 +659,7 @@
         "tests/writer-tables.test.ts"
       ],
       "remainingScope": [
-        "Fifth slice implements rectangular table transactions and cell paragraphs, estimated whole-row pagination and guarded fixed-width DOCX tables. New CI pending.",
+        "Fifth slice: rectangular tables, cell paragraph edits, whole-row pagination and fixed-width DOCX profile. Initial 145/145 core tests passed; final schema-order correction has linked CI evidence. Native status tracked separately.",
         "Merged/nested/complex tables, row splitting across pages, images and resource packaging, full WYSIWYG, broader Word dependencies and legacy DOC remain."
       ],
       "m2InitialAcceptance": {
@@ -658,6 +726,26 @@
             "name": "native-other (windows-2025)",
             "status": "completed",
             "conclusion": "success"
+          }
+        ]
+      },
+      "m2TableAcceptance": {
+        "status": "verified",
+        "scope": "Rectangular table core and independent DOCX interoperability only; native acceptance tracked separately.",
+        "sourceCommit": "f72128a9f5c910811429e364399f8ee7487d7452",
+        "initialVerifiedCommit": "286cf545befab1b2c9a28644c0ab3e9a6a559227",
+        "initialTests": {
+          "total": 145,
+          "passed": 145,
+          "failed": 0,
+          "skipped": 0
+        },
+        "finalValidationStepsPassed": true,
+        "jobsAtRecord": [
+          {
+            "name": "verify-writer",
+            "status": "in_progress",
+            "conclusion": null
           }
         ]
       }

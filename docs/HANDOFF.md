@@ -94,3 +94,5 @@ M2 Writer 第四批候选：第三批 CI 45428117703 三平台全部通过；第
 M2 Writer 第四批受测源码 75cad7b0ac4a59043b666334b41e70af914dc781，137/137 基础回归、受控样式 DOCX 独立互读与非正文部件逐字节保留均已通过；CI https://github.com/xzcode/office-ex/actions/runs/45432375135。记录时 verify-writer: success; native-other (windows-2025): in_progress; native-macos: in_progress; native-other (ubuntu-24.04): in_progress。后续继续同一 Writer 分支，先核对该原生结果并只修实际问题；随后优先扩大安全 Word profile（docDefaults、字体/语言映射、settings 等影响闭包）、表格结构与布局、图片资产、旧 DOC。源样式目录仍只读，不能把本轮称为完整 Office 兼容。保留全部 22 locale 及六格式发布门槛。
 
 M2 Writer 第五批候选：上一批 45432375135 全任务通过；本批新增规则矩形表格、行列/列宽/边框事务、cell 段落编辑、整行分页及固定表格 DOCX 语义读写，11 locale 176 键。先查本批 CI，修实际失败后继续 inline PNG/JPEG 资源管理与安全原格式读写；超高行不拆分、复杂表格仍只读，保留六格式与多语言正式版门槛。见 docs/M2-WRITER.md。
+
+第五批验收：286cf545 的 145/145 核心回归与独立表格 DOCX 互读已通过；最终边距顺序修正 f72128a9f5c910811429e364399f8ee7487d7452，CI https://github.com/xzcode/office-ex/actions/runs/45434702537，实质 check/interop/license 步骤已通过，记录时 verify-writer: in_progress。下一批先核对最终 native，再开发 PNG/JPEG 图片资源封装、布局与 DOCX 原格式；如有实际失败先修复。保持当前 Writer 分支，未合并 master。

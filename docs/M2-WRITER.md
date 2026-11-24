@@ -71,3 +71,9 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 - DOCX 支持严格固定宽度矩形表格：显式 tblW、fixed tblLayout、tblGrid、四边 tblCellMar、可选一致六边 single RGB border，行/列/单元格均须规则矩形及 tcW 与 grid 一致，单元格含普通段落。单 section 现有页宽/边距限制不变。默认 table style 不可解释时阻止有损编辑；源样式/主题与其它允许非正文部件字节不变。合并/跨列/纵向合并、autofit、嵌套、复杂边框、行高、单元格额外属性及未知内容不在本 profile，保持只读。不宣称所有 Word 表格可编辑。
 - UI 新增表格工具栏、行列数量输入、增删行列、列宽（pt）、边框开关、删除、可直接编辑的矩形 cell grid。现有格式工具对选中 cell 的段落有效；分页预览仍与编辑区分离。11 套 locale 新增 12 键，176 键/套；无新生产依赖。
 - 新增 8 项定向核心回归及独立 python-docx 表格互读，原生 smoke 覆盖创建、cell 内容、行列编辑、撤销、DOCX 保存与复开。CI 实际结果另记。下一批为图片资源封装与 DOCX inline 图片，之后补普通 Word 表格、复杂排版、旧 DOC 及全部 P0 门槛。
+
+### 第五批验收记录
+
+首批源码 286cf545befab1b2c9a28644c0ab3e9a6a559227，[CI 45434512688](https://github.com/xzcode/office-ex/actions/runs/45434512688) 的 verify-writer 成功：13 workspace、44 源文件，145/145 自动化回归通过、0 失败、0 跳过（新增 8 项表格用例）。独立 python-docx 验证真实 DOCX 表格行列、单元格多段落、直接文字格式、列宽、边框、编辑新增行与非正文部件字节一致。由于复核 Transitional CT_TblCellMar 顺序（top/left/bottom/right）后提交修正，新工作流替换旧 native 任务；不能把旧任务算作最终通过。
+
+最终受测源码 f72128a9f5c910811429e364399f8ee7487d7452，[CI 45434702537](https://github.com/xzcode/office-ex/actions/runs/45434702537)；check、test:interop、audit:licenses 三个实质验证步骤均已通过。 修正增加 XML 边距顺序独立检查以及嵌套表格拒绝样例。记录时任务状态：verify-writer: in_progress。仅以最终工作流实际结果认定 native 验收，未合并 master。仍限显式固定矩形表格，整行分页，复杂表格/拆行、图片及 DOC 未完成，未在 Microsoft Word 实测。
