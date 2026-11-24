@@ -20,6 +20,7 @@ const original=writeZip(Object.fromEntries(Object.entries(parts).map(([key,value
 await writeFile(originalPath,original);
 const bytesHash=value=>createHash('sha256').update(value).digest('hex');
 const waitFor=async(predicate,label,timeout=15_000)=>{const end=Date.now()+timeout;while(Date.now()<end){if(await predicate())return;await new Promise(r=>setTimeout(r,200));}throw new Error(`Timed out: ${label}`);};
+const inputEquals=(selector,value,label)=>page.waitForFunction(({selector,value})=>document.querySelector(selector)?.value===value,{selector,value},{timeout:15_000}).catch(error=>{throw new Error(`${label}: ${error.message}`);});
 async function launch(){const env={...process.env,OFFICE_EX_PROFILE_DIR:profile};delete env.ELECTRON_RUN_AS_NODE;app=await electron.launch({args:[resolve('apps/desktop')],env,timeout:30_000});page=await app.firstWindow();await page.waitForSelector('body[data-ready=true]',{timeout:30_000});await waitFor(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0]?.isVisible()===true),'native window visible');}
 async function screenshot(label){
   // A ready DOM can precede the first compositor surface on Xvfb. Require an
@@ -47,25 +48,25 @@ try{
   await dialogSave(draftPath);await page.locator('#save').click();await waitFor(async()=>{try{return JSON.parse(await readFile(draftPath,'utf8')).document.sections[0].blocks[0].runs[0].text.includes('First saved');}catch{return false;}},'first draft save');
   await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));
   const firstDocument=JSON.parse(await readFile(draftPath,'utf8')).document;check('Draft → worker serialization → atomic save → re-read');
-  await page.locator('#draft-text').fill('Changed text');await page.locator('#undo').click();assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));check('Undo restores saved content identity and clean state');
+  await page.locator('#draft-text').fill('Changed text');await page.locator('#undo').click();await inputEquals('#draft-text','中文草稿 😀\nFirst saved revision','Writer undo rendered');await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));check('Undo restores saved content identity and clean state');
   // Actual DOM composition event path: one transaction for the completed input.
   const revisionBefore=await page.locator('#document-status').textContent();
   await page.locator('#draft-text').evaluate(el=>{el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:''}));el.value='中文输入法提交 😀';el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',isComposing:true,data:'中'}));el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'中文输入法提交 😀'}));});
-  assert.notEqual(await page.locator('#document-status').textContent(),revisionBefore);await page.locator('#undo').click();assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');check('Composition commit is one undo transaction (event simulation)');
+  assert.notEqual(await page.locator('#document-status').textContent(),revisionBefore);await page.locator('#undo').click();await inputEquals('#draft-text','中文草稿 😀\nFirst saved revision','Composition undo rendered');check('Composition commit is one undo transaction (event simulation)');
   // Each domain uses the same session and persistence contract in its own tab.
   await page.locator('#home').click();await page.locator('[data-kind=sheets]').click();
   await page.getByRole('textbox',{name:'A1',exact:true}).fill('单元格 中文');
   await page.getByRole('textbox',{name:'B1',exact:true}).fill('12');
   await page.getByRole('textbox',{name:'C1',exact:true}).fill('=SUM(B1:B3)');
-  await page.locator('#undo').click();assert.equal(await page.getByRole('textbox',{name:'C1',exact:true}).inputValue(),'');
-  await page.locator('#redo').click();assert.equal(await page.getByRole('textbox',{name:'C1',exact:true}).inputValue(),'=SUM(B1:B3)');
+  await page.locator('#undo').click();await inputEquals('input[aria-label=C1]','','Sheet undo rendered');
+  await page.locator('#redo').click();await inputEquals('input[aria-label=C1]','=SUM(B1:B3)','Sheet redo rendered');
   const sheetPath=join(work,'sheets.oex');await dialogSave(sheetPath);await page.locator('#save').click();
   await waitFor(async()=>{try{return Boolean(await readFile(sheetPath));}catch{return false;}},'sheet draft save');
   const sheet=JSON.parse(await readFile(sheetPath,'utf8')).document.sheets[0];assert.equal(sheet.cells['1:1'].value.value,'单元格 中文');assert.equal(sheet.cells['1:2'].value.value,12);assert.equal(sheet.cells['1:3'].value.source,'=SUM(B1:B3)');
   await page.waitForFunction(()=>!document.querySelector('#save').disabled);await page.locator('.tab[aria-selected=true] .tab-close').click();
   await page.locator('#home').click();await page.locator('[data-kind=slides]').click();await page.getByRole('button',{name:'添加矩形',exact:true}).click();
   const pixel=()=>page.locator('canvas').evaluate(canvas=>Array.from(canvas.getContext('2d').getImageData(197,138,1,1).data));
-  assert.deepEqual(await pixel(),[67,111,202,255]);await page.locator('#undo').click();assert.deepEqual(await pixel(),[255,255,255,255]);await page.locator('#redo').click();assert.deepEqual(await pixel(),[67,111,202,255]);
+  assert.deepEqual(await pixel(),[67,111,202,255]);await page.locator('#undo').click();await waitFor(async()=>JSON.stringify(await pixel())==='[255,255,255,255]','Canvas undo rendered');await page.locator('#redo').click();await waitFor(async()=>JSON.stringify(await pixel())==='[67,111,202,255]','Canvas redo rendered');
   await page.locator('canvas').click({position:{x:140,y:100}});await screenshot('slides');
   await page.locator('.tab[aria-selected=true] .tab-close').click();await page.locator('.tab').first().click();
   assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');check('Three independent draft tabs: typed cells/formula source, Canvas shape/undo, isolated histories');
