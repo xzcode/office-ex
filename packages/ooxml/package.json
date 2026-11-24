@@ -1,0 +1,16 @@
+{
+  "name": "@office-ex/ooxml",
+  "version": "0.1.0-dev.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@office-ex/contracts": "0.1.0-dev.1",
+    "fflate": "0.8.3",
+    "@xmldom/xmldom": "0.9.12",
+    "@office-ex/core": "0.1.0-dev.1"
+  }
+}

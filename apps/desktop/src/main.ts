@@ -1,0 +1,249 @@
+import { app, BrowserWindow, Menu, dialog, ipcMain, protocol, session, nativeTheme } from 'electron';
+import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron';
+import { readFile, lstat, mkdir } from 'node:fs/promises';
+import { randomUUID, createHash } from 'node:crypto';
+import { resolve, join, basename, extname, isAbsolute } from 'node:path';
+import { asFailure, OfficeError, type Result } from '@office-ex/contracts';
+import type { TabState, MenuAction, OpenFileResult } from '@office-ex/ui';
+import { FileAuthority } from './file-service.js';
+import { TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId as id, parseDroppedPath, parseTabStates, parseDraftSave, parsePreservedCopy, parseRelease, parseSettingsPatch, parseRecoveryId, parseCheckpoint, commandLineFiles } from './ipc-policy.js';
+import { RecoveryStore } from './recovery.js';
+import { SettingsStore } from './settings.js';
+
+const ORIGIN = TRUSTED_APP_ORIGIN;
+const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; worker-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; frame-ancestors 'none'";
+protocol.registerSchemesAsPrivileged([{ scheme:'office-ex', privileges:{ standard:true, secure:true, supportFetchAPI:true, corsEnabled:true } }]);
+app.enableSandbox();
+for (const flag of ['disable-background-networking','disable-component-update','disable-domain-reliability','no-pings']) app.commandLine.appendSwitch(flag);
+app.commandLine.appendSwitch('disable-features','MediaRouter,OptimizationHints,AutofillServerCommunication,InterestFeedContentSuggestions');
+if (process.env.OFFICE_EX_PROFILE_DIR && isAbsolute(process.env.OFFICE_EX_PROFILE_DIR)) app.setPath('userData',process.env.OFFICE_EX_PROFILE_DIR);
+app.setName('Office EX');
+const ownsProfile = app.requestSingleInstanceLock();
+if(!ownsProfile)app.quit();
+let window:BrowserWindow|null = null;
+let allowClose = false;
+let rendererReady = false;
+let drainingFiles = false;
+let settings:SettingsStore;
+let recovery:RecoveryStore;
+let backups:RecoveryStore;
+const authority = new FileAuthority();
+const tabs = new Map<string,TabState>();
+const originals = new Map<string,Uint8Array>();
+const pendingFiles:string[] = [];
+const runningSaves = new Set<string>();
+const MAX_ORIGINAL_CACHE_BYTES = 256 * 1024 * 1024;
+const byteHash = (value:Uint8Array):string => createHash('sha256').update(value).digest('hex');
+const localOrigin = isLocalAppUrl;
+const extensions = ['doc','docx','xls','xlsx','ppt','pptx','oex','pdf'];
+function trusted(event:IpcMainInvokeEvent):BrowserWindow {
+  const frame = event.senderFrame;
+  assertTrustedSender({windowAlive:Boolean(window&&!window.isDestroyed()),expectedWebContents:Boolean(window&&event.sender===window.webContents),mainFrame:Boolean(frame&&frame===event.sender.mainFrame),frameOrigin:frame?.origin});
+  return window!;
+}
+function handle<T>(channel:string,run:(event:IpcMainInvokeEvent,...args:unknown[])=>Promise<T>):void {
+  ipcMain.handle(channel,async(event,...args):Promise<Result<T>> => {
+    try { trusted(event); assertIpcArity(channel,args); return {ok:true,value:await run(event,...args)}; }
+    catch(error) { return {ok:false,error:asFailure(error)}; }
+  });
+}
+async function openSelected(path:string):Promise<OpenFileResult> {
+  const owner=window;
+  if(!owner||owner.isDestroyed())throw new OfficeError('conflict','No window is available');
+  const result=await authority.authorizeOpen(path,owner.id,randomUUID());
+  if(window!==owner||owner.isDestroyed()){
+    if(!result.duplicate)authority.revokeDocument(owner.id,result.documentId);
+    throw new OfficeError('cancelled','The file window was closed');
+  }
+  if(result.duplicate&&authority.get(result.token,owner.id,result.documentId).identity?.sha256!==result.identity.sha256)throw new OfficeError('conflict','The already-open file changed outside Office EX');
+  if(!result.duplicate){
+    const cached=[...originals.values()].reduce((sum,value)=>sum+value.byteLength,0);
+    if(cached+result.bytes.byteLength>MAX_ORIGINAL_CACHE_BYTES){authority.revokeDocument(owner.id,result.documentId);throw new OfficeError('limit','Open file cache exceeds the 256 MiB budget');}
+    originals.set(result.token,result.bytes.slice());
+  }
+  // Recent-history persistence must not turn a successful file open into a failure.
+  try{await settings.addRecent(authority.get(result.token,owner.id,result.documentId).path,result.name);}catch{/* document remains available */}
+  return {token:result.token,documentId:result.documentId,name:result.name,bytes:result.bytes,duplicate:result.duplicate};
+}
+function enqueueFile(path:string):void{
+  const value=parseDroppedPath(path);
+  if(pendingFiles.length>=32)throw new OfficeError('limit','Too many pending file opens');
+  pendingFiles.push(value);
+  void drainPendingFiles();
+}
+async function drainPendingFiles():Promise<void>{
+  if(drainingFiles||!rendererReady||!window||window.isDestroyed())return;
+  drainingFiles=true;
+  try{
+    while(pendingFiles.length&&rendererReady&&window&&!window.isDestroyed()){
+      const owner:BrowserWindow=window,path=pendingFiles.shift()!;
+      try{const file=await openSelected(path);if(window===owner&&!owner.isDestroyed())owner.webContents.send('office:file',file);}
+      catch{if(window===owner&&!owner.isDestroyed())dialog.showErrorBox('Office EX','文件无法打开 / Unable to open file');}
+    }
+  }finally{drainingFiles=false;}
+}
+function send(action:MenuAction):void { if (window && !window.isDestroyed()) window.webContents.send('office:action',action); }
+function installMenu():void {
+  const en = settings.value().language === 'en';
+  const menu:MenuItemConstructorOptions[] = [];
+  if (process.platform === 'darwin') menu.push({role:'appMenu'});
+  menu.push({label:en?'File':'文件',submenu:[
+    {label:en?'New document draft':'新建文字草稿',accelerator:'CmdOrCtrl+N',click:()=>send('new-writer')},
+    {label:en?'New spreadsheet draft':'新建表格草稿',click:()=>send('new-sheets')},
+    {label:en?'New presentation draft':'新建演示草稿',click:()=>send('new-slides')},
+    {type:'separator'},
+    {label:en?'Open…':'打开…',accelerator:'CmdOrCtrl+O',click:()=>send('open')},
+    {label:en?'Save':'保存',accelerator:'CmdOrCtrl+S',click:()=>send('save')},
+    {label:en?'Save As…':'另存为…',accelerator:'CmdOrCtrl+Shift+S',click:()=>send('save-as')},
+    {label:en?'Close tab':'关闭标签',accelerator:'CmdOrCtrl+W',click:()=>send('close-tab')},
+    {type:'separator'},{label:en?'Settings':'设置',accelerator:'CmdOrCtrl+,',click:()=>send('settings')},
+  ]});
+  menu.push({label:en?'Edit':'编辑',submenu:[
+    {label:en?'Undo':'撤销',accelerator:'CmdOrCtrl+Z',click:()=>send('undo')},
+    {label:en?'Redo':'重做',accelerator:process.platform==='darwin'?'Cmd+Shift+Z':'Ctrl+Y',click:()=>send('redo')},
+    {type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}
+  ]});
+  menu.push({label:en?'View':'视图',submenu:[{role:'togglefullscreen'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]});
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
+}
+function installIpc():void {
+  handle('office:initialize',async()=>{rendererReady=true;setTimeout(()=>{void drainPendingFiles();},0);return {settings:settings.publicValue(),recovery:await recovery.list(),platform:process.platform};});
+  handle('office:open',async()=>{
+    const result = await dialog.showOpenDialog(window!,{properties:['openFile'],filters:[{name:'Office documents / Office EX drafts',extensions},{name:'All files',extensions:['*']}]});
+    return result.canceled || !result.filePaths[0] ? null : openSelected(result.filePaths[0]);
+  });
+  handle('office:recent',async(_event,candidate)=>{id(candidate); return openSelected(settings.resolveRecent(candidate));});
+  handle('office:drop',async(_event,candidate)=>{
+    return openSelected(parseDroppedPath(candidate)); // preload only accepts real browser File objects.
+  });
+  handle('office:tabs',async(_event,candidate)=>{
+    const next = parseTabStates(candidate);
+    tabs.clear(); for(const value of next) tabs.set(value.id,value);
+  });
+  handle('office:save-draft',async(_event,candidate)=>{
+    const request=parseDraftSave(candidate);
+    if(!tabs.has(request.documentId))throw new OfficeError('invalid','Unknown document session');
+    if(runningSaves.has(request.documentId))throw new OfficeError('conflict','Save is already running');
+    runningSaves.add(request.documentId);
+    let createdTarget:string|undefined,committed=false;
+    try {
+      let token=request.sourceToken as string|undefined;
+      if(token && extname(authority.get(token,window!.id,request.documentId).path).toLowerCase()!=='.oex') throw new OfficeError('unsafe','Office files cannot be overwritten by draft serialization');
+      if(!token || request.saveAs) {
+        const name=request.title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,160)||'Untitled';
+        const chosen=await dialog.showSaveDialog(window!,{defaultPath:`${name.replace(/\.oex$/i,'')}.oex`,filters:[{name:'Office EX draft',extensions:['oex']}],properties:['showOverwriteConfirmation','createDirectory']});
+        if(chosen.canceled||!chosen.filePath)return null;
+        if(extname(chosen.filePath).toLowerCase()!=='.oex')throw new OfficeError('invalid','Drafts must use the .oex extension');
+        let exists=false;
+        try {await lstat(chosen.filePath);exists=true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+        if(exists){const confirm=await dialog.showMessageBox(window!,{type:'warning',buttons:['Cancel','Replace'],defaultId:0,cancelId:0,message:settings.value().language==='en'?'Replace the existing target?':'替换已有目标文件？',detail:basename(chosen.filePath)});if(confirm.response!==1)return null;}
+        token=await authority.authorizeTarget(chosen.filePath,window!.id,request.documentId,exists,request.sourceToken as string|undefined);createdTarget=token;
+      }
+      const bytes=request.bytes; const expected=byteHash(bytes);
+      const cached=[...originals.entries()].reduce((sum,[key,value])=>sum+(key===token||key===request.sourceToken?0:value.byteLength),0);
+      if(cached+bytes.byteLength>MAX_ORIGINAL_CACHE_BYTES)throw new OfficeError('limit','Open file cache exceeds the 256 MiB budget');
+      const result=await authority.commit(token,window!.id,request.documentId,bytes,{backup:async(previous,identity)=>{await backups.put(request.documentId as string,`backup:${identity.sha256}`,request.revision,previous);},validate:async reread=>{
+        // Worker already serialized and re-read the model; main checks the exact planned bytes.
+        if(byteHash(reread)!==expected)throw new OfficeError('invalid','Save verification failed');
+      }});
+      committed=true;originals.set(token,bytes.slice());
+      if(request.sourceToken&&request.sourceToken!==token){authority.revokeToken(request.sourceToken,window!.id,request.documentId);originals.delete(request.sourceToken);}
+      const warnings:string[]=[];
+      try{await recovery.clearSaved(request.documentId,request.revision);}catch{warnings.push('recovery-cleanup-failed');}
+      try{await settings.addRecent(authority.get(token,window!.id,request.documentId).path,result.name);}catch{warnings.push('recent-update-failed');}
+      return {token,name:result.name,durability:result.durability,warnings};
+    } finally {if(createdTarget&&!committed){try{authority.revokeToken(createdTarget,window!.id,request.documentId);}catch{/* already revoked */}}runningSaves.delete(request.documentId);}
+  });
+  handle('office:save-copy',async(_event,candidate)=>{
+    const request=parsePreservedCopy(candidate);
+    if(!tabs.has(request.documentId))throw new OfficeError('unsafe','Unknown document session');
+    if(runningSaves.has(request.documentId))throw new OfficeError('conflict','Save is already running');
+    runningSaves.add(request.documentId);
+    let target:string|undefined;
+    try{
+    const grant=authority.get(request.sourceToken,window!.id,request.documentId);
+    const bytes=originals.get(request.sourceToken);
+    if(!bytes)throw new OfficeError('invalid','Original bytes are unavailable');
+    const extension=extname(grant.path).slice(1)||'bin';
+    const chosen=await dialog.showSaveDialog(window!,{defaultPath:`${basename(grant.path,extname(grant.path))}-copy.${extension}`,filters:[{name:'Original file format',extensions:[extension]}],properties:['showOverwriteConfirmation','createDirectory']});
+    if(chosen.canceled||!chosen.filePath)return null;
+    if(extname(chosen.filePath).toLowerCase()!==extname(grant.path).toLowerCase())throw new OfficeError('invalid','A preserved copy must retain its source extension');
+    let exists=false;try{await lstat(chosen.filePath);exists=true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+    if(exists){const confirmation=await dialog.showMessageBox(window!,{type:'warning',buttons:['Cancel','Replace'],defaultId:0,cancelId:0,message:'替换目标文件 / Replace target file?',detail:basename(chosen.filePath)});if(confirmation.response!==1)return null;}
+    target=await authority.authorizeTarget(chosen.filePath,window!.id,request.documentId,exists,request.sourceToken);
+    const expected=byteHash(bytes);
+    const result=await authority.commit(target,window!.id,request.documentId,bytes,{backup:async(previous,identity)=>{await backups.put(request.documentId as string,`backup:${identity.sha256}`,0,previous);},validate:async reread=>{if(byteHash(reread)!==expected)throw new OfficeError('invalid','Preserved copy verification failed');}});
+    return {name:result.name,durability:result.durability,warnings:[] as string[]};
+    }finally{if(target){try{authority.revokeToken(target,window!.id,request.documentId);}catch{/* already revoked on close */}}runningSaves.delete(request.documentId);}
+  });
+  handle('office:confirm-close',async(_event,candidate)=>{
+    id(candidate);const tab=tabs.get(candidate);
+    if(runningSaves.has(candidate))return 'cancel' as const;
+    if(!tab||!tab.dirty)return 'close' as const;
+    const en=settings.value().language==='en';
+    const choice=await dialog.showMessageBox(window!,{type:'question',buttons:en?['Save','Discard','Cancel']:['保存','放弃修改','取消'],defaultId:0,cancelId:2,message:en?'Save changes before closing?':'关闭前保存修改？',detail:tab.title});
+    return (['save','discard','cancel'] as const)[choice.response]??'cancel';
+  });
+  handle('office:release',async(_event,candidate,discard)=>{
+    const release=parseRelease(candidate,discard);candidate=release.documentId;discard=release.discard;id(candidate);
+    if(runningSaves.has(candidate))throw new OfficeError('conflict','Save is running');
+    if(discard)await recovery.clearSaved(candidate,Number.MAX_SAFE_INTEGER);
+    authority.revokeDocument(window!.id,candidate);tabs.delete(candidate);
+    // Released source tokens can no longer be looked up; remove any orphaned original payload.
+    for(const token of originals.keys()){try{authority.get(token,window!.id,candidate);}catch{let live=false;for(const doc of tabs.keys()){try{authority.get(token,window!.id,doc);live=true;break;}catch{/* different session */}}if(!live)originals.delete(token);}}
+  });
+  handle('office:finish-close',async()=>{if(tabs.size||runningSaves.size)throw new OfficeError('conflict','Document sessions remain open');allowClose=true;window!.close();});
+  handle('office:settings',async(_event,candidate)=>{const patch=parseSettingsPatch(candidate);await settings.update(patch);nativeTheme.themeSource=settings.value().theme;installMenu();return settings.publicValue();});
+  handle('office:recover',async(_event,candidate)=>{return recovery.load(parseRecoveryId(candidate));});
+  handle('office:discard-recovery',async(_event,candidate)=>{await recovery.discard(parseRecoveryId(candidate));});
+  handle('office:checkpoint',async(_event,candidate)=>{
+    const r=parseCheckpoint(candidate);
+    if(!tabs.has(r.documentId))throw new OfficeError('invalid','Unknown checkpoint session');
+    await recovery.put(r.documentId,r.contentId,r.revision,r.bytes);
+  });
+}
+app.on('open-file',(event,path)=>{event.preventDefault();try{enqueueFile(path);}catch{dialog.showErrorBox('Office EX','文件无法打开 / Unable to open file');}});
+app.on('second-instance',(_event,argv,cwd)=>{
+  if(window&&!window.isDestroyed()){if(window.isMinimized())window.restore();window.focus();}
+  for(const path of commandLineFiles(argv,Boolean(process.defaultApp),cwd)){try{enqueueFile(path);}catch{break;}}
+});
+app.on('before-quit',event=>{if(window&&!allowClose){event.preventDefault();send('close-window');}});
+app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
+if(ownsProfile)app.whenReady().then(async()=>{
+  await mkdir(app.getPath('userData'),{recursive:true,mode:0o700});
+  for(const path of commandLineFiles(process.argv,Boolean(process.defaultApp),process.cwd()))enqueueFile(path);
+  settings=new SettingsStore(app.getPath('userData'));await settings.load();
+  recovery=new RecoveryStore(join(app.getPath('userData'),'recovery'));
+  backups=new RecoveryStore(join(app.getPath('userData'),'backups'));
+  await recovery.cleanupStaging();await backups.cleanupStaging();
+  nativeTheme.themeSource=settings.value().theme;
+  const bundle=resolve(__dirname,'../ui');
+  const resources=new Map<string,{data:Uint8Array;type:string}>();
+  for(const [name,type] of [['index.html','text/html; charset=utf-8'],['renderer.js','text/javascript; charset=utf-8'],['format-worker.js','text/javascript; charset=utf-8'],['styles.css','text/css; charset=utf-8']] as const)resources.set(`/${name}`,{data:new Uint8Array(await readFile(join(bundle,name))),type});
+  protocol.handle('office-ex',request=>{
+    const url=new URL(request.url);const resource=resources.get(url.pathname==='/'?'/index.html':url.pathname);
+    if(!localOrigin(url)||!resource||request.method!=='GET'||url.search||url.hash)return new Response('',{status:404});
+    return new Response(resource.data.slice().buffer,{headers:{'Content-Type':resource.type,'Content-Security-Policy':CSP,'X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin'}});
+  });
+  session.defaultSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
+  session.defaultSession.setPermissionCheckHandler(()=>false);
+  session.defaultSession.webRequest.onBeforeRequest((details,callback)=>{
+    try{const url=new URL(details.url);callback({cancel:!localOrigin(url)||!resources.has(url.pathname==='/'?'/index.html':url.pathname)});}catch{callback({cancel:true});}
+  });
+  installIpc();installMenu();
+  const createWindow=async():Promise<void>=>{
+    allowClose=false;rendererReady=false;
+    window=new BrowserWindow({width:1280,height:840,minWidth:880,minHeight:600,show:false,title:'Office EX',backgroundColor:'#f7f8fa',webPreferences:{preload:join(__dirname,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false,nodeIntegrationInWorker:false,nodeIntegrationInSubFrames:false,webSecurity:true,webviewTag:false,spellcheck:false,devTools:!app.isPackaged}});
+    window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+    window.webContents.on('will-navigate',event=>event.preventDefault());
+    window.webContents.on('will-attach-webview',event=>event.preventDefault());
+    window.on('close',event=>{if(!allowClose){event.preventDefault();send('close-window');}});
+    const currentId=window.id;
+    window.on('closed',()=>{authority.revokeWindow(currentId);tabs.clear();originals.clear();rendererReady=false;window=null;});
+    window.once('ready-to-show',()=>window?.show());
+    await window.loadURL(`${ORIGIN}/index.html`);
+    // OS-open events queue until the renderer has installed its listener.
+  };
+  await createWindow();
+  app.on('activate',()=>{if(!window)void createWindow();});
+}).catch(error=>{console.error(error instanceof OfficeError?error.code:'startup-failed');app.exit(1);});

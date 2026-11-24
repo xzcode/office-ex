@@ -1,0 +1,13 @@
+{
+  "name": "@office-ex/desktop",
+  "version": "0.1.0-dev.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "../../dist/desktop/main.cjs",
+  "dependencies": {
+    "@office-ex/contracts": "0.1.0-dev.1",
+    "@office-ex/core": "0.1.0-dev.1",
+    "@office-ex/ui": "0.1.0-dev.1"
+  }
+}
