@@ -28,3 +28,9 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 - Writer 每段原生 textarea，跨 run 最小 grapheme diff、单 run 稳定 ID、选区粗斜下划线和对齐、Enter 选区替换并分段、段首退格/段末 Delete 合并、显式分页符。单页 Canvas 预览与编辑共享 snapshot，点选定位到段落输入，支持页数/翻页。composition 时阻止可能丢弃输入的切换与关闭，真实物理输入法仍待测。
 - 11 套 locale 同步增加 18 个界面键（155 个/locale），无新外部依赖。内部 OEX 编辑保存保持原有路径；未接入桌面 DOCX 编辑保存。编辑区与排版预览分离，未完成 WYSIWYG，不宣称打印精度。Canvas cluster 宽度及断行估算；复杂 bidi/印度文字/泰文等 shaping、跨样式 grapheme、图片/表格和超限内容拒绝预览，不覆盖编辑内容。负缩进、justify、精确过小行距等有限处理；未达到 QA-04。
 - 新增确定性布局测试与原生 Writer 操作 smoke；全套 CI 在当前分支运行。实际结果另记，不借用前批证据。
+
+### 第二批验收记录
+
+受测源码 84db8010c281f4eefdb80b7250b57148b3876f44，[CI 45426118923](https://github.com/xzcode/office-ex/actions/runs/45426118923)。基础 verify-writer 已通过：13 workspaces、39 源文件，129/129 自动化测试成功，0 失败、0 跳过；新增 8 项布局/输入用例覆盖自动分页、空段、显式换页、选区与命中、样式、CJK 断行、取消与资源预算、grapheme diff 和原子分段。独立 python-docx 语义互读和依赖许可审查通过。
+
+记录时任务状态：verify-writer: success; native-macos: queued; native-other (windows-2025): in_progress; native-other (ubuntu-24.04): in_progress。尚未完成的原生任务不得记为通过。当前只在独立 Writer 分支，未合并 master。排版属于估算 LTR profile，完整 Word 排版、真实 IME、复杂脚本与 DOCX 桌面安全读写仍待后续验收。
