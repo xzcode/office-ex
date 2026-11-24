@@ -480,7 +480,10 @@
       "priority": "P0",
       "acceptance": "22 个目标 locale、语言目录与批次",
       "status": "implemented",
-      "evidence": [],
+      "evidence": [
+        "docs/M2-I18N.md",
+        "https://github.com/xzcode/office-ex/actions/runs/45379428809"
+      ],
       "spec": "docs/specs/09-i18n.md",
       "implementationPaths": [
         "packages/i18n/src/index.ts",
@@ -491,7 +494,8 @@
       ],
       "remainingScope": [
         "Initial four draft catalogs only: zh-CN, zh-TW, en-US, ja-JP. Other 18 target locales not exposed as complete UI languages.",
-        "Native validation and human terminology review pending; ICU plural/select, pseudo-locales, full document language metadata, all-editor UI, complete RTL shaping and release gates remain."
+        "Native validation and human terminology review pending; ICU plural/select, pseudo-locales, full document language metadata, all-editor UI, complete RTL shaping and release gates remain.",
+        "104/104 base tests and architecture/interop/license checks passed on 0862f02; native and full specification verification tracked separately."
       ]
     },
     {
@@ -500,7 +504,10 @@
       "priority": "P0",
       "acceptance": "公共消息键/语言包、系统识别、热切换、迁移与离线安全",
       "status": "implemented",
-      "evidence": [],
+      "evidence": [
+        "docs/M2-I18N.md",
+        "https://github.com/xzcode/office-ex/actions/runs/45379428809"
+      ],
       "spec": "docs/specs/09-i18n.md",
       "implementationPaths": [
         "packages/i18n/src/index.ts",
@@ -511,7 +518,8 @@
       ],
       "remainingScope": [
         "Initial four draft catalogs only: zh-CN, zh-TW, en-US, ja-JP. Other 18 target locales not exposed as complete UI languages.",
-        "Native validation and human terminology review pending; ICU plural/select, pseudo-locales, full document language metadata, all-editor UI, complete RTL shaping and release gates remain."
+        "Native validation and human terminology review pending; ICU plural/select, pseudo-locales, full document language metadata, all-editor UI, complete RTL shaping and release gates remain.",
+        "104/104 base tests and architecture/interop/license checks passed on 0862f02; native and full specification verification tracked separately."
       ]
     },
     {
