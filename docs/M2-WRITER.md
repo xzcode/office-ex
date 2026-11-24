@@ -42,3 +42,9 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 - `office:save-docx` 传递受限 OEX 模型快照而不是调用者提供的 DOCX 输出。主进程校验窗口、会话、内容身份、文件 token 和原始摘要；独立临时隐藏 sandboxed Chromium 窗口采用单独非持久 session、专用 preload、CSP、固定本地资源白名单及 Web Worker。主进程从授权缓存取得原文档，worker 负责导入/序列化/重开，主进程只接收验证器来源的有界字节；正常 renderer 无验证器 IPC 权限。复用原子提交、备份、身份冲突检测及恢复清理。没有引入外部生产依赖。
 - 11 套候选语言新增 3 个键（158/locale）并更新首页、M2 标记及能力说明。DOCX 原格式支持仍是狭窄的文本/直接格式/基本页面参数；未实现完整 Word 兼容、格式化工具栏扩展、图片、表格、文档语言方向元数据、DOC 及完整 WYSIWYG。
 - 新增 4 项核心/IPC 回归与 native smoke 的直接越权请求阻断、新建、另存、复开、编辑、备份及外部文件冲突；正式结果以本批 CI 为准。仍须独立读者及参考 Microsoft Office 验收；未假定所有原生任务成功。
+
+### 第三批验收记录
+
+受测源码 c79feaf16191e01b890e16012f7daca98a0a30ef；[CI 45428117703](https://github.com/xzcode/office-ex/actions/runs/45428117703)。基础 verify-writer 通过：13 workspaces、42 源文件，133/133 自动化测试成功，0 失败、0 跳过；新增 4 项覆盖语义编辑入口、正确扩展名、模型快照生成、无修改字节原样保留、未知源阻断及 IPC 身份和边界校验。独立 python-docx 读取新建与编辑后文件，依赖许可检查通过。
+
+记录时任务状态：verify-writer: success; native-other (ubuntu-24.04): in_progress; native-macos: in_progress; native-other (windows-2025): in_progress。未结束原生任务不得标记为通过。上一批 45426118923 的 Windows/Linux 原生任务已通过，macOS 因新工作流取消。完整桌面 DOCX 读写须以本批实际原生结果验收；未合并 master。普通 Word 文件的 styles/资源、图片表格、文档语言方向与完整 WYSIWYG 仍未实现，旧 DOC 的 M2-L 门槛不变。恢复 DOCX 快照为新的 OEX 草稿副本，避免覆盖原文件。

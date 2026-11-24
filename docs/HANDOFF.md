@@ -86,3 +86,5 @@ M2 Writer 第二批候选实现：docs/M2-WRITER.md，布局与多段编辑工�
 M2 Writer 第二批基础回归 129/129 成功，源码 84db8010c281f4eefdb80b7250b57148b3876f44，CI https://github.com/xzcode/office-ex/actions/runs/45426118923。记录时 verify-writer: success; native-macos: queued; native-other (windows-2025): in_progress; native-other (ubuntu-24.04): in_progress。继续时先核对该 CI 原生结果，若失败只修实际问题；下一批重点 DOCX 安全桌面接入、样式/资源、富文本分页精度及 DOC 兼容。保持 m2-writer-20261124，未合并 master。
 
 M2 Writer 第三批候选：DOCX 窄 profile 桌面新建、打开编辑、保存、另存已接入，主进程独立隔离验证器负责生成/重开输出，授权缓存与既有原子保存/备份保护保留。11 个 locale 158 键。查看 docs/M2-WRITER.md 和当前分支 CI；后续再扩展普通 DOCX styles/资源、字体字号颜色工具、表格图片、完整排版、DOC 兼容。禁止把本 profile 宣传为任意 DOCX 可编辑。
+
+M2 Writer 第三批受测源码 c79feaf16191e01b890e16012f7daca98a0a30ef，基础回归 133/133 通过，CI https://github.com/xzcode/office-ex/actions/runs/45428117703；记录时 verify-writer: success; native-other (ubuntu-24.04): in_progress; native-macos: in_progress; native-other (windows-2025): in_progress。下一轮先检查本批原生验收，针对实际失败修复；然后扩展字体/字号/颜色工具、普通 DOCX styles/资源和表格图片，继续 DOC 旧格式。原格式编辑仅支持窄 profile，不宣传通用 Word 兼容；未合并 master。
