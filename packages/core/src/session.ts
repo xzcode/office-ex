@@ -164,14 +164,24 @@ export class DocumentSession {
       assert(operations.length <= 10_000, 'limit', 'Command operation budget exceeded');
     }
     this.#assertEditable(featureId);
-    const permittedRoots: Record<string, readonly string[]> = { 'MOD-01': ['resources', 'styles', 'defaultTextStyle'], 'MOD-03': ['title'], 'WRT-02': ['sections'], 'WRT-03': ['sections', 'resources'], 'SHT-02': ['sheets', 'dateSystem'], 'SLD-02': ['slides', 'size', 'theme', 'resources'] };
+    const permittedRoots: Record<string, readonly string[]> = { 'MOD-01': ['resources', 'styles', 'defaultTextStyle'], 'MOD-03': ['title'], 'WRT-02': ['sections'], 'WRT-03': ['sections', 'resources','numbering'], 'SHT-02': ['sheets', 'dateSystem'], 'SLD-02': ['slides', 'size', 'theme', 'resources'] };
     const requiredKind: Record<string, string> = { 'WRT-02': 'writer', 'WRT-03': 'writer', 'SHT-02': 'sheets', 'SLD-02': 'slides' };
     assert(!requiredKind[featureId] || requiredKind[featureId] === this.#document.kind, 'invalid', 'Command feature does not match document kind');
-    const newImages=new Set<string>();
+    const newImages=new Set<string>();let numberingAdded=false;
     for (const operation of operations) {
       assertOperation(operation);
       assert(permittedRoots[featureId]?.includes(String(operation.path[0])), 'unsupported', 'Feature cannot modify that model region');
       if(featureId==='WRT-02')assert(operation.op==='set'&&operation.path.length===3&&operation.path[0]==='sections'&&typeof operation.path[1]==='number'&&operation.path[2]==='page','unsupported','Page command can only replace section page geometry');
+      if(featureId==='WRT-03'&&operation.path[0]==='numbering'){
+        assert(!numberingAdded&&operation.op==='set'&&operation.path.length===1&&this.#document.kind==='writer','unsupported','Numbering commands may append definitions only');
+        const old=this.#document.numbering,registry=operation.value as import('./model.js').WriterNumbering;
+        assert(registry&&typeof registry==='object'&&registry.lists&&typeof registry.lists==='object'&&Number.isSafeInteger(registry.nextId),'invalid','Invalid numbering registry');
+        const first=old?.nextId??1;assert(registry.nextId>=first&&registry.nextId-first<=2048,'limit','Invalid numbering allocation');
+        for(const [id,def]of Object.entries(old?.lists??{}))assert(JSON.stringify(registry.lists[id])===JSON.stringify(def),'conflict','Numbering definitions are immutable');
+        const fresh=Object.keys(registry.lists).filter(id=>!Object.hasOwn(old?.lists??{},id));
+        assert(fresh.length===registry.nextId-first&&fresh.every(id=>Number(id)>=first&&Number(id)<registry.nextId),'invalid','Noncontiguous numbering allocation');
+        numberingAdded=true;
+      }
       if((featureId==='WRT-03'||featureId==='SLD-02')&&operation.path[0]==='resources'){
         assert(operation.op==='set'&&operation.path.length===2&&typeof operation.path[1]==='string','unsupported','Image commands may only add an immutable image resource');
         validateImageResource(operation.value);const id=operation.path[1];

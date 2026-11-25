@@ -4,14 +4,14 @@
  * IDs are not borrowed across documents. Image bytes remain content-addressed.
  */
 import {assert,assertId} from '@office-ex/contracts';
-import {createDocument,validateDocument,validateImageResource,resolveTextStyle,assertPlainData,patchCommand,cloneData,inlineText,type DocumentSnapshot,type DocumentCommand,type WriterDocument,type DeepReadonly,type Paragraph,type Inline,type ResourceRef,type TextStyle,type PatchOperation} from '@office-ex/core';
+import {createDocument,validateDocument,validateImageResource,resolveTextStyle,assertPlainData,patchCommand,cloneData,inlineText,type DocumentSnapshot,type DocumentCommand,type WriterDocument,type DeepReadonly,type Paragraph,type Inline,type ResourceRef,type WriterNumbering,type TextStyle,type PatchOperation} from '@office-ex/core';
 import {resolveWriterRange,type WriterRange,type WriterPoint} from './ranges.js';
 import {sliceWriterRuns,writerIdAllocator,templateAt,nonEmpty} from './paragraphs.js';
 const MAX_CLIPBOARD=8*1024*1024;
 const CHAR=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'] as const;
-const PARA=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','paragraphDirection','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder'] as const;
+const PARA=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','paragraphDirection','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList'] as const;
 export const WRITER_CLIPBOARD_TYPE='application/x-office-ex-writer-fragment+json';
-interface Fragment {magic:'office-ex-writer-fragment';version:1;paragraphs:Paragraph[];resources:Record<string,ResourceRef>}
+interface Fragment {magic:'office-ex-writer-fragment';version:1;paragraphs:Paragraph[];resources:Record<string,ResourceRef>;numbering?:WriterNumbering}
 function pick(style:DeepReadonly<TextStyle>,keys:readonly (keyof TextStyle)[]):TextStyle{
   return Object.fromEntries(keys.filter(k=>style[k]!==undefined).map(k=>[k,cloneData(style[k])])) as TextStyle;
 }
@@ -19,9 +19,9 @@ function parse(value:unknown):Fragment{
   assertPlainData(value);
   assert(value&&typeof value==='object'&&!Array.isArray(value),'invalid','Invalid Writer clipboard');
   const f=value as Fragment;
-  assert(Object.keys(f).length===4&&f.magic==='office-ex-writer-fragment'&&f.version===1&&Array.isArray(f.paragraphs)&&f.paragraphs.length>0&&f.paragraphs.length<=1000,'invalid','Invalid Writer clipboard envelope');
+  assert(Object.keys(f).every(k=>['magic','version','paragraphs','resources','numbering'].includes(k))&&f.magic==='office-ex-writer-fragment'&&f.version===1&&Array.isArray(f.paragraphs)&&f.paragraphs.length>0&&f.paragraphs.length<=1000,'invalid','Invalid Writer clipboard envelope');
   assert(f.resources&&typeof f.resources==='object'&&!Array.isArray(f.resources),'invalid','Invalid clipboard resource map');
-  const temp=createDocument('writer','clipboard-validation');temp.defaultTextStyle={};temp.sections[0]!.blocks=f.paragraphs;temp.resources=f.resources;
+  const temp=createDocument('writer','clipboard-validation');temp.defaultTextStyle={};temp.sections[0]!.blocks=f.paragraphs;temp.resources=f.resources;if(f.numbering)temp.numbering=f.numbering;
   validateDocument(temp);
   const used=new Set<string>();
   for(const p of f.paragraphs){
@@ -49,7 +49,9 @@ export function copyWriterFragment(snapshot:DocumentSnapshot,range:WriterRange):
     });
     paragraphs.push({id:allocate(),type:'paragraph',style:pick(base,PARA),runs:runs.length?runs:[{id:allocate(),type:'text',text:''}]});
   }
-  const fragment:Fragment={magic:'office-ex-writer-fragment',version:1,paragraphs,resources};
+  const lists:WriterNumbering['lists']={};
+  for(const p of paragraphs){const id=p.style?.writerList?.numId;if(id){assert(model.numbering?.lists[String(id)],'invalid','Missing copied list definition');lists[String(id)]=cloneData(model.numbering.lists[String(id)]!) as WriterNumbering['lists'][string];}}
+  const fragment:Fragment={magic:'office-ex-writer-fragment',version:1,paragraphs,resources,...(Object.keys(lists).length?{numbering:{nextId:Math.max(...Object.keys(lists).map(Number))+1,lists}}:{})};
   const rich=JSON.stringify(fragment);
   assert(new TextEncoder().encode(rich).length<=MAX_CLIPBOARD,'limit','Rich clipboard exceeds size budget');
   parse(fragment);
@@ -69,15 +71,27 @@ export function pasteWriterFragment(snapshot:DocumentSnapshot,range:WriterRange,
     if(model.resources[id])validateImageResource(model.resources[id]);
     else operations.push({op:'set',path:['resources',id],value:resource});
   }
+  const mapping=new Map<number,number>();
+  if(f.numbering){
+    const registry=cloneData(model.numbering??{nextId:1,lists:{}}) as WriterNumbering;
+    for(const [id,def]of Object.entries(f.numbering.lists)){
+      assert(registry.nextId<=1000000000&&Object.keys(registry.lists).length<2048,'limit','Clipboard numbering budget exceeded');
+      const next=registry.nextId++;mapping.set(Number(id),next);registry.lists[String(next)]=cloneData(def);
+    }
+    operations.push({op:'set',path:['numbering'],value:registry});
+  }
   let caret:WriterPoint|undefined;
   for(let i=0;i<f.paragraphs.length;i++){
-    const src=f.paragraphs[i]!,tail=i===f.paragraphs.length-1;
+    const src=cloneData(f.paragraphs[i]!),tail=i===f.paragraphs.length-1;
+    const ref=src.style?.writerList;
+    if(ref?.numId){const id=mapping.get(ref.numId);assert(id,'invalid','Missing clipboard numbering mapping');src.style={...src.style,writerList:{...ref,numId:id}};}
+    if(i===0&&ref?.numId)assert(r.start===0&&r.end===r.last.text.length,'unsupported','Paste a numbered fragment into a whole paragraph or an empty paragraph');
     const pasted=src.runs.map(run=>{
       if(run.type==='image')assert(run.width<=r.first.contentWidth&&run.height<=r.first.contentHeight,'unsupported','Pasted image does not fit target');
       return {...cloneData(run),id:allocate()};
     });
     const id=i===0?r.first.paragraph.id:tail&&r.first.block!==r.last.block?r.last.paragraph.id:allocate();
-    const base=i===0?cloneData(r.first.paragraph):{id,type:'paragraph' as const,...(model.defaultParagraphStyleId?{styleId:model.defaultParagraphStyleId}:{}),style:cloneData(src.style??{}),runs:[]};
+    const base=i===0?{...cloneData(r.first.paragraph),...(ref?{style:{...r.first.paragraph.style,...src.style}}:{})}:{id,type:'paragraph' as const,...(model.defaultParagraphStyleId?{styleId:model.defaultParagraphStyleId}:{}),style:cloneData(src.style??{}),runs:[]};
     const before=i===0?left:[],after=tail?right:[];
     items.push({...base,id,runs:nonEmpty([...before,...pasted,...after],template,allocate)});
     if(tail)caret={paragraphId:id,offset:before.reduce((n,x)=>n+inlineText(x).length,0)+pasted.reduce((n,x)=>n+inlineText(x).length,0)};

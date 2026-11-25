@@ -55,6 +55,7 @@ def verify(output: Path):
         assert rows and all(re.search(r'\s+yes\s+(?:yes|no)\s+yes\s+\d+\s+\d+\s*$', row) for row in rows), fonts
         if kind == 'writer':
             assert 'Writer PDF' in text and '中文' in text, text[:400]
+            assert re.search(r'3\.\s*Numbered Alpha',text) and re.search(r'3\.1\.\s*Numbered Beta',text), text[:700]
             numbers = re.findall(r'UniqueLine(\d{3})',text)
             assert numbers == [f'{i:03d}' for i in range(1,81)], numbers
         else:

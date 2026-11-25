@@ -7,6 +7,11 @@ export type SlideBullet = {kind:'none'} | ({kind:'char';character:string}|{kind:
 export interface SlideParagraphFormat {level?:number;marginLeft?:number;marginRight?:number;firstLineIndent?:number;beforePercent?:number;afterPercent?:number;bullet?:SlideBullet}
 /** Writer paragraph bottom rule. Null explicitly suppresses an inherited rule. */
 export interface WriterParagraphRule {color:Color;width:number;space:number}
+/** Bounded WordprocessingML numbering. References are native positive numIds;
+ * zero explicitly cancels inherited numbering. Definitions are immutable per id. */
+export interface WriterListReference {numId:number;level:number}
+export interface WriterListLevel {format:'decimal'|'bullet';start:number;pattern:string;indent:number;hanging:number;alignment:'start'|'center'|'end';neverRestart?:boolean;symbolBullet?:boolean}
+export interface WriterNumbering {nextId:number;lists:Record<string,{levels:WriterListLevel[]}>}
 export interface TextStyle {
   fontFamily?: string; fontAscii?:string; fontHighAnsi?:string; fontEastAsia?:string; fontComplex?:string; fontSize?: number; complexFontSize?:number; bold?: boolean; italic?: boolean; underline?: boolean;
   color?: Color; language?:string; eastAsiaLanguage?:string; bidiLanguage?:string; runDirection?:'ltr'|'rtl'; paragraphDirection?:'ltr'|'rtl'; alignment?: 'start' | 'center' | 'end' | 'justify';
@@ -14,6 +19,7 @@ export interface TextStyle {
   characterSpacing?:number; kerningThreshold?:number;
   rightIndent?:number; firstLineIndent?:number; contextualSpacing?:boolean;
   paragraphBottomBorder?:WriterParagraphRule|null;
+  writerList?:WriterListReference;
   indent?: number; spaceBefore?: number; spaceAfter?: number; lineHeight?: number; lineMultiple?:number; minLineHeight?:number; keepNext?:boolean; keepLines?:boolean; outlineLevel?:number; widowControl?:boolean;
 }
 export interface NamedStyle { id: string; name: string; basedOn?: string; kind?: 'paragraph' | 'character'; toggles?: readonly ('bold' | 'italic')[]; properties: TextStyle }
@@ -29,7 +35,7 @@ export interface TableCell { id: string; blocks: WriterBlock[] }
 export interface Table { id: string; type: 'table'; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[]; cellPadding?: {top:number;right:number;bottom:number;left:number}; border?: {width:number;color:Color} }
 export type WriterBlock = Paragraph | Table | { id: string; type: 'page-break' };
 export interface WriterSection { id: string; pageExtras?: {headerDistance?:number;footerDistance?:number;columnSpace?:number;docGridLinePitch?:number}; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
-export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string }
+export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string; numbering?:WriterNumbering }
 
 export type CellValue = { kind: 'blank' } | { kind: 'string'; value: string } | { kind: 'number'; value: number } | { kind: 'boolean'; value: boolean } | { kind: 'error'; value: '#NULL!' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#NAME?' | '#NUM!' | '#N/A' } | { kind: 'formula'; source: string };
 export interface CellStyle extends TextStyle { fill?: Color; border?: {color:Color;width:number}; verticalAlignment?: 'top'|'center'|'bottom'; wrapText?: boolean }
@@ -155,7 +161,7 @@ export function validateSlideParagraph(value:unknown):asserts value is SlidePara
   }
 }
 export function validateTextStyle(value: unknown): asserts value is TextStyle {
-  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection','slideParagraph','characterSpacing','kerningThreshold','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder']);
+  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection','slideParagraph','characterSpacing','kerningThreshold','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList']);
   for(const key of ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex'])if(style[key]!==undefined){text(style[key],512,false);assert(!/[\x00-\x1f\x7f]/.test(style[key] as string),'invalid','Invalid font family');}
   if (style.fontSize !== undefined) integer(style.fontSize, 1, 12_700 * 1638);
   if(style.complexFontSize!==undefined)integer(style.complexFontSize,1,12_700*1638);
@@ -175,6 +181,7 @@ export function validateTextStyle(value: unknown): asserts value is TextStyle {
   if(style.rightIndent!==undefined)integer(style.rightIndent,0,31680*635);
   if(style.firstLineIndent!==undefined)integer(style.firstLineIndent,-31680*635,31680*635);
   if(style.contextualSpacing!==undefined)bool(style.contextualSpacing);
+  if(style.writerList!==undefined){const ref=object(style.writerList,['numId','level']);integer(ref.numId,0,1000000000);integer(ref.level,0,8);assert(ref.numId!==0||ref.level===0,'invalid','Disabled numbering must use level zero');}
   if(style.paragraphBottomBorder!==undefined&&style.paragraphBottomBorder!==null){
     const border=object(style.paragraphBottomBorder,['color','width','space']);validateColor(border.color);integer(border.width,2*1587,96*1588);integer(border.space,0,31*12700);
   }
@@ -200,7 +207,7 @@ export function validateDocument(value: unknown): OfficeDocument {
   assert(isRecord(value), 'invalid', 'Expected document');
   if (value.schemaVersion !== 1) throw new OfficeError('unsupported', 'Unsupported document schema version');
   const fields = ['schemaVersion', 'documentId', 'title', 'resources', 'styles', 'defaultTextStyle', 'kind'];
-  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections','defaultParagraphStyleId'] : value.kind === 'sheets' ? ['dateSystem', 'sheets'] : value.kind === 'slides' ? ['size', 'slides', 'theme'] : [])]);
+  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections','defaultParagraphStyleId','numbering'] : value.kind === 'sheets' ? ['dateSystem', 'sheets'] : value.kind === 'slides' ? ['size', 'slides', 'theme'] : [])]);
   assertId(model.documentId); text(model.title, 1024, false);
   const ids = new Set<string>();
   const id = (candidate: unknown): void => { assertId(candidate); assert(!ids.has(candidate), 'invalid', 'Duplicate stable node identifier'); ids.add(candidate); };
@@ -240,12 +247,39 @@ export function validateDocument(value: unknown): OfficeDocument {
     }
   }
   validateTextStyle(model.defaultTextStyle);
+  const numbering=model.kind==='writer'&&model.numbering!==undefined?object(model.numbering,['nextId','lists']):undefined;
+  if(numbering){
+    integer(numbering.nextId,1,1000000001);assert(isRecord(numbering.lists),'invalid','Invalid numbering definitions');const entries=Object.entries(numbering.lists);assert(entries.length<=2048,'limit','Numbering definition budget exceeded');
+    for(const [key,item] of entries){
+      assert(/^[1-9]\d*$/.test(key)&&Number(key)<Number(numbering.nextId),'invalid','Invalid numbering identity');
+      const def=object(item,['levels']),levels=list(def.levels,1);assert(levels.length<=9,'invalid','Numbering level budget exceeded');
+      for(const [i,candidate]of levels.entries()){
+        const level=object(candidate,['format','start','pattern','indent','hanging','alignment','neverRestart','symbolBullet']);
+        assert(level.format==='decimal'||level.format==='bullet','unsupported','Unsupported list format');integer(level.start,1,32767);text(level.pattern,64,false);
+        const pattern=String(level.pattern);
+        assert(!/[\x00-\x1f\x7f]/.test(pattern),'invalid','List pattern controls');
+        if(level.format==='bullet')assert(Array.from(pattern).length===1&&!/[\s%]/u.test(pattern),'invalid','Invalid list bullet');
+        else assert(/^(?:[^%]|%[1-9])+$/.test(pattern)&&pattern.includes('%'+(i+1))&&[...pattern.matchAll(/%([1-9])/g)].every(m=>Number(m[1])<=i+1),'invalid','Invalid decimal list pattern');
+        if(level.format==='decimal')assert([...pattern.matchAll(/%([1-9])/g)].every(m=>(levels[Number(m[1])-1] as WriterListLevel).format==='decimal'),'unsupported','Mixed composite numbering unsupported');
+        integer(level.indent,635,31680*635);integer(level.hanging,635,Number(level.indent));assert(['start','center','end'].includes(String(level.alignment)),'invalid','Invalid list alignment');
+        if(level.neverRestart!==undefined)bool(level.neverRestart);
+        if(level.symbolBullet!==undefined)assert(level.format==='bullet'&&pattern==='•'&&level.symbolBullet===true,'invalid','Invalid Symbol bullet fallback');
+      }
+    }
+  }
+  function listReference(style:unknown,allowed:boolean):void{
+    const ref=(style as TextStyle|undefined)?.writerList;if(!ref)return;
+    assert(allowed,'invalid','Writer numbering is paragraph-only');
+    if(ref.numId){const def=(numbering?.lists as WriterNumbering['lists']|undefined)?.[String(ref.numId)];assert(def&&def.levels[ref.level],'unsupported','Missing or unsupported numbering definition');}
+  }
+  listReference(model.defaultTextStyle,model.kind==='writer');
+  for(const item of Object.values(styles)){const style=item as NamedStyle;listReference(style.properties,model.kind==='writer'&&style.kind==='paragraph');}
   const resources = model.resources;
   const run = (candidate: unknown, textOnly = false): void => {
     const inline = object(candidate, ['id', 'type', 'text', 'styleId', 'style', 'resourceId', 'width', 'height', 'drawingName', 'pictureName']); id(inline.id);
     if (inline.type === 'text') {
       assert(!['resourceId', 'width', 'height', 'drawingName', 'pictureName'].some((key) => key in inline), 'invalid', 'Unexpected text run fields');
-      text(inline.text); optionalId(inline.styleId, styles); if(inline.styleId!==undefined){const ref=styles[String(inline.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='character'),'invalid','Text run requires a character style');} if (inline.style !== undefined) validateTextStyle(inline.style);
+      text(inline.text); optionalId(inline.styleId, styles); if(inline.styleId!==undefined){const ref=styles[String(inline.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='character'),'invalid','Text run requires a character style');} if (inline.style !== undefined){validateTextStyle(inline.style);listReference(inline.style,false);}
     } else if (inline.type === 'image' && !textOnly) {
       assert(!['text', 'style', 'styleId'].some((key) => key in inline), 'invalid', 'Unexpected image fields');
       assert(inline.resourceId !== undefined, 'invalid', 'Missing image resource'); optionalId(inline.resourceId, resources);
@@ -259,7 +293,7 @@ export function validateDocument(value: unknown): OfficeDocument {
     const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows', 'cellPadding', 'border']); id(value.id);
     if (value.type === 'paragraph') {
       assert(!['rows','columnWidths','cellPadding','border'].some(k=>k in value), 'invalid', 'Unexpected paragraph fields');
-      optionalId(value.styleId, styles); if(value.styleId!==undefined){const ref=styles[String(value.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='paragraph'),'invalid','Paragraph requires a paragraph style');} if (value.style !== undefined) validateTextStyle(value.style);
+      optionalId(value.styleId, styles); if(value.styleId!==undefined){const ref=styles[String(value.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='paragraph'),'invalid','Paragraph requires a paragraph style');} if (value.style !== undefined){validateTextStyle(value.style);listReference(value.style,true);}
       list(value.runs).forEach((item) => run(item));
     } else if (value.type === 'table') {
       assert(!['runs', 'style', 'styleId'].some((key) => key in value), 'invalid', 'Unexpected table fields');

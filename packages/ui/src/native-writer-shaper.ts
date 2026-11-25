@@ -5,7 +5,7 @@
  */
 import { bundledFontFamily } from '@office-ex/pdf';
 import {assert,EMU_PER_CSS_PIXEL,OfficeError} from '@office-ex/contracts';
-import {paragraphBoundaries,inlineText,resolveTextStyle,type DeepReadonly,type Paragraph,type WriterDocument,type TextStyle,type Inline} from '@office-ex/core';
+import {paragraphBoundaries,inlineText,resolveTextStyle,writerEffectiveStyle,type DeepReadonly,type Paragraph,type WriterDocument,type TextStyle,type Inline} from '@office-ex/core';
 import type {WriterParagraphShaper,NativeParagraphShape,WriterLine,WriterCaret,WriterImageBox,WriterVisualCluster} from '@office-ex/render';
 import {writerParagraphGeometry} from '@office-ex/render';
 const PX=EMU_PER_CSS_PIXEL;
@@ -29,7 +29,7 @@ function projection(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>
   const warnings=new Set<string>(),named=p.styleId??model.defaultParagraphStyleId;
   const para=resolveTextStyle(model.defaultTextStyle,model.styles,named?[named]:[],p.style??{});
   for(const d of para.diagnostics)warnings.add(d.code);
-  const style=para.style;
+  const style=writerEffectiveStyle(model,p);
   const geometry=writerParagraphGeometry(style,width),indent=geometry.origin;if(style.indent!==undefined&&style.indent<0)warnings.add('writer.negative-indent-limited');
   const resolved=p.runs.map(run=>{
     if(run.type!=='text')return style;
@@ -82,7 +82,7 @@ function endpoint(piece:Piece,offset:number):{node:Node;offset:number}{
 function union(rects:DOMRect[]):{left:number;right:number;top:number;bottom:number}{
   return {left:Math.min(...rects.map(r=>r.left)),right:Math.max(...rects.map(r=>r.right)),top:Math.min(...rects.map(r=>r.top)),bottom:Math.max(...rects.map(r=>r.bottom))};
 }
-interface CacheEntry{width:number;defaultParagraphStyleId?:string;defaults:unknown;styles:unknown;resources:unknown;result:NativeParagraphShape}
+interface CacheEntry{width:number;defaultParagraphStyleId?:string;defaults:unknown;styles:unknown;resources:unknown;numbering:unknown;result:NativeParagraphShape}
 /** Session lifetime cache. Immutable paragraph identity + style/resources and
  * width invalidate precisely. Font loading changes the environment generation. */
 export class BrowserParagraphShaper implements WriterParagraphShaper{
@@ -98,7 +98,7 @@ export class BrowserParagraphShaper implements WriterParagraphShaper{
   shape(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>,width:number):NativeParagraphShape{
     void this.environmentId;
     const cached=this.cache.get(p);
-    if(cached&&cached.width===width&&cached.defaultParagraphStyleId===model.defaultParagraphStyleId&&cached.defaults===model.defaultTextStyle&&cached.styles===model.styles&&cached.resources===model.resources){this.hits++;return cached.result;}
+    if(cached&&cached.width===width&&cached.defaultParagraphStyleId===model.defaultParagraphStyleId&&cached.defaults===model.defaultTextStyle&&cached.styles===model.styles&&cached.resources===model.resources&&cached.numbering===model.numbering){this.hits++;return cached.result;}
     const boundaries=paragraphBoundaries(p);assert(boundaries.length<=20001,'limit','Native paragraph shaping budget exceeded');
     const q=projection(model,p,width);
     const host=document.createElement('div');host.className='writer-native-measure';host.style.position='fixed';host.style.left='-100000px';host.style.top='0';host.style.visibility='hidden';host.style.pointerEvents='none';host.style.zIndex='-1';host.style.margin='0';host.append(q.element);document.body.append(host);
@@ -154,7 +154,7 @@ export class BrowserParagraphShaper implements WriterParagraphShaper{
         assert(line.end>=line.start&&line.carets.every(c=>Number.isFinite(c.x)),'invalid','Invalid native caret');
       }
       const result:NativeParagraphShape={lines,warnings:q.warnings,spaceBefore:q.style.spaceBefore??0,spaceAfter:q.style.spaceAfter??0,clusters:boundaries.length-1};
-      this.cache.set(p,{width,defaultParagraphStyleId:model.defaultParagraphStyleId,defaults:model.defaultTextStyle,styles:model.styles,resources:model.resources,result});this.measurements++;return result;
+      this.cache.set(p,{width,defaultParagraphStyleId:model.defaultParagraphStyleId,defaults:model.defaultTextStyle,styles:model.styles,resources:model.resources,numbering:model.numbering,result});this.measurements++;return result;
     }finally{host.remove();}
   }
   render(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>,width:number):HTMLDivElement{

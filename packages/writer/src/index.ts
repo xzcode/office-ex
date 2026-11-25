@@ -43,3 +43,5 @@ export * from './page.js';
 export * from './ranges.js';
 
 export * from './clipboard.js';
+
+export * from './numbering.js';

@@ -460,6 +460,24 @@ try{
   await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));await page.locator('.tab[aria-selected=true] .tab-close').click();
   check('Writer advanced spacing, kerning, hanging indentation and bottom rule controls persist to native DOCX');
 
+  const listPath=join(work,'word-list.docx');await page.locator('#home').click();await page.locator('#new-docx').click();
+  await page.locator('#draft-text').fill('First itemSecond item');
+  await page.locator('#writer-list-type').selectOption('decimal');
+  await page.locator('#draft-text').evaluate(el=>{el.focus();el.setSelectionRange(10,10);el.dispatchEvent(new Event('select'));});
+  await page.locator('#writer-split').click();await page.waitForSelector('#writer-paragraph-1');
+  await page.locator('#writer-paragraph-1').evaluate(el=>{el.focus();el.setSelectionRange(0,0);el.dispatchEvent(new Event('select'));});
+  await page.waitForFunction(()=>document.querySelector('#writer-list-type')?.value==='decimal');
+  const levelBefore=await page.locator('#document-status').textContent();
+  await page.locator('#writer-list-level').focus();await page.locator('#writer-list-level').selectOption({value:'1'});
+  await page.waitForFunction(old=>document.querySelector('#document-status')?.textContent!==old,levelBefore);
+  assert.equal(await page.locator('#writer-list-level').inputValue(),'1');
+  await page.locator('#writer-page-edit').click();
+  await page.waitForSelector('#writer-native-page .writer-list-marker');assert.deepEqual(await page.locator('#writer-native-page .writer-list-marker').allTextContents(),['1.','1.1.']);
+  await dialogSave(listPath);await page.locator('#save').click();
+  await waitFor(async()=>{try{const d=openWriterDocx(await readFile(listPath),'native-list','List').document,p=d.sections[0].blocks;assert.equal(p[0].style.writerList.numId,p[1].style.writerList.numId);assert.equal(p[1].style.writerList.level,1);assert.equal(p[0].runs.map(r=>r.text).join(''),'First item');assert.equal(p[1].runs.map(r=>r.text).join(''),'Second item');return true;}catch{return false;}},'M5 native DOCX list save',30000);
+  await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));
+  await page.locator('.tab[aria-selected=true] .tab-close').click();
+  check('Writer multilevel list controls, paragraph splitting, native marker projection and DOCX save');
   // Native DOC save uses the same isolated verifier and commit capability.
   const legacyPath=join(work,'writer-legacy.doc'),convertedPath=join(work,'writer-converted.docx');
   await page.locator('#home').click();

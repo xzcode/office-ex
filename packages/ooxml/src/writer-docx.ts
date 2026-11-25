@@ -5,13 +5,15 @@
  */
 import type { Element, Document } from '@xmldom/xmldom';
 import { OfficeError, assert, EMU_PER_TWIP } from '@office-ex/contracts';
-import { createDocument, validateDocument, freezeData, isDocumentLanguageTag, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type Inline, type TextStyle, type WriterSection, type NamedStyle, type Table } from '@office-ex/core';
+import { createDocument, validateDocument, buildWriterNumberingMarkers, freezeData, isDocumentLanguageTag, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type Inline, type TextStyle, type WriterSection, type NamedStyle, type Table } from '@office-ex/core';
 import { openOpc, writeOpc, type OpcPackage } from './opc.js';
 import { parseXml } from './xml.js';
 import { writeZip } from './zip.js';
 import type { ContainerOptions } from './limits.js';
 import { loadMedia, planMedia, readInlinePicture, writeInlinePicture, addMediaParts, saveMediaPackage, type MediaGraph, type MediaPlan } from './writer-docx-images.js';
 import { readStyleProfile, type DocxStyleProfile, type ThemeProfile, requireStyleReference } from './writer-docx-styles.js';
+
+import {readNumberingReference,numberingChanged,addNumberingParts} from './writer-docx-numbering.js';
 
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const XML='http://www.w3.org/XML/1998/namespace';
@@ -20,7 +22,7 @@ const ROOT_REL='http://schemas.openxmlformats.org/officeDocument/2006/relationsh
 const MAIN_TYPE='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml';
 const DECL='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const CHAR_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'];
-const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','paragraphDirection','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder'];
+const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','paragraphDirection','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList'];
 const MAX_BLOCKS=10000;
 const MAX_RUNS=50000;
 const MAX_TEXT=4*1024*1024;
@@ -90,6 +92,7 @@ export function readParagraphStyle(el:Element,reference?:(id:string)=>void,secti
   for(const child of elements(el)){
     valid(child.namespaceURI===W&&child.localName!==null&&!seen.has(child.localName),'Duplicate or foreign paragraph property');seen.add(child.localName);
     switch(child.localName){
+      case 'numPr':style.writerList=readNumberingReference(child);break;
       case 'bidi':style.paragraphDirection=toggled(child)?'rtl':'ltr';break;
       case 'keepNext':style.keepNext=toggled(child);break;
       case 'keepLines':style.keepLines=toggled(child);break;
@@ -311,8 +314,8 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
     }
     sections.push({id:'section-'+(sections.length+1),...geometry,blocks});start=end.index+1;
   }
-  const result=createDocument('writer',documentId,title);result.defaultTextStyle=profile?.defaults??{};result.styles=profile?.styles??{};result.resources=media.resources;if(profile?.defaultParagraph)result.defaultParagraphStyleId=profile.defaultParagraph;result.sections=sections;
-  return validateDocument(result) as WriterDocument;
+  const result=createDocument('writer',documentId,title);result.defaultTextStyle=profile?.defaults??{};result.styles=profile?.styles??{};result.resources=media.resources;if(profile?.defaultParagraph)result.defaultParagraphStyleId=profile.defaultParagraph;result.sections=sections;if(profile?.numbering)result.numbering=profile.numbering.numbering;
+  const checked=validateDocument(result) as WriterDocument;buildWriterNumberingMarkers(checked);return checked;
 }
 function escapeXml(value:string):string{
   for(const char of value){const c=char.codePointAt(0)!;valid(c===9||c===10||c===13||c>=32&&c<=0xD7FF||c>=0xE000&&c<=0xFFFD||c>=0x10000&&c<=0x10FFFF,'Illegal XML character');}
@@ -353,6 +356,7 @@ function writeParagraphStyle(style:DeepReadonly<TextStyle>,styleId?:string,secti
   if(style.lineHeight!==undefined){spacing.line=twip(style.lineHeight,1,31680);spacing.lineRule='exact';}
   if(style.lineMultiple!==undefined){spacing.line=style.lineMultiple;spacing.lineRule='auto';}
   if(style.minLineHeight!==undefined){spacing.line=twip(style.minLineHeight,1,31680);spacing.lineRule='atLeast';}
+  if(style.writerList)p+='<w:numPr>'+tag('ilvl',{val:style.writerList.level})+tag('numId',{val:style.writerList.numId})+'</w:numPr>';
   if(style.paragraphBottomBorder!==undefined){
     const b=style.paragraphBottomBorder;
     if(b===null)p+='<w:pBdr>'+tag('bottom',{val:'nil'})+'</w:pBdr>';
@@ -380,7 +384,7 @@ function canonicalData(value:unknown):string{
   return '{'+Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([k,v])=>JSON.stringify(k)+':'+canonicalData(v)).join(',')+'}';
 }
 function mainXml(candidate:unknown,profile:DocxStyleProfile|undefined,media:MediaPlan):{model:WriterDocument;xml:string}{
-  const checked=validateDocument(candidate);valid(checked.kind==='writer','Expected Writer model');
+  const checked=validateDocument(candidate);valid(checked.kind==='writer','Expected Writer model');buildWriterNumberingMarkers(checked);
   valid(checked.sections.length<=128,'Section budget exceeded');
   if(profile){valid(checked.defaultParagraphStyleId===profile.defaultParagraph&&canonicalData(checked.styles)===canonicalData(profile.styles)&&canonicalData(checked.defaultTextStyle)===canonicalData(profile.defaults),'Source style definitions and defaults are immutable');}
   else{valid(!Object.keys(checked.styles).length,'New DOCX named style definitions are not supported');valid(Object.keys(checked.defaultTextStyle).every(k=>CHAR_KEYS.includes(k)),'Unsupported default text style');}
@@ -441,9 +445,9 @@ export function writeWriterDocx(candidate:unknown,options:ContainerOptions={}):U
     ['_rels/.rels',encoder.encode(DECL+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="'+ROOT_REL+'" Target="'+part+'"/></Relationships>')],
     [part,encoder.encode(xml)]
   ]);
-  addMediaParts(parts,part,media,options);const bytes=writeZip(parts,options);
+  addMediaParts(parts,part,media,options);addNumberingParts(parts,part,undefined,model.numbering,options);const bytes=writeZip(parts,options);
   const checked=openWriterDocx(bytes,model.documentId,model.title,options),saved=sources.get(checked)!;
-  valid(saved.canonical===xml&&canonicalData(checked.document.resources)===canonicalData(model.resources),'Semantic output verification failed');
+  valid(canonicalData(checked.document.numbering??null)===canonicalData(model.numbering??null)&&saved.canonical===xml&&canonicalData(checked.document.resources)===canonicalData(model.resources),'Semantic output verification failed');
   return bytes;
 }
 /** No-edit returns original archive bytes. Edited copy changes only the supported main part.
@@ -453,9 +457,12 @@ export function saveWriterDocx(source:WriterDocxSource,candidate:unknown,options
   const saved=sources.get(source);assert(saved,'invalid','Unknown DOCX source capability');
   const model=validateDocument(candidate);valid(model.kind==='writer','Expected Writer model');assert(model.documentId===saved.documentId,'conflict','Document identity mismatch');
   const media=planMedia(model.resources,source.mainPart,saved.pkg,saved.media),{xml}=mainXml(model,saved.profile,media);
-  if(xml===saved.canonical&&!media.additions.length)return writeOpc(saved.pkg,new Map(),options);
-  const bytes=saveMediaPackage(saved.pkg,source.mainPart,xml,media,options);
+  const changed=numberingChanged(saved.profile?.numbering,model.numbering);
+  if(xml===saved.canonical&&!media.additions.length&&!changed)return writeOpc(saved.pkg,new Map(),options);
+  let bytes:Uint8Array;
+  if(changed){writeOpc(saved.pkg,new Map(),options);const parts=new Map(saved.pkg.parts);parts.set(source.mainPart,encoder.encode(xml));addMediaParts(parts,source.mainPart,media,options);addNumberingParts(parts,source.mainPart,saved.profile?.numbering,model.numbering,options);bytes=writeZip(parts,options);}
+  else bytes=saveMediaPackage(saved.pkg,source.mainPart,xml,media,options);
   const checked=openWriterDocx(bytes,model.documentId,model.title,options);
-  valid(sources.get(checked)?.canonical===xml&&canonicalData(checked.document.resources)===canonicalData({...saved.media.resources,...model.resources})&&canonicalData(checked.document.styles)===canonicalData(model.styles)&&canonicalData(checked.document.defaultTextStyle)===canonicalData(saved.profile?.defaults??{}),'Edited DOCX verification failed');
+  valid(canonicalData(checked.document.numbering??null)===canonicalData(model.numbering??null)&&sources.get(checked)?.canonical===xml&&canonicalData(checked.document.resources)===canonicalData({...saved.media.resources,...model.resources})&&canonicalData(checked.document.styles)===canonicalData(model.styles)&&canonicalData(checked.document.defaultTextStyle)===canonicalData(saved.profile?.defaults??{}),'Edited DOCX verification failed');
   return bytes;
 }

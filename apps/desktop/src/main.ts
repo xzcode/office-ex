@@ -40,9 +40,9 @@ let printPdf:PdfPrinter;
 const authority = new FileAuthority();
 const tabs = new Map<string,TabState>();
 const originals = new Map<string,Uint8Array>();
-// Imported PPTX/XLSX IDs are derived from the original scene positions. Keep the
-// immutable, main-owned import baseline for the lifetime of its document
-// session, independently of the latest authorized disk-file bytes.
+// Imported PPTX/XLSX IDs derive from original positions; DOCX numbering
+// and media/style definitions also need an immutable import baseline across
+// edits, saves and undo. Disk identity remains the current authorized bytes.
 const nativeImportBaselines = new Map<string,Uint8Array>();
 const pendingFiles:string[] = [];
 const runningSaves = new Set<string>();
@@ -101,7 +101,7 @@ async function openSelectedNow(path:string,owner:BrowserWindow):Promise<OpenFile
     if(result.duplicate&&authority.get(result.token,owner.id,result.documentId).identity?.sha256!==result.identity.sha256)throw new OfficeError('conflict','The already-open file changed outside Office EX');
     if(!result.duplicate){
       try{reserveCache(reservation,result.bytes.byteLength);}catch(error){authority.revokeDocument(owner.id,result.documentId);throw error;}
-      const retained=result.bytes.slice();originals.set(result.token,retained);if(['.pptx','.xlsx'].includes(extname(result.name).toLowerCase()))nativeImportBaselines.set(result.documentId,retained);
+      const retained=result.bytes.slice();originals.set(result.token,retained);if(['.pptx','.xlsx','.docx'].includes(extname(result.name).toLowerCase()))nativeImportBaselines.set(result.documentId,retained);
     }
     cacheReservations.delete(reservation);
     // Recent-history persistence must not turn a successful file open into a failure.
@@ -184,9 +184,9 @@ async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls'|'pptx'|'ppt',
       }
       const original=token?originals.get(token):undefined;
       if(token&&(!original||!grant?.identity||byteHash(original)!==grant.identity.sha256))throw new OfficeError('conflict','DOCX source snapshot is unavailable or inconsistent');
-      const sourceIdentity=format==='pptx'||format==='xlsx';
+      const sourceIdentity=format==='pptx'||format==='xlsx'||format==='docx';
       const semanticSource=sourceIdentity?nativeImportBaselines.get(request.documentId):original;
-      if(sourceIdentity&&semanticSource&&!original)throw new OfficeError('unsafe','Imported workbook/presentation requires its current source capability');
+      if(sourceIdentity&&semanticSource&&!original)throw new OfficeError('unsafe','Imported Office document requires its current source capability');
       output=await verifyDocx({format,documentId:request.documentId,bytes:request.bytes,...(semanticSource?{sourceBytes:semanticSource}: {})});
       assertOwner();
     }

@@ -1,0 +1,102 @@
+{
+  "timestamp": "2026-11-25T12:34:03.867Z",
+  "browser": "159.0.8154.6",
+  "headless": true,
+  "sandbox": true,
+  "csp": "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self' blob:; img-src 'self' data: blob:; worker-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
+  "checks": [
+    {
+      "name": "Writer paragraph rule and hanging indentation are rendered in shared print projection"
+    },
+    {
+      "name": "Writer list numbering markers share the native print projection"
+    },
+    {
+      "name": "Writer final native layout exports multiple pages",
+      "pages": 4
+    },
+    {
+      "name": "Slides shared scene exports three landscape pages",
+      "pages": 3
+    },
+    {
+      "name": "Unreviewed fonts and Sheets export blocked"
+    },
+    {
+      "name": "PDF selectable Unicode text layer"
+    },
+    {
+      "name": "Full document literal search navigates to later page",
+      "page": 4
+    },
+    {
+      "name": "Page navigation and zoom"
+    },
+    {
+      "name": "Tab detach retains reader and reattaches safely"
+    },
+    {
+      "name": "Password-protected and empty-password encrypted PDFs rejected"
+    },
+    {
+      "name": "Scripts, external annotation actions and attachments have no active UI"
+    },
+    {
+      "name": "Existing PDF safe page print includes all pages"
+    },
+    {
+      "name": "Independent PDF reader verifies page sizes, images, full pagination text and embedded Unicode fonts"
+    }
+  ],
+  "externalRequests": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "writer": {
+    "pages": 4,
+    "pageSizes": [
+      {
+        "width": 793.7007874015748,
+        "height": 1122.5196850393702
+      },
+      {
+        "width": 793.7007874015748,
+        "height": 1122.5196850393702
+      },
+      {
+        "width": 793.7007874015748,
+        "height": 1122.5196850393702
+      },
+      {
+        "width": 793.7007874015748,
+        "height": 1122.5196850393702
+      }
+    ],
+    "warnings": [
+      "writer.native-browser-line-metrics"
+    ]
+  },
+  "slides": {
+    "pages": 3,
+    "pageSizes": [
+      {
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "width": 1280,
+        "height": 720
+      }
+    ],
+    "warnings": []
+  },
+  "artifacts": {
+    "writer.pdf": "4f1c4967ad664666143afb79d9bcbe37efe824e13227dbcda2f86dc7d17eb4e2",
+    "slides.pdf": "fc5e4a4d2805c676b256b6756bcccfc4b0abe7589354bcf1242f089987a42ac1",
+    "slides-print.png": "5c138c38c0d988eecd6d61143fdd1d3b94e4247d20ba486e5a7bd90550a43b08",
+    "pdf-reader.png": "68ef0752bafa28e47fb6c56314551783a4ef0e6458ee0d82d6a50354a1fcb878"
+  }
+}

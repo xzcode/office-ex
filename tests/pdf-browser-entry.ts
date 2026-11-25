@@ -9,9 +9,12 @@ function image() { const c = document.createElement('canvas'); c.width = 60; c.h
 function writer(): WriterDocument {
   const d = createDocument('writer', 'pdf-writer-fixture', 'PDF Writer fixture'); d.defaultTextStyle.fontFamily = 'Noto Sans';
   const asset = image(); d.resources[asset.id] = asset;
+  d.numbering={nextId:2,lists:{'1':{levels:[{format:'decimal',start:3,pattern:'%1.',indent:457200,hanging:457200,alignment:'start'},{format:'decimal',start:1,pattern:'%1.%2.',indent:914400,hanging:685800,alignment:'start'}]}}};
   d.sections[0]!.blocks = [
     { id: 'p-1', type: 'paragraph', style:{indent:228600,rightIndent:127000,firstLineIndent:-127000,paragraphBottomBorder:{color:{kind:'rgba',red:79,green:129,blue:189,alpha:255},width:12700,space:50800}}, runs: [{ id: 'r-1', type: 'text', text: 'Writer PDF — editable text and geometry', style: { fontSize: 304800, bold: true,characterSpacing:3175,kerningThreshold:177800 } }] },
     { id: 'p-2', type: 'paragraph', runs: [{ id: 'r-2', type: 'text', text: 'English 中文 繁體 日本語 한국어 العربية עברית हिन्दी ไทย Tiếng Việt Русский', style: { language: 'zh-CN' } }] },
+    {id:'numbered-1',type:'paragraph',style:{writerList:{numId:1,level:0}},runs:[{id:'numbered-run1',type:'text',text:'Numbered Alpha'}]},
+    {id:'numbered-2',type:'paragraph',style:{writerList:{numId:1,level:1}},runs:[{id:'numbered-run2',type:'text',text:'Numbered Beta'}]},
     { id: 'p-image', type: 'paragraph', runs: [{ id: 'image-1', type: 'image', resourceId: asset.id, width: 1828800, height: 1219200 }] },
     { id: 'break-1', type: 'page-break' },
     { id: 'long', type: 'paragraph', runs: [{ id: 'long-r', type: 'text', text: Array.from({ length: 80 }, (_, i) => `UniqueLine${String(i + 1).padStart(3, '0')} — paragraph shared across pages`).join('\n') }] },

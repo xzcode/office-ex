@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: MIT
+import {assert} from '@office-ex/contracts';
+import {resolveTextStyle} from './resources.js';
+import type {DeepReadonly} from './session.js';
+import type {Paragraph,TextStyle,WriterDocument,WriterBlock,WriterListLevel} from './model.js';
+export type WriterReadDocument=DeepReadonly<WriterDocument>;
+export type WriterReadParagraph=DeepReadonly<Paragraph>;
+export function writerEffectiveStyle(model:WriterReadDocument,p:WriterReadParagraph):DeepReadonly<TextStyle>{
+ const id=p.styleId??model.defaultParagraphStyleId,style=resolveTextStyle(model.defaultTextStyle,model.styles,id?[id]:[],p.style??{}).style,ref=style.writerList;
+ if(!ref?.numId)return style;
+ const level=model.numbering?.lists[String(ref.numId)]?.levels[ref.level];assert(level,'unsupported','Missing list level');
+ // Numbering provides the default indentation; explicit paragraph indentation
+ // wins. Text starts at the body column, not at the marker's hanging origin.
+ return {...style,indent:p.style?.indent??level.indent,firstLineIndent:0};
+}
+export interface WriterNumberingMarker {text:string;level:DeepReadonly<WriterListLevel>;style:DeepReadonly<TextStyle>;indent:number;hanging:number}
+export function buildWriterNumberingMarkers(model:WriterReadDocument):ReadonlyMap<string,WriterNumberingMarker>{
+ const markers=new Map<string,WriterNumberingMarker>(),counters=new Map<number,(number|undefined)[]>();
+ const visit=(blocks:readonly DeepReadonly<WriterBlock>[])=>{
+  for(const p of blocks){
+   if(p.type==='table'){for(const row of p.rows)for(const cell of row.cells)visit(cell.blocks);continue;}
+   if(p.type!=='paragraph')continue;
+   const style=writerEffectiveStyle(model,p),ref=style.writerList;if(!ref?.numId)continue;
+   assert(style.paragraphDirection!=='rtl','unsupported','RTL list marker placement is not in the current profile');
+   const def=model.numbering!.lists[String(ref.numId)]!,level=def.levels[ref.level]!;
+   let values=counters.get(ref.numId);if(!values){values=[];counters.set(ref.numId,values);}
+   values[ref.level]=(values[ref.level]??level.start-1)+1;
+   for(let i=ref.level+1;i<def.levels.length;i++)if(!def.levels[i]!.neverRestart)values[i]=undefined;
+   const text=level.format==='bullet'?level.pattern:level.pattern.replace(/%([1-9])/g,(_,n:string)=>{
+    const i=Number(n)-1;return String(values![i]??def.levels[i]!.start);
+   });
+   const hanging=p.style?.firstLineIndent!==undefined?-p.style.firstLineIndent:level.hanging,indent=style.indent??level.indent;
+   assert(hanging>0&&indent>=hanging,'unsupported','List marker requires an in-bounds hanging indent');
+   markers.set(p.id,{text,level,indent,hanging,style:{...style,characterSpacing:0}});
+  }
+ };
+ for(const section of model.sections)visit(section.blocks);
+ return markers;
+}

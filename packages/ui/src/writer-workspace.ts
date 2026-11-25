@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, EMU_PER_TWIP, graphemeBoundaries, OfficeError } from '@office-ex/contracts';
-import { resolveTextStyle, inlineText, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterBlock, type Paragraph, type Table, type ImageResource } from '@office-ex/core';
-import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation, insertImageAfter, insertImageAt, resizeInlineImage, removeInlineImage, setWriterPage, splitWriterSectionAfter, setParagraphMetrics, setParagraphDirection, locateParagraph, writerTextGroup, textGroupPoint, textGroupOffset, replaceWriterRange, resolveWriterRange, formatWriterRange, type WriterRange, type WriterTextGroup } from '@office-ex/writer';
+import { resolveTextStyle, writerEffectiveStyle, inlineText, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterBlock, type Paragraph, type Table, type ImageResource } from '@office-ex/core';
+import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation, insertImageAfter, insertImageAt, resizeInlineImage, removeInlineImage, setWriterPage, splitWriterSectionAfter, setParagraphMetrics, setWriterList, restartWriterList, setParagraphDirection, locateParagraph, writerTextGroup, textGroupPoint, textGroupOffset, replaceWriterRange, resolveWriterRange, formatWriterRange, type WriterRange, type WriterTextGroup } from '@office-ex/writer';
 import { layoutWriter, hitTestWriterPage, writerCaretBox, writerSelectionBoxes, type WriterLayout } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
@@ -116,6 +116,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
       if(fragment.style.underline){ctx.fillRect(px(fragment.x),px(line.baseline+r.size*0.06),px(fragment.width),Math.max(0.5,px(r.size*0.05)));}
     }
     for(const line of page.lines)if(line.bottomBorder){const b=line.bottomBorder;ctx.fillStyle=safeColor({color:b.rule.color});ctx.fillRect(px(b.x),px(line.y+line.height-b.rule.width),px(b.width),px(b.rule.width));}
+    for(const line of page.lines)if(line.listMarker){const marker=line.listMarker,r=marker.request,family=/^(sans-serif|serif|monospace|system-ui)$/.test(r.family)?r.family:JSON.stringify(r.family);ctx.font=(r.italic?'italic ':'')+(r.bold?'bold ':'')+px(r.size)+'px '+family;ctx.letterSpacing='0px';ctx.fontKerning=r.kerning??'auto';ctx.fillStyle=safeColor(marker.style);ctx.fillText(marker.text,px(marker.x),px(line.baseline));}
     if(state.paragraphId&&state.start===state.end){
       const caret=writerCaretBox(layout,{paragraphId:state.paragraphId,offset:state.end},state.pageIndex);
       if(caret?.pageIndex===state.pageIndex){ctx.fillStyle='#245bca';ctx.fillRect(px(caret.x),px(caret.y),Math.max(1,px(page.width/canvas.width*1.5)),px(caret.height));}
@@ -197,6 +198,12 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     const border=root.querySelector<HTMLButtonElement>('#writer-table-border');if(border)border.setAttribute('aria-pressed',String(!!tableContext?.table.border));
     for(const field of formatFields)field.element.disabled=!selection||host.composing()||field.range&&selection.start===selection.end||!!host.legacyWriter&&field.element.dataset.modernOnly==='true';
     const style=effectiveSelectedStyle(),p=selectedParagraph();
+    const listType=root.querySelector<HTMLSelectElement>('#writer-list-type'),listLevel=root.querySelector<HTMLSelectElement>('#writer-list-level'),restart=root.querySelector<HTMLButtonElement>('#writer-list-restart');
+    const model=modelOf(host.snapshot()),ref=p?writerEffectiveStyle(model,p).writerList:undefined,level=ref?.numId?model.numbering?.lists[String(ref.numId)]?.levels[ref.level]:undefined;
+    if(listType&&document.activeElement!==listType)listType.value=level?.format??'none';
+    if(listLevel&&document.activeElement!==listLevel)listLevel.value=String(ref?.level??0);
+    if(restart)restart.disabled=!!host.legacyWriter||!selection||host.composing()||level?.format!=='decimal';
+
     for(const field of metricFields){field.disabled=!selection||host.composing()||!!host.legacyWriter&&field.dataset.modernOnly==='true';const key=field.dataset.metric as 'indent'|'rightIndent'|'firstLineIndent'|'spaceBefore'|'spaceAfter'|'lineHeight';if(document.activeElement!==field)field.value=String((style?.[key]??0)/EMU_PER_POINT);}
     // The first selected run supplies the displayed value; mixed selections are
     // not represented as uniform. A field change applies only that one property.
@@ -395,6 +402,24 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     applyParagraphMetrics({paragraphBottomBorder:{width:Math.round(width*EMU_PER_POINT),space:space*EMU_PER_POINT,color:{kind:'rgba',red:parseInt(c.slice(1,3),16),green:parseInt(c.slice(3,5),16),blue:parseInt(c.slice(5,7),16),alpha:255}}});
   });
   rule.onchange=applyRule;ruleColor.onchange=ruleWidth.onchange=ruleSpace.onchange=()=>{if(rule.checked)applyRule();};
+  const listType=field('slideParagraphList',node('select'),false);listType.id='writer-list-type';listType.dataset.modernOnly='true';
+  for(const [value,label]of [['none','slideListNone'],['bullet','slideListBullets'],['decimal','slideListNumbers']] as const){const option=node('option',t(label));option.value=value;listType.append(option);}
+  const listLevel=field('slideListLevel',node('select'),false);listLevel.id='writer-list-level';listLevel.dataset.modernOnly='true';
+  for(let i=0;i<9;i++){const option=node('option',host.number(i+1));option.value=String(i);listLevel.append(option);}
+  const currentList=()=>{
+    const sel=currentSelection();if(!sel)return undefined;
+    const snapshot=host.snapshot(),model=modelOf(snapshot),paragraph=locateParagraph(snapshot,sel.id).paragraph,ref=writerEffectiveStyle(model,paragraph).writerList;
+    return {sel,snapshot,ref,kind:ref?.numId?model.numbering?.lists[String(ref.numId)]?.levels[ref.level]?.format??'none':'none'} as const;
+  };
+  function applyList(kind:'none'|'bullet'|'decimal',level:number):void{
+    const current=currentList();if(!current||host.legacyWriter||host.composing())return;
+    const {sel,snapshot}=current;
+    if(host.execute(setWriterList(snapshot,sel.id,kind,level))){syncControls();scheduleLayout();}
+  }
+  listType.onchange=()=>safe(()=>{const kind=listType.value as 'none'|'bullet'|'decimal',level=currentList()?.ref?.level??0;applyList(kind,level);});
+  listLevel.onchange=()=>safe(()=>{const level=Number(listLevel.value),kind=currentList()?.kind??'none';if(kind!=='none')applyList(kind,level);});
+  const start=advancedField('writerListStart','writer-list-start','number');start.min='1';start.max='32767';start.step='1';start.value='1';
+  const restart=button(t('writerListRestart'),()=>safe(()=>{const sel=currentSelection();if(sel&&!host.legacyWriter&&host.execute(restartWriterList(host.snapshot(),sel.id,start.valueAsNumber))){select(sel.id,sel.start,sel.end,true);scheduleLayout();}}),'writer-list-restart');metricsBar.append(restart);
   root.insertBefore(metricsBar,note);
   function join(id:string,direction:'previous'|'next'):void{
     const d=modelOf(host.snapshot());

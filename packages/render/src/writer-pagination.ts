@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 import {assert} from '@office-ex/contracts';
-import {freezeData,paragraphBoundaries,type DocumentSnapshot,type DeepReadonly,type WriterDocument,type WriterSection} from '@office-ex/core';
+import {freezeData,paragraphBoundaries,buildWriterNumberingMarkers,type DocumentSnapshot,type DeepReadonly,type WriterDocument,type WriterSection} from '@office-ex/core';
 import type {FontMetrics} from './index.js';
 import {layoutWriter,type WriterLayout,type WriterLayoutOptions,type WriterPage} from './writer-layout.js';
 
@@ -13,6 +13,8 @@ interface Entry {
   defaults:DeepReadonly<WriterDocument['defaultTextStyle']>;
   styles:DeepReadonly<WriterDocument['styles']>;
   resources:DeepReadonly<WriterDocument['resources']>;
+  numbering:DeepReadonly<WriterDocument['numbering']>;
+  markerSignature:string;
   layout:DeepReadonly<WriterLayout>;
   clusters:number;
   blocks:number;
@@ -38,24 +40,25 @@ export class WriterPaginationEngine {
     assert(Number.isSafeInteger(maxPages)&&maxPages>0&&maxPages<=500&&Number.isSafeInteger(maxClusters)&&maxClusters>0&&maxClusters<=100000,'invalid','Invalid layout budget');
     const signature=JSON.stringify([provider.environmentId,options.paragraphShaper?.environmentId,maxPages,maxClusters,snapshot.document.documentId,model.defaultParagraphStyleId]);
     if(signature!==this.signature){this.entries.clear();this.signature=signature;}
+    const numberingMarkers=buildWriterNumberingMarkers(model),markerSignature=JSON.stringify([...numberingMarkers].map(([id,marker])=>[id,marker.text]));
     const next=new Map<string,Entry>(),pages:DeepReadonly<WriterPage>[]=[];const warnings=new Set<string>();
     let clusters=0,blocks=0;this.stats={sectionsComputed:0,sectionsReused:0,pagesReused:0};
     for(const section of model.sections){
       options.cancellation?.throwIfCancelled();
       const old=this.entries.get(section.id);
       let entry:Entry;
-      if(old&&old.source===section&&old.defaults===model.defaultTextStyle&&old.styles===model.styles&&old.resources===model.resources){
+      if(old&&old.source===section&&old.defaults===model.defaultTextStyle&&old.styles===model.styles&&old.resources===model.resources&&old.numbering===model.numbering&&old.markerSignature===markerSignature){
         entry=old;this.stats.sectionsReused++;this.stats.pagesReused+=old.layout.pages.length;
       }else{
         const counts=cost(section);assert(clusters+counts.clusters<=maxClusters&&blocks+counts.blocks<=10000,'limit','Writer layout budget exceeded');
         assert(pages.length<maxPages,'limit','Writer page budget exceeded');
-        const computed=layoutWriter({...snapshot,document:{...model,sections:[section]}},provider,{...options,maxPages:Math.max(1,maxPages-pages.length),maxClusters:Math.max(1,maxClusters-clusters)});
+        const computed=layoutWriter({...snapshot,document:{...model,sections:[section]}},provider,{...options,maxPages:Math.max(1,maxPages-pages.length),maxClusters:Math.max(1,maxClusters-clusters),numberingMarkers});
         const retained=computed.pages.map((p,i)=>{
           const prior=old?.layout.pages[i];
           // A page is reusable only when every geometry/semantic field agrees.
           if(prior&&JSON.stringify(prior)===JSON.stringify(p)){this.stats.pagesReused++;return prior;}return p;
         });
-        entry={source:section,defaults:model.defaultTextStyle,styles:model.styles,resources:model.resources,...counts,layout:freezeData({...computed,pages:retained})};
+        entry={source:section,defaults:model.defaultTextStyle,styles:model.styles,resources:model.resources,numbering:model.numbering,markerSignature,...counts,layout:freezeData({...computed,pages:retained})};
         this.stats.sectionsComputed++;
       }
       clusters+=entry.clusters;blocks+=entry.blocks;

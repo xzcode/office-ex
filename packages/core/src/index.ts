@@ -11,3 +11,5 @@ export * from './slide-theme.js';
 export * from './slide-paragraphs.js';
 
 export * from './slide-graphics.js';
+
+export * from './writer-numbering.js';

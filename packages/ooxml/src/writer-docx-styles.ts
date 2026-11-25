@@ -10,6 +10,7 @@ import type {OpcPackage,OpcRelationship} from './opc.js';
 import {parseXml} from './xml.js';
 import {verifySettings,verifyAuxiliaryXml} from './writer-docx-auxiliary.js';
 import type {ContainerOptions} from './limits.js';
+import {readNumbering,supportsNumberingReference,type NumberingSource} from './writer-docx-numbering.js';
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const A='http://schemas.openxmlformats.org/drawingml/2006/main';
 const NS='http://www.w3.org/2000/xmlns/';
@@ -25,6 +26,7 @@ export interface DocxStyleProfile{
   defaults:TextStyle;
   defaultParagraph?:string;
   tableDefaultsSafe:boolean;
+  numbering?:NumberingSource;
 }
 type RunReader=(el:Element,reference?:((id:string)=>void),theme?:ThemeProfile,named?:boolean,toggles?:('bold'|'italic')[])=>TextStyle;
 type ParagraphReader=(el:Element,reference?:((id:string)=>void),sectionEnd?:Element,theme?:ThemeProfile)=>TextStyle;
@@ -95,7 +97,7 @@ export function requireStyleReference(profile:DocxStyleProfile|undefined,id:stri
   allowed(profile&&stableId(id)&&Object.hasOwn(profile.styles,id)&&profile.styles[id]?.kind===kind,'Missing or unsupported '+kind+' style '+id);
   return id;
 }
-function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,readParagraph:ParagraphReader,theme?:ThemeProfile):DocxStyleProfile{
+function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,readParagraph:ParagraphReader,theme?:ThemeProfile,numbering?:NumberingSource):DocxStyleProfile{
   const root=parseXml(bytes,options).documentElement!;
   allowed(name(root,W,'styles'),'Expected Word styles root');attrs(root,W,[]);
   const defaults:TextStyle={},styles:Record<string,NamedStyle>=Object.create(null) as Record<string,NamedStyle>;
@@ -153,6 +155,7 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,
       }
       allowed(label.length>0&&label.length<=512,'Style name limit');
       if(basedOn)allowed(stableId(basedOn),'Unsupported ancestor identifier');
+      allowed(supportsNumberingReference(properties.writerList,numbering?.numbering),'Unsupported named numbering');
       raw.set(id,{id,name:label,kind:entry.kind,...(basedOn?{basedOn}:{}),...(toggles.length?{toggles}:{}),properties});
     }catch(error){if(!(error instanceof OfficeError)||error.code!=='unsupported')throw error;}
   }
@@ -170,6 +173,7 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,
   if(defaultCharacter){
     const style=styles[defaultCharacter];allowed(style&&!style.basedOn&&!style.toggles?.length&&!Object.keys(style.properties).length,'Default character style must be empty');
   }
+  allowed(supportsNumberingReference(defaults.writerList,numbering?.numbering),'Unsupported default numbering');
   return {styles,defaults,...(defaultParagraph?{defaultParagraph}:{}),tableDefaultsSafe:![...entries.values()].some(e=>e.kind==='table'&&e.isDefault)};
 }
 function relationPath(main:string):string{
@@ -184,7 +188,7 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
   allowed(!pkg.hasMacros&&!pkg.hasSignatures&&!pkg.externalRelationships,'Protected or linked document');
   const main=pkg.mainPart,expected=new Set<string>(['[Content_Types].xml','_rels/.rels',main]);
   const root=pkg.relationships.get('')??[];
-  let mainCount=0,stylePath:string|undefined,themePath:string|undefined,hasMetadata=false,settingsPath:string|undefined;
+  let mainCount=0,stylePath:string|undefined,themePath:string|undefined,hasMetadata=false,settingsPath:string|undefined,numberingPath:string|undefined;
   const customParts:string[]=[];const extraSources=new Set<string>();
   const typesSeen=new Set<string>();
   function admit(rel:OpcRelationship,type:string):string{
@@ -212,7 +216,7 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
       else if(rel.type===R+'settings'){allowed(!settingsPath,'Duplicate settings');settingsPath=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml');verifySettings(pkg.parts.get(settingsPath)!,options);hasMetadata=true;}
       else if(rel.type===R+'webSettings'){const path=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.webSettings+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'webSettings');hasMetadata=true;}
       else if(rel.type===R+'fontTable'){const path=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'fonts');hasMetadata=true;}
-      else if(rel.type===R+'numbering'){const path=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'numbering');hasMetadata=true;}
+      else if(rel.type===R+'numbering'){allowed(!numberingPath,'Duplicate numbering');numberingPath=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml');hasMetadata=true;}
       else if(rel.type==='http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects'){const path=admit(rel,'application/vnd.ms-word.stylesWithEffects+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'styles');hasMetadata=true;}
       else if(rel.type===R+'customXml'){const type=rel.targetPart?pkg.contentTypes.get(rel.targetPart):undefined;allowed(type==='application/xml'||type==='text/xml','Unsupported custom XML type');const path=admit(rel,type);verifyAuxiliaryXml(pkg.parts.get(path)!,options);customParts.push(path);hasMetadata=true;}
       else if(rel.type===R+'image'){const type=rel.targetPart?pkg.contentTypes.get(rel.targetPart):undefined;allowed(type==='image/png'||type==='image/jpeg','Unsupported image type');admit(rel,type);}
@@ -229,6 +233,8 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
   allowed(pkg.parts.size===expected.size&&[...pkg.parts.keys()].every(k=>expected.has(k)),'Additional package parts require a later adapter');
   if(!stylePath&&!themePath&&!hasMetadata)return {part:main};
   const theme=themePath?readTheme(pkg.parts.get(themePath)!,options):undefined;
-  const profile=stylePath?readStyles(pkg.parts.get(stylePath)!,options,readRun,readParagraph,theme):{styles:{},defaults:{},tableDefaultsSafe:true};
+  const numbering=numberingPath?readNumbering(numberingPath,pkg.parts.get(numberingPath)!,options):undefined;
+  const profile:DocxStyleProfile=stylePath?readStyles(pkg.parts.get(stylePath)!,options,readRun,readParagraph,theme,numbering):{styles:{},defaults:{},tableDefaultsSafe:true};
+  if(numbering)profile.numbering=numbering;
   return {part:main,profile};
 }

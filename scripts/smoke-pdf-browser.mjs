@@ -62,6 +62,7 @@ try {
   const ruleBox=await rule.evaluate(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,color:getComputedStyle(el).backgroundColor}));
   assert.ok(ruleBox.width>100&&ruleBox.height>0);assert.equal(ruleBox.color,'rgb(79, 129, 189)');
   checks.push({name:'Writer paragraph rule and hanging indentation are rendered in shared print projection'});
+  assert.deepEqual(await page.locator('.writer-list-marker').allTextContents(),['3.','3.1.']);checks.push({name:'Writer list numbering markers share the native print projection'});
   const writerBytes = await exportPdf(join(output, 'writer.pdf'));
   assert(writer.pages >= 3); checks.push({ name: 'Writer final native layout exports multiple pages', pages: writer.pages });
   const slides = await page.evaluate(() => window.pdfSmoke.output('slides'));

@@ -10,7 +10,7 @@ import {locateParagraph,resolveWriterRange,replaceWriterRange,replaceParagraphRa
 import {WriterPaginationEngine,hitTestWriterPage,writerCaretBox,writerSelectionBoxes,type WriterLayout,type WriterLine} from '@office-ex/render';
 import {CanvasFontMetrics} from './font-metrics.js';
 import {BrowserParagraphShaper} from './native-writer-shaper.js';
-import {writerParagraphRule} from './writer-paragraph-decoration.js';
+import {writerParagraphRule,writerListMarker} from './writer-paragraph-decoration.js';
 import type {WriterHost,WriterViewState} from './writer-workspace.js';
 
 const PX=EMU_PER_CSS_PIXEL,css=(n:number)=>n/PX+'px';
@@ -132,7 +132,7 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState):HTMLElem
         clip.style.overflow='hidden';const projection=cache.shaper.render(model,p,native.paragraphWidth);projection.style.position='absolute';projection.style.top=css(-native.sourceTop);projection.style.left='0';clip.append(projection);content.push(clip);i=j;
       }
     }
-    for(const line of page.lines){const rule=writerParagraphRule(line);if(rule)content.push(rule);}
+    for(const line of page.lines){const rule=writerParagraphRule(line);if(rule)content.push(rule);const marker=writerListMarker(line);if(marker)content.push(marker);}
     paper.replaceChildren(...content,overlays,input);
     pageNumber.textContent=t('writerPageNumber',{current:host.number(state.pageIndex+1),total:host.number(layout.pages.length)});
     previous.disabled=state.pageIndex===0;next.disabled=state.pageIndex===layout.pages.length-1;

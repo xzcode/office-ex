@@ -4,7 +4,7 @@
  * Document coordinates are EMU. No derived geometry is persisted in the source model.
  */
 import { assert, graphemeBoundaries, type Cancellation } from '@office-ex/contracts';
-import { resolveTextStyle, freezeData, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterParagraphRule, type WriterSection, type Paragraph, type WriterDocument, type Table, type Inline } from '@office-ex/core';
+import { resolveTextStyle, writerEffectiveStyle, buildWriterNumberingMarkers, type WriterNumberingMarker, freezeData, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterParagraphRule, type WriterSection, type Paragraph, type WriterDocument, type Table, type Inline } from '@office-ex/core';
 import { measureText, type FontMetrics, type FontRequest, type Point } from './index.js';
 
 export interface WriterPosition {paragraphId:string;offset:number}
@@ -13,7 +13,8 @@ export interface WriterFragment {text:string;x:number;width:number;request:FontR
 export interface WriterVisualCluster {start:number;end:number;x:number;width:number}
 export interface WriterNativeSlice {originX:number;boxWidth:number;sourceTop:number;paragraphWidth:number}
 export interface WriterParagraphDecoration {x:number;width:number;rule:DeepReadonly<WriterParagraphRule>}
-export interface WriterLine {paragraphId:string;start:number;end:number;x:number;y:number;width:number;height:number;baseline:number;carets:WriterCaret[];fragments:WriterFragment[];images:WriterImageBox[];visualClusters?:WriterVisualCluster[];native?:WriterNativeSlice;contentHeight?:number;bottomBorder?:WriterParagraphDecoration}
+export interface WriterListMarkerBox {text:string;x:number;width:number;style:DeepReadonly<TextStyle>;request:FontRequest}
+export interface WriterLine {paragraphId:string;start:number;end:number;x:number;y:number;width:number;height:number;baseline:number;carets:WriterCaret[];fragments:WriterFragment[];images:WriterImageBox[];visualClusters?:WriterVisualCluster[];native?:WriterNativeSlice;contentHeight?:number;bottomBorder?:WriterParagraphDecoration;listMarker?:WriterListMarkerBox}
 export interface WriterTableCellBox {tableId:string;rowId:string;cellId:string;paragraphIds:string[];x:number;y:number;width:number;height:number;border?:DeepReadonly<NonNullable<Table['border']>>}
 export interface WriterImageBox {paragraphId:string;imageId:string;resourceId:string;x:number;y:number;width:number;height:number}
 export interface WriterPage {sectionId:string;width:number;height:number;margins:DeepReadonly<WriterSection['page']['margins']>;lines:WriterLine[];tableCells:WriterTableCellBox[];images:WriterImageBox[]}
@@ -23,7 +24,7 @@ export interface WriterLayout {revision:number;contentId:string;environmentId:st
  * projection clipped to the page's line ranges. */
 export interface NativeParagraphShape {lines:readonly WriterLine[];warnings:readonly string[];spaceBefore:number;spaceAfter:number;clusters:number}
 export interface WriterParagraphShaper {readonly environmentId:string;shape(model:DeepReadonly<WriterDocument>,paragraph:DeepReadonly<Paragraph>,width:number):NativeParagraphShape}
-export interface WriterLayoutOptions {maxPages?:number;maxClusters?:number;cancellation?:Cancellation;paragraphShaper?:WriterParagraphShaper}
+export interface WriterLayoutOptions {maxPages?:number;maxClusters?:number;cancellation?:Cancellation;paragraphShaper?:WriterParagraphShaper;numberingMarkers?:ReadonlyMap<string,WriterNumberingMarker>}
 type ImageRun=DeepReadonly<Extract<Inline,{type:'image'}>>;
 type Glyph={start:number;end:number;text:string;advance:number;ascent:number;descent:number;style:DeepReadonly<TextStyle>;request:FontRequest;kind:'text'|'tab'|'break'|'image';image?:ImageRun};
 const COMPLEX=/[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Devanagari}\p{Script=Bengali}\p{Script=Gujarati}\p{Script=Gurmukhi}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Kannada}\p{Script=Malayalam}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\u202a-\u202e\u2066-\u2069]/u;
@@ -48,7 +49,7 @@ function glyphsFor(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>,
   const paragraphStyle=p.styleId??model.defaultParagraphStyleId;
   const para=resolveTextStyle(model.defaultTextStyle,model.styles,paragraphStyle?[paragraphStyle]:[],p.style??{});
   for(const d of para.diagnostics)warnings.add(d.code);
-  const style=para.style;assert(style.paragraphDirection!=='rtl','unsupported','RTL paragraph needs a bidi layout adapter');const pieces:{text:string;style:DeepReadonly<TextStyle>;image?:ImageRun}[]=[];
+  const style=writerEffectiveStyle(model,p);assert(style.paragraphDirection!=='rtl','unsupported','RTL paragraph needs a bidi layout adapter');const pieces:{text:string;style:DeepReadonly<TextStyle>;image?:ImageRun}[]=[];
   for(const run of p.runs){
     check();
     if(run.type==='image'){
@@ -113,7 +114,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
   assert(snapshot.document.kind==='writer','invalid','Expected Writer snapshot');
   const model=snapshot.document;
   const maxPages=budget(options.maxPages,100,500),maxClusters=budget(options.maxClusters,30000,100000);
-  const warnings=new Set<string>(),pages:WriterPage[]=[];let clusterCount=0,blocks=0;
+  const warnings=new Set<string>(),pages:WriterPage[]=[];let clusterCount=0,blocks=0;const numberingMarkers=options.numberingMarkers??buildWriterNumberingMarkers(model);
   const check=()=>options.cancellation?.throwIfCancelled();
   const charge=(n:number)=>{clusterCount+=n;assert(clusterCount<=maxClusters,'limit','Writer layout cluster budget exceeded');};
   for(const section of model.sections){
@@ -129,7 +130,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
     const styleCache=new WeakMap<DeepReadonly<Paragraph>,DeepReadonly<TextStyle>>();
     const effective=(p:DeepReadonly<Paragraph>)=>{
       let style=styleCache.get(p);
-      if(!style){const id=p.styleId??model.defaultParagraphStyleId;style=resolveTextStyle(model.defaultTextStyle,model.styles,id?[id]:[],p.style??{}).style;styleCache.set(p,style);}
+      if(!style){const id=p.styleId??model.defaultParagraphStyleId;style=writerEffectiveStyle(model,p);styleCache.set(p,style);}
       return style;
     };
     const layParagraph=(block:DeepReadonly<Paragraph>,originX:number,boxWidth:number,addSpace:(n:number)=>void,place:(line:WriterLine)=>void,previous?:ReadBlock,next?:ReadBlock):void=>{
@@ -141,8 +142,22 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
       const border=paraStyle.paragraphBottomBorder;
       const following=next?.type==='paragraph'?effective(next):undefined;
       const continues=border&&following?.paragraphBottomBorder&&JSON.stringify(border)===JSON.stringify(following.paragraphBottomBorder)&&(paraStyle.indent??0)===(following.indent??0)&&(paraStyle.rightIndent??0)===(following.rightIndent??0);
-      let pending:WriterLine|undefined;
-      const emitLine=(line:WriterLine)=>{if(pending)place(pending);pending=line;};
+      let pending:WriterLine|undefined,firstOutput=true;
+      const emitLine=(line:WriterLine)=>{
+        if(firstOutput){firstOutput=false;const marker=numberingMarkers.get(block.id);
+          if(marker){
+            const measured=measureText(provider,marker.text,marker.style,paraStyle.paragraphDirection??'ltr'),advance=Math.ceil(measured.metrics.advance);
+            const hanging=Math.min(marker.indent,Math.max(marker.hanging,advance+12700));if(hanging>marker.hanging)warnings.add('writer.list-marker-width-expanded');
+            assert(advance<=hanging,'unsupported','List marker exceeds available leading margin');
+            const left=paraStyle.paragraphDirection==='rtl'?originX+boxWidth-(paraStyle.rightIndent??0):originX+marker.indent-hanging;
+            // For the bounded profile, RTL numbered paragraphs remain protected.
+            assert(paraStyle.paragraphDirection!=='rtl','unsupported','RTL list marker placement is not in the current profile');
+            const shift=marker.level.alignment==='end'?hanging-advance:marker.level.alignment==='center'?Math.round((hanging-advance)/2):0;
+            line={...line,listMarker:{text:marker.text,x:left+shift,width:advance,style:marker.style,request:{...measured.request,family:measured.metrics.actualFamily}}};
+          }
+        }
+        if(pending)place(pending);pending=line;
+      };
       const finish=()=>{
         if(pending){
           if(border&&!continues){
