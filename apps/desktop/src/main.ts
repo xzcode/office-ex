@@ -40,12 +40,16 @@ let printPdf:PdfPrinter;
 const authority = new FileAuthority();
 const tabs = new Map<string,TabState>();
 const originals = new Map<string,Uint8Array>();
+// Imported PPTX IDs are derived from the original scene positions. Keep the
+// immutable, main-owned import baseline for the lifetime of its document
+// session, independently of the latest authorized disk-file bytes.
+const pptxImportBaselines = new Map<string,Uint8Array>();
 const pendingFiles:string[] = [];
 const runningSaves = new Set<string>();
 const MAX_ORIGINAL_CACHE_BYTES = 256 * 1024 * 1024;
 const cacheReservations=new Map<string,number>();
 function reserveCache(key:string,growth:number):void{
-  const cached=[...originals.values()].reduce((sum,bytes)=>sum+bytes.byteLength,0);
+  const cached=[...new Set([...originals.values(),...pptxImportBaselines.values()])].reduce((sum,bytes)=>sum+bytes.byteLength,0);
   const reserved=[...cacheReservations.entries()].reduce((sum,[id,size])=>sum+(id===key?0:size),0);
   if(cached+reserved+growth>MAX_ORIGINAL_CACHE_BYTES)throw new OfficeError('limit','Open file cache exceeds the 256 MiB budget');
   cacheReservations.set(key,growth);
@@ -97,7 +101,7 @@ async function openSelectedNow(path:string,owner:BrowserWindow):Promise<OpenFile
     if(result.duplicate&&authority.get(result.token,owner.id,result.documentId).identity?.sha256!==result.identity.sha256)throw new OfficeError('conflict','The already-open file changed outside Office EX');
     if(!result.duplicate){
       try{reserveCache(reservation,result.bytes.byteLength);}catch(error){authority.revokeDocument(owner.id,result.documentId);throw error;}
-      originals.set(result.token,result.bytes.slice());
+      const retained=result.bytes.slice();originals.set(result.token,retained);if(extname(result.name).toLowerCase()==='.pptx')pptxImportBaselines.set(result.documentId,retained);
     }
     cacheReservations.delete(reservation);
     // Recent-history persistence must not turn a successful file open into a failure.
@@ -180,7 +184,9 @@ async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls'|'pptx'|'ppt',
       }
       const original=token?originals.get(token):undefined;
       if(token&&(!original||!grant?.identity||byteHash(original)!==grant.identity.sha256))throw new OfficeError('conflict','DOCX source snapshot is unavailable or inconsistent');
-      output=await verifyDocx({format,documentId:request.documentId,bytes:request.bytes,...(original?{sourceBytes:original}: {})});
+      const semanticSource=format==='pptx'?pptxImportBaselines.get(request.documentId):original;
+      if(format==='pptx'&&semanticSource&&!original)throw new OfficeError('unsafe','Imported presentation requires its current source capability');
+      output=await verifyDocx({format,documentId:request.documentId,bytes:request.bytes,...(semanticSource?{sourceBytes:semanticSource}: {})});
       assertOwner();
     }
     if(!token||request.saveAs){
@@ -200,7 +206,7 @@ async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls'|'pptx'|'ppt',
       createdTarget=token;
     }
     assertOwner();
-    const expected=byteHash(output),previousBytes=originals.get(request.sourceToken??token)?.byteLength??0;
+    const expected=byteHash(output),previous=originals.get(request.sourceToken??token),retainedByTemplate=previous&&[...pptxImportBaselines.values()].includes(previous),previousBytes=previous&&!retainedByTemplate?previous.byteLength:0;
     reserveCache(reservation,Math.max(0,output.byteLength-previousBytes));
     const result=await authority.commit(token,owner.id,request.documentId,output,{
       backup:async(previous,identity)=>{await backups.put(request.documentId,'backup:'+identity.sha256,request.revision,previous);},
@@ -323,7 +329,7 @@ function installIpc():void {
     const release=parseRelease(candidate,discard);candidate=release.documentId;discard=release.discard;id(candidate);
     if(runningSaves.has(candidate))throw new OfficeError('conflict','Save is running');
     if(discard)await recovery.clearSaved(candidate,Number.MAX_SAFE_INTEGER);
-    authority.revokeDocument(window!.id,candidate);tabs.delete(candidate);
+    authority.revokeDocument(window!.id,candidate);tabs.delete(candidate);pptxImportBaselines.delete(candidate);
     // Released source tokens can no longer be looked up; remove any orphaned original payload.
     for(const token of originals.keys()){try{authority.get(token,window!.id,candidate);}catch{let live=false;for(const doc of tabs.keys()){try{authority.get(token,window!.id,doc);live=true;break;}catch{/* different session */}}if(!live)originals.delete(token);}}
   });
@@ -380,7 +386,7 @@ if(ownsProfile)app.whenReady().then(async()=>{
     window.webContents.on('will-attach-webview',event=>event.preventDefault());
     window.on('close',event=>{if(!allowClose){event.preventDefault();send('close-window');}});
     const currentId=window.id;
-    window.on('closed',()=>{authority.revokeWindow(currentId);tabs.clear();originals.clear();rendererReady=false;window=null;});
+    window.on('closed',()=>{authority.revokeWindow(currentId);tabs.clear();originals.clear();pptxImportBaselines.clear();rendererReady=false;window=null;});
     window.once('ready-to-show',()=>window?.show());
     await window.loadURL(`${ORIGIN}/index.html`);
     // OS-open events queue until the renderer has installed its listener.

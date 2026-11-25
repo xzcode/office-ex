@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDocument,resolveSlideThemeColor,type SlidesDocument,type Shape} from '@office-ex/core';
+import {createDocument,resolveSlideThemeColor,DEFAULT_SLIDE_THEME_COLORS,type SlidesDocument,type Shape} from '@office-ex/core';
 import {OfficeError} from '@office-ex/contracts';
 import {openOpc,writeZip,openSlidesPptx,writeSlidesPptx,saveSlidesPptx} from '@office-ex/ooxml';
 import {openLegacyPpt,writeLegacyPpt,saveLegacyPpt,prepareSlidesSave,serializeDraft,inspectForEditor} from '@office-ex/format-service';
@@ -137,4 +137,16 @@ test('PPTX resolves solid master/layout backgrounds and keeps each slide layout 
  const output=saveSlidesPptx(input,opened.document),saved=openOpc(output),reopened=openSlidesPptx(output,'multi-layout');assert.deepEqual(reopened.native.slideLayoutPaths,[blank,second,blank,blank]);assert.deepEqual(reopened.native.slideInheritedBackgrounds,[false,true,true,false]);assert.equal(reopened.document.slides[1]!.shapes[0]!.geometry.x,opened.document.slides[1]!.shapes[0]!.geometry.x);assert.deepEqual(reopened.document.slides.map(s=>s.background),opened.document.slides.map(s=>s.background));
  for(const path of [master,masterRels,blank,blankRels,second,inactive,'ppt/slideLayouts/_rels/slideLayout2.xml.rels','ppt/slideLayouts/_rels/slideLayout3.xml.rels'])assert.deepEqual(saved.parts.get(path),parts.get(path),path);
  const protectedParts=new Map(parts);protectedParts.set(slide2Rels,encode(decode(parts.get(slide2Rels)!).replace('slideLayout2.xml','slideLayout3.xml')));const protectedBytes=writeZip(protectedParts);assert.throws(()=>openSlidesPptx(protectedBytes,'protected-layout'),fail());assert.equal((await inspectForEditor(protectedBytes,'protected.pptx','protected-layout')).report.readOnly,true);
+});
+
+
+test('PPT and PPTX preserve soft line breaks and 150% paragraph spacing without turning them into paragraphs',()=>{
+ const d=createDocument('slides','soft-break-spacing');d.slides[0]!.shapes=[{id:'text',type:'text',geometry:{x:0,y:0,width:9144000,height:1828800,rotation:0},runs:[{id:'r1',type:'text',text:'First\u2028Second\nThird',style:{fontSize:254000,lineMultiple:360}}]}];
+ for(const[,write,open]of formats){const model=open(write(d),d.documentId).document;const shape=model.slides[0]!.shapes[0]!;assert.equal(shape.type,'text');if(shape.type==='text'){assert.equal(shape.runs.map(r=>r.text).join(''),'First\u2028Second\nThird');assert.ok(shape.runs.every(r=>r.style?.lineMultiple===360));}}
+});
+
+test('DrawingML theme tint/shade and script fonts remain source-semantic across PPTX round trips',()=>{
+ const d=createDocument('slides','theme-maps');d.theme={name:'External theme',colors:{...DEFAULT_SLIDE_THEME_COLORS,accent1:{kind:'rgba',red:0,green:255,blue:0,alpha:255}},majorFont:'Calibri',minorFont:'Arial',majorFontDetails:{scripts:{Hans:'Songti SC',Arab:'Times New Roman'}},minorFontDetails:{scripts:{Hant:'MingLiU'}}};
+ d.slides[0]!.shapes=[{id:'text',type:'text',geometry:{x:0,y:0,width:9144000,height:1828800,rotation:0},fill:{kind:'theme',name:'accent1',tint:.5,tintSpace:'linear'},runs:[{id:'r1',type:'text',text:'中文',style:{fontFamily:'+mj-lt',fontEastAsia:'+mj-ea',fontComplex:'+mj-cs',fontSize:254000,language:'zh-CN'}}]}];
+ const after=openSlidesPptx(writeSlidesPptx(d),d.documentId).document;assert.deepEqual(after.theme?.majorFontDetails,d.theme.majorFontDetails);const shape=after.slides[0]!.shapes[0]!;assert.deepEqual(shape.fill,d.slides[0]!.shapes[0]!.fill);assert.deepEqual(resolveSlideThemeColor(shape.fill!,after.theme),{kind:'rgba',red:188,green:255,blue:188,alpha:255});assert.equal(shape.type,'text');if(shape.type==='text')assert.equal(shape.runs[0]!.style?.fontEastAsia,'+mj-ea');assert.throws(()=>writeLegacyPpt(after),fail('unsupported'));
 });

@@ -15,9 +15,9 @@ export const resolveSlideColor=resolveSlideThemeColor;
 export function buildSlideScene(snapshot:DocumentSnapshot,slideId:string):SlideScene {
   const doc=snapshot.document;assert(doc.kind==='slides','invalid','Expected presentation snapshot');const slide=doc.slides.find(item=>item.id===slideId);assert(slide,'invalid','Slide does not exist');
   const diagnostics:Diagnostic[]=[],color=(value:DeepReadonly<Color>):Rgba=>resolveSlideColor(value,doc.theme);
-  const resolve=(shape:DeepReadonly<Extract<Shape,{type:'text'}>>,styleId?:string,style:DeepReadonly<TextStyle>={}):DeepReadonly<TextStyle>=>{
+  const resolve=(shape:DeepReadonly<Extract<Shape,{type:'text'}>>,styleId?:string,style:DeepReadonly<TextStyle>={},text=''):DeepReadonly<TextStyle>=>{
     const result=resolveTextStyle({...doc.defaultTextStyle,...shape.textStyle},doc.styles,styleId?[styleId]:[],style).style;
-    return {...result,...(result.color?{color:color(result.color)}:{}),...(result.fontFamily?{fontFamily:resolveSlideThemeFont(result.fontFamily,doc.theme)}:{})};
+    const resolved={...result,...(result.color?{color:color(result.color)}:{})};for(const key of ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex'] as const)if(result[key])resolved[key]=resolveSlideThemeFont(result[key],doc.theme,text,result.language??result.eastAsiaLanguage??'und');return resolved;
   };
   const shapes:SlideSceneShape[]=slide.shapes.map(shape=>{
     const base:SceneBase={id:shape.id,geometry:shape.geometry,...(shape.fill?{fill:color(shape.fill)}:{}),...(shape.stroke?{stroke:{color:color(shape.stroke.color),width:shape.stroke.width}}:{})};
@@ -28,7 +28,7 @@ export function buildSlideScene(snapshot:DocumentSnapshot,slideId:string):SlideS
     if(shape.type!=='text')return {...base,type:shape.type};
     const paragraphs:SlideSceneParagraph[]=[],textStyle=resolve(shape),direction=shape.textFrame?.direction??textStyle.paragraphDirection??'auto';let runs:SlideSceneRun[]=[];
     const flush=()=>{const style=runs[0]?.style??textStyle;paragraphs.push({runs,style,direction:shape.textFrame?.direction&&shape.textFrame.direction!=='auto'?shape.textFrame.direction:style.paragraphDirection??direction});runs=[];};
-    for(const run of shape.runs){const pieces=run.text.split('\n'),style=resolve(shape,run.styleId,run.style);for(let i=0;i<pieces.length;i++){runs.push({id:run.id+':'+i,text:pieces[i]!,style});if(i<pieces.length-1)flush();}}
+    for(const run of shape.runs){const pieces=run.text.split('\n'),style=resolve(shape,run.styleId,run.style,run.text);for(let i=0;i<pieces.length;i++){runs.push({id:run.id+':'+i,text:pieces[i]!,style});if(i<pieces.length-1)flush();}}
     flush();
     return {...base,type:'text',paragraphs,textStyle,wrap:shape.textFrame?.wrap??true,verticalAlignment:shape.textFrame?.verticalAlignment??'top',margins:shape.textFrame?.margins??{top:45720,right:91440,bottom:45720,left:91440},direction};
   });

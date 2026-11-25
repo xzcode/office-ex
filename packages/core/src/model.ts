@@ -1,7 +1,7 @@
 import { validateImageResource } from './images.js';
 import { OfficeError, assert, assertCellAddress, assertId, assertUnicode, isRecord, type DocumentKind } from '@office-ex/contracts';
 
-export type Color = { kind: 'rgba'; red: number; green: number; blue: number; alpha: number } | { kind: 'theme'; name: string; tint?: number };
+export type Color = { kind: 'rgba'; red: number; green: number; blue: number; alpha: number } | { kind: 'theme'; name: string; tint?: number; tintSpace?: 'linear' };
 export interface TextStyle {
   fontFamily?: string; fontAscii?:string; fontHighAnsi?:string; fontEastAsia?:string; fontComplex?:string; fontSize?: number; complexFontSize?:number; bold?: boolean; italic?: boolean; underline?: boolean;
   color?: Color; language?:string; eastAsiaLanguage?:string; bidiLanguage?:string; runDirection?:'ltr'|'rtl'; paragraphDirection?:'ltr'|'rtl'; alignment?: 'start' | 'center' | 'end' | 'justify';
@@ -38,7 +38,8 @@ export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSyste
 export interface Geometry { x: number; y: number; width: number; height: number; rotation: number }
 interface ShapeBase { id: string; geometry: Geometry; fill?: Color; stroke?: { color: Color; width: number } }
 export interface SlideTextFrame { wrap?: boolean; verticalAlignment?: 'top'|'center'|'bottom'; margins?: {top:number;right:number;bottom:number;left:number}; direction?: 'ltr'|'rtl'|'auto' }
-export interface SlideTheme { name:string; colors:Record<string,Extract<Color,{kind:'rgba'}>>; majorFont?:string; minorFont?:string }
+export interface SlideThemeFontDetails { eastAsia?:string; complex?:string; scripts?:Record<string,string> }
+export interface SlideTheme { name:string; colors:Record<string,Extract<Color,{kind:'rgba'}>>; majorFont?:string; minorFont?:string; majorFontDetails?:SlideThemeFontDetails; minorFontDetails?:SlideThemeFontDetails }
 export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: 'rect' | 'ellipse' | 'line' }) | (ShapeBase & { type: 'image'; resourceId: string });
 export interface Slide { id: string; background: Color; shapes: Shape[] }
 export interface SlidesDocument extends DocumentBase { kind: 'slides'; size: { width: number; height: number }; slides: Slide[]; theme?: SlideTheme }
@@ -100,14 +101,15 @@ function bool(value: unknown): void { assert(typeof value === 'boolean', 'invali
 function optionalId(value: unknown, known: Record<string, unknown>): void { if (value !== undefined) { assertId(value); assert(Object.hasOwn(known, value), 'invalid', 'Missing model reference'); } }
 
 export function validateColor(value: unknown): asserts value is Color {
-  const item = object(value, ['kind', 'red', 'green', 'blue', 'alpha', 'name', 'tint']);
+  const item = object(value, ['kind', 'red', 'green', 'blue', 'alpha', 'name', 'tint', 'tintSpace']);
   if (item.kind === 'rgba') {
-    assert(!('name' in item) && !('tint' in item), 'invalid', 'Unexpected RGBA fields');
+    assert(!('name' in item) && !('tint' in item) && !('tintSpace' in item), 'invalid', 'Unexpected RGBA fields');
     for (const key of ['red', 'green', 'blue', 'alpha']) integer(item[key], 0, 255);
   } else {
     assert(item.kind === 'theme' && !['red', 'green', 'blue', 'alpha'].some((key) => key in item), 'invalid', 'Invalid theme color');
     text(item.name, 128, false);
     if (item.tint !== undefined) assert(typeof item.tint === 'number' && Number.isFinite(item.tint) && item.tint >= -1 && item.tint <= 1, 'invalid', 'Invalid color tint');
+    if(item.tintSpace!==undefined)assert(item.tintSpace==='linear'&&item.tint!==undefined,'invalid','Invalid tint color space');
   }
 }
 
@@ -273,10 +275,11 @@ export function validateDocument(value: unknown): OfficeDocument {
   } else if (model.kind === 'slides') {
     const size = object(model.size, ['width', 'height']); integer(size.width, 1); integer(size.height, 1);
     if (model.theme !== undefined) {
-      const theme = object(model.theme, ['name','colors','majorFont','minorFont']); text(theme.name,256,false);
+      const theme = object(model.theme, ['name','colors','majorFont','minorFont','majorFontDetails','minorFontDetails']); text(theme.name,256,false);
       assert(isRecord(theme.colors) && Object.keys(theme.colors).length<=64,'invalid','Invalid slide theme colors');
       for(const [name,color] of Object.entries(theme.colors)){assert(/^[A-Za-z0-9_-]{1,128}$/.test(name),'invalid','Invalid theme color name');validateColor(color);assert(color.kind==='rgba','invalid','Theme colors cannot reference a theme');}
       for(const key of ['majorFont','minorFont'])if(theme[key]!==undefined)validateTextStyle({fontFamily:theme[key]});
+      for(const key of ['majorFontDetails','minorFontDetails'])if(theme[key]!==undefined){const details=object(theme[key],['eastAsia','complex','scripts']);for(const name of ['eastAsia','complex'])if(details[name]!==undefined)validateTextStyle({fontFamily:details[name]});if(details.scripts!==undefined){assert(isRecord(details.scripts)&&Object.keys(details.scripts).length<=128,'invalid','Invalid slide script font map');for(const [script,font]of Object.entries(details.scripts)){assert(/^[A-Z][a-z]{3}$/.test(script),'invalid','Invalid theme font script');validateTextStyle({fontFamily:font});}}}
     }
     list(model.slides).forEach((candidate) => {
       const slide = object(candidate, ['id', 'background', 'shapes']); id(slide.id); validateColor(slide.background);

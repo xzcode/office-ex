@@ -8,7 +8,8 @@ import { basename, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { openSlidesPptx } from '@office-ex/ooxml';
+import { openSlidesPptx, openOpc, writeSlidesPptx, writeZip } from '@office-ex/ooxml';
+import { createDocument } from '@office-ex/core';
 import { openLegacyPpt } from '@office-ex/format-service';
 import { PNG } from '../tests/writer-image-fixture.ts';
 
@@ -54,6 +55,21 @@ try{
   await app.evaluate(({app})=>{globalThis.__m4PrintRequested=false;app.once('browser-window-created',(_event,window)=>{window.webContents.print=(options,callback)=>{const p=window.webContents.getLastWebPreferences();globalThis.__m4PrintRequested={sandbox:p.sandbox,contextIsolation:p.contextIsolation,nodeIntegration:p.nodeIntegration,silent:options.silent};callback(true,'');};});});
   await page.locator('#pdf-print').click();await wait(async()=>Boolean(await app.evaluate(()=>globalThis.__m4PrintRequested)),'isolated native PDF print');assert.deepEqual(await app.evaluate(()=>globalThis.__m4PrintRequested),{sandbox:true,contextIsolation:true,nodeIntegration:false,silent:false});await wait(async()=>await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length===1),'print window cleanup');record('PDF native print invokes a sandboxed child and interactive print settings (physical printer callback stubbed)');
   const rejected=await page.evaluate(async()=>{const a=await Promise.allSettled([fetch('https://example.invalid/office-ex-probe'),fetch('file:///etc/passwd')]);return a.map(x=>x.status);});assert.deepEqual(rejected,['rejected','rejected']);assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1);record('New PDF assets keep external/file fetch blocked and output windows are destroyed');
+  // Real multi-save regression. The current source capability still identifies
+  // the latest bytes, but native scene/layout identity stays bound to import.
+  const template=createDocument('slides','native-layout-session');template.slides=['First source','Second source'].map((value,index)=>({id:'src-'+index,background:{kind:'rgba',red:255,green:255,blue:255,alpha:255},shapes:[{id:'shape-'+index,type:'text',geometry:{x:914400,y:914400,width:5486400,height:914400,rotation:0},runs:[{id:'run-'+index,type:'text',text:value}]}]}));
+  const sourceParts=new Map(openOpc(writeSlidesPptx(template)).parts),decode=bytes=>new TextDecoder().decode(bytes),encode=value=>new TextEncoder().encode(value);
+  const layout1='ppt/slideLayouts/slideLayout1.xml',layout2='ppt/slideLayouts/slideLayout2.xml',layoutRels1='ppt/slideLayouts/_rels/slideLayout1.xml.rels',layoutRels2='ppt/slideLayouts/_rels/slideLayout2.xml.rels',master='ppt/slideMasters/slideMaster1.xml',masterRels='ppt/slideMasters/_rels/slideMaster1.xml.rels';
+  sourceParts.set(layout2,encode(decode(sourceParts.get(layout1)).replace('name="Blank"','name="Second blank"')));sourceParts.set(layoutRels2,sourceParts.get(layoutRels1));
+  sourceParts.set(master,encode(decode(sourceParts.get(master)).replace('</p:sldLayoutIdLst>','<p:sldLayoutId id="2147483650" r:id="rIdSecondLayout"/></p:sldLayoutIdLst>')));
+  sourceParts.set(masterRels,encode(decode(sourceParts.get(masterRels)).replace('</Relationships>','<Relationship Id="rIdSecondLayout" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout2.xml"/></Relationships>')));
+  sourceParts.set('[Content_Types].xml',encode(decode(sourceParts.get('[Content_Types].xml')).replace('</Types>','<Override PartName="/'+layout2+'" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/></Types>')));
+  const slideRels2='ppt/slides/_rels/slide2.xml.rels';sourceParts.set(slideRels2,encode(decode(sourceParts.get(slideRels2)).replace('slideLayout1.xml','slideLayout2.xml')));
+  const templatePath=join(work,'source-layouts.pptx');await writeFile(templatePath,writeZip(sourceParts));await open(templatePath);await page.waitForSelector('#slide-canvas [data-shape-type=text]');
+  await page.locator('.slides-thumbnail').nth(1).click();await page.locator('#slide-earlier').click();await page.locator('#save').click();
+  const checkLayoutSave=(expected)=>bytes=>{const parsed=openSlidesPptx(bytes,'layout-reopen'),texts=parsed.document.slides.map(s=>s.shapes[0].runs.map(r=>r.text).join(''));assert.deepEqual(texts,expected);assert.deepEqual(parsed.native.slideLayoutPaths,[layout2,layout1]);for(const name of [master,masterRels,layout1,layout2,layoutRels1,layoutRels2])assert.deepEqual(parsed.native.opc.parts.get(name),sourceParts.get(name));return parsed;};
+  await saved(templatePath,checkLayoutSave(['Second source','First source']));
+  await page.locator('.slides-thumbnail').nth(1).click();await page.locator('#slide-canvas [data-shape-type=text]').click();await page.locator('#slide-text-editor').fill('First source edited');await page.locator('#save').click();await saved(templatePath,checkLayoutSave(['Second source','First source edited']));record('Consecutive native PPTX saves retain imported layout identity after reordering');
   assert.deepEqual(errors,[]);evidence.completedAt=new Date().toISOString();evidence.files={pptx:hash(await readFile(pptxPath)),ppt:hash(await readFile(pptPath)),pdf:hash(await readFile(pdfPath))};
 }catch(error){evidence.failure=String(error);evidence.rendererErrors=errors;if(page)await screenshot('failure.png').catch(()=>{});throw error;}
 finally{
