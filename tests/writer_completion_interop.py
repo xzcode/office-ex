@@ -11,9 +11,9 @@ def run(*args):
 def main():
     with TemporaryDirectory() as tmp:
         ordinary,edited,legacy,legacy_edit,modern=(Path(tmp)/n for n in ['ordinary.docx','edited.docx','legacy.doc','legacy-edit.doc','modern.docx'])
-        doc=Document();doc.add_paragraph('Independent 中文');doc.add_heading('A real heading',level=1);doc.save(ordinary)
+        doc=Document();doc.add_paragraph('Independent 中文');doc.add_heading('A real heading',level=1);doc.add_heading('A second-level heading',level=2);doc.save(ordinary)
         run('ordinary',ordinary,edited)
-        out=Document(edited);assert out.paragraphs[0].text=='Office EX 中文';assert out.paragraphs[1].style.name=='Heading 1'
+        out=Document(edited);assert out.paragraphs[0].text=='Office EX 中文';assert out.paragraphs[1].style.name=='Heading 1';assert out.paragraphs[2].style.name=='Heading 2' and out.paragraphs[2].text=='A second-level heading'
         with ZipFile(ordinary) as a, ZipFile(edited) as b:
             assert set(a.namelist())==set(b.namelist())
             for name in a.namelist():

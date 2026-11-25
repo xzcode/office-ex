@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { docxParts, writeZip, writeWriterDocx, openWriterDocx, openSheetsXlsx } from '@office-ex/ooxml';
+import { docxParts, writeZip, writeWriterDocx, openWriterDocx, openSheetsXlsx, writeSheetsXlsx } from '@office-ex/ooxml';
 import { createDocument } from '@office-ex/core';
 import { serializeDraft, openLegacyDoc, inspectLegacyDocText, openLegacyXls } from '@office-ex/format-service';
 import { styledFixture } from '../tests/writer-styled-fixture.ts';
@@ -134,6 +134,42 @@ try{
   await page.locator('.tab[aria-selected=true] .tab-close').click();
   await dialogOpen(xlsPath);await sheetValue('B1','20');await page.locator('.tab[aria-selected=true] .tab-close').click();
   check('Spreadsheet semantic worker + guarded native XLSX save + BIFF8 conversion + reopen');
+  // Imported worksheet identities must remain tied to the original package,
+  // not the positional IDs obtained by reparsing the first edited output.
+  const template=createDocument('sheets','native-xlsx-source','Imported workbook');
+  template.sheets[0].name='First';template.sheets[0].cells['1:1']={value:{kind:'number',value:11}};
+  template.sheets.push({id:'second',name:'Second',cells:{'1:1':{value:{kind:'number',value:22}},'1:2':{value:{kind:'formula',source:'=First!A1*2'}}},rows:{},columns:{},merges:[]});
+  const templateParts=new Map(openOpc(writeSheetsXlsx(template)).parts),encode=value=>new TextEncoder().encode(value),decode=value=>new TextDecoder().decode(value);
+  const rootRels='_rels/.rels',contentTypes='[Content_Types].xml',firstSheet='xl/worksheets/sheet1.xml',secondSheet='xl/worksheets/sheet2.xml',corePart='docProps/core.xml';
+  templateParts.set(corePart,encode('<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Native source identity</dc:title></cp:coreProperties>'));
+  templateParts.set(rootRels,encode(decode(templateParts.get(rootRels)).replace('</Relationships>','<Relationship Id="rIdCore" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>')));
+  templateParts.set(contentTypes,encode(decode(templateParts.get(contentTypes)).replace('</Types>','<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>')));
+  templateParts.set(firstSheet,encode(decode(templateParts.get(firstSheet)).replace('</worksheet>','<pageMargins left="0.25" right="0.25" top="0.5" bottom="0.5" header="0.1" footer="0.1"/></worksheet>')));
+  templateParts.set(secondSheet,encode(decode(templateParts.get(secondSheet)).replace('</worksheet>','<pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/></worksheet>')));
+  const importPath=join(work,'native-imported.xlsx');await writeFile(importPath,writeZip(templateParts));await dialogOpen(importPath);
+  await page.waitForFunction(()=>document.querySelector('.tab[aria-selected=true] .tab-title')?.textContent==='native-imported.xlsx');
+  await sheetValue('A1','11');assert.equal(await page.locator('#convert-sheets').isDisabled(),true);
+  await page.locator('.sheets-advanced summary').click();await page.locator('#sheet-move-right').click();
+  await page.waitForFunction(()=>Array.from(document.querySelectorAll('.sheet-tabs [role=tab]')).map(el=>el.textContent).join(',')==='Second,First');
+  await page.locator('#save').click();
+  const readImported=async(expected)=>{
+    const result=openSheetsXlsx(await readFile(importPath),'native-import-check');
+    assert.deepEqual(result.document.sheets.map(s=>s.name),['Second','First']);
+    assert.deepEqual(result.native.sheetParts.map(s=>s.path),[secondSheet,firstSheet]);
+    assert.equal(result.document.sheets[1].cells['1:1'].value.value,expected);
+    assert.ok(result.cachedValues.some(([key,value])=>key==='sheet-1!1:2'&&value.kind==='number'&&value.value===expected*2));
+    assert.deepEqual(result.native.opc.parts.get(corePart),templateParts.get(corePart));
+    assert.match(decode(result.native.opc.parts.get(firstSheet)),/left="0.25"/);
+    assert.match(decode(result.native.opc.parts.get(secondSheet)),/left="0.75"/);
+    return true;
+  };
+  await waitFor(async()=>{try{return await readImported(11);}catch{return false;}},'first imported XLSX native save');
+  await page.waitForFunction(()=>!document.querySelector('#save').disabled);
+  await enterSheet('A1','33');await sheetValue('A1','33');await page.locator('#save').click();
+  await waitFor(async()=>{try{return await readImported(33);}catch{return false;}},'second imported XLSX native save');
+  await page.waitForFunction(()=>!document.querySelector('#save').disabled);await page.locator('.tab[aria-selected=true] .tab-close').click();
+  check('Consecutive imported XLSX saves retain stable worksheet paths, metadata, print margins and formula caches after reorder');
+
   await page.locator('#home').click();await page.locator('[data-kind=slides]').click();await page.locator('#slide-insert-rect').click();
   const shapes=page.locator('#slide-canvas [data-shape-id]');assert.equal(await shapes.count(),1);await page.locator('#undo').click();await waitFor(async()=>await shapes.count()===0,'Slide undo rendered');await page.locator('#redo').click();await waitFor(async()=>await shapes.count()===1,'Slide redo rendered');
   await shapes.first().click();await screenshot('slides');

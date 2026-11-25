@@ -13,7 +13,7 @@ import { inspectLegacyDocText, openLegacyDoc, writeLegacyDoc, saveLegacyDoc, typ
 export { inspectLegacyDocText, openLegacyDoc, writeLegacyDoc, saveLegacyDoc } from './legacy-doc.js';
 
 export interface ContainerEntry { name: string; size: number; sha256: string }
-export interface Inspection { detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument; editableWriterFormat?: 'doc'|'docx'; legacyDocText?: LegacyDocText; editableSheets?: SheetsDocument; editableSheetsFormat?: 'xls'|'xlsx'; sheetsCachedValues?: [string,CalculatedValue][]; editableSlides?: SlidesDocument; editableSlidesFormat?: 'ppt'|'pptx'; slidesTemplateConversionBlocked?: boolean }
+export interface Inspection { detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument; editableWriterFormat?: 'doc'|'docx'; legacyDocText?: LegacyDocText; editableSheets?: SheetsDocument; editableSheetsFormat?: 'xls'|'xlsx'; sheetsTemplateConversionBlocked?:boolean; sheetsCachedValues?: [string,CalculatedValue][]; editableSlides?: SlidesDocument; editableSlidesFormat?: 'ppt'|'pptx'; slidesTemplateConversionBlocked?: boolean }
 const MAX_INPUT = 100 * 1024 * 1024;
 const MAX_DRAFT = 32 * 1024 * 1024;
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -169,10 +169,11 @@ export async function inspectForEditor(bytes:Uint8Array,filename:string,document
   }
   if((format==='xls'||format==='xlsx')&&filename.toLowerCase().endsWith('.'+format)&&bytes.byteLength<=MAX_DRAFT&&!inspection.detection.encrypted){
     try{
-      const source=format==='xlsx'?openSheetsXlsx(bytes,documentId,filename,{signal}):openLegacyXls(bytes,documentId,filename);
+      const xlsxSource=format==='xlsx'?openSheetsXlsx(bytes,documentId,filename,{signal}):undefined;
+      const source=xlsxSource??openLegacyXls(bytes,documentId,filename);
       const editableSheets=validateDocument(source.document) as SheetsDocument,featureId=format==='xls'?'LEG-03':'SHT-05';
       const diagnostics=sortedDiagnostics([...inspection.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),{code:format==='xls'?'XLS_PROFILE_ACTIVE':'XLSX_PROFILE_ACTIVE',featureId,messageKey:format==='xls'?'format.xlsProfile':'format.xlsxProfile',severity:'info',safeAction:'none'}]);
-      return {...inspection,editableSheets,editableSheetsFormat:format,sheetsCachedValues:source.cachedValues,detection:{...inspection.detection,diagnostics},report:{...inspection.report,readOnly:false,diagnostics,features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]}};
+      return {...inspection,editableSheets,editableSheetsFormat:format,...(xlsxSource?.native.conversionBlocked?{sheetsTemplateConversionBlocked:true}:{}),sheetsCachedValues:source.cachedValues,detection:{...inspection.detection,diagnostics},report:{...inspection.report,readOnly:false,diagnostics,features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]}};
     }catch(error){if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code))return inspection;throw error;}
   }
   if((format!=='docx'&&format!=='doc')||!filename.toLowerCase().endsWith('.'+format)||bytes.byteLength>MAX_DRAFT||inspection.detection.encrypted)return inspection;

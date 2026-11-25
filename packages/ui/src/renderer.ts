@@ -115,7 +115,7 @@ function documentView(tab:Tab):void{
   title.onchange=()=>{if(tab.format==='docx'||tab.format==='doc'||tab.format==='xls'||tab.format==='xlsx'||tab.format==='pptx'||tab.format==='ppt')return;execute(tab,{documentId:session.documentId,expectedRevision:session.revision,type:'document.rename',payload:{title:title.value}},false);};
   header.append(title,text('span',formatLabel(tab),'status-chip'));
   if(model.kind==='writer'&&(tab.format==='doc'||tab.format==='docx')){const convert=button(t(tab.format==='doc'?'convertDocx':'convertDoc'),()=>run(()=>convertWriter(tab)));convert.id='convert-writer';header.append(convert);}
-  if(model.kind==='sheets'&&(tab.format==='xls'||tab.format==='xlsx')){const convert=button(t(tab.format==='xls'?'convertXlsx':'convertXls'),()=>run(()=>convertSheets(tab)));convert.id='convert-sheets';header.append(convert);}
+  if(model.kind==='sheets'&&(tab.format==='xls'||tab.format==='xlsx')){const convert=button(t(tab.format==='xls'?'convertXlsx':'convertXls'),()=>run(()=>convertSheets(tab)));convert.id='convert-sheets';if(tab.inspection?.sheetsTemplateConversionBlocked){convert.disabled=true;convert.title=t('conversionBoundary');}header.append(convert);}
   if(model.kind==='slides'&&(tab.format==='ppt'||tab.format==='pptx')){const convert=button(t(tab.format==='ppt'?'convertPptx':'convertPpt'),()=>run(()=>convertSlides(tab)));convert.id='convert-slides';if(tab.inspection?.slidesTemplateConversionBlocked){convert.disabled=true;convert.title=t('errorUnsupported');}header.append(convert);}
   if(model.kind==='writer'||model.kind==='slides'){const output=button(t('pdfExport'),()=>run(()=>exportCurrentPdf(tab)));output.id='export-pdf';const print=button(t('pdfPrint'),()=>run(()=>printCurrent(tab)));print.id='print-document';header.append(output,print);}content.append(header);
   const card=document.createElement('div');card.className='workspace-card';
@@ -163,6 +163,7 @@ async function convertWriter(tab:Tab):Promise<void>{
   const next:Tab={id,name:model.title,session:new DocumentSession(model),busy:false,format:target};tabs.set(id,next);active=id;await syncTabs();render();
 }
 async function convertSheets(tab:Tab):Promise<void>{
+  if(tab.inspection?.sheetsTemplateConversionBlocked)throw new OfficeError('unsupported',t('conversionBoundary'));
   if(composing||!tab.session||tab.busy||tab.session.saveState==='saving'||!flushInputs())return;
   if(tabs.size>=32)throw new OfficeError('limit',t('limitTabs'));
   const source=tab.session.snapshot(),target=tab.format==='xls'?'xlsx':'xls',id=crypto.randomUUID();

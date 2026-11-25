@@ -199,4 +199,4 @@ export function openLegacyXls(bytes:Uint8Array,documentId:string,title='Workbook
   ok(eq(workbook(doc),b),'Source is not the lossless closed BIFF8 profile');return {document:doc,cachedValues};
 }
 export function writeLegacyXls(candidate:WorkbookSnapshot,options:CfbOptions={}):Uint8Array{return writeCfb({entries:[{type:'stream',path:['Workbook'],data:workbook(candidate)}]},options);}
-export function saveLegacyXls(source:Uint8Array,model:WorkbookSnapshot):Uint8Array{openLegacyXls(source,model.documentId,model.title);return writeLegacyXls(model);}
+export function saveLegacyXls(source:Uint8Array,model:WorkbookSnapshot):Uint8Array{const original=openLegacyXls(source,model.documentId,model.title);if(JSON.stringify(original.document)===JSON.stringify(model))return source.slice();return writeLegacyXls(model);}

@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDocument,DocumentSession,type SheetsDocument} from '@office-ex/core';
 import {OfficeError} from '@office-ex/contracts';
-import {writeSheetsXlsx,openSheetsXlsx,openOpc,writeZip} from '@office-ex/ooxml';
-import {writeLegacyXls,openLegacyXls,inspectForEditor,prepareSheetsSave,serializeDraft} from '@office-ex/format-service';
+import {writeSheetsXlsx,openSheetsXlsx,saveSheetsXlsx,openOpc,writeZip} from '@office-ex/ooxml';
+import {writeLegacyXls,openLegacyXls,saveLegacyXls,inspectForEditor,prepareSheetsSave,serializeDraft} from '@office-ex/format-service';
 import {WorkbookCalculator,parseFormula,serializeFormula} from '@office-ex/sheets';
 import {readCfb,writeCfb} from '@office-ex/cfb';
 
@@ -32,4 +32,27 @@ test('unknown XLS CFB stream forces read-only and forbids semantic save',async()
 });
 test('unknown XLSX package part forces read-only and forbids semantic save',async()=>{
   const d=fixture(),parts=new Map(openOpc(writeSheetsXlsx(d)).parts);parts.set('custom.xml',new TextEncoder().encode('<custom/>'));const b=writeZip(parts);const view=await inspectForEditor(b,'unknown.xlsx',d.documentId);assert.equal(view.report.readOnly,true);assert.throws(()=>prepareSheetsSave('xlsx',serializeDraft(d),d.documentId,b),OfficeError);
+});
+
+test('XLS and XLSX no-edit native saves are exact source copies',()=>{
+ const d=fixture(),xlsx=writeSheetsXlsx(d),xls=writeLegacyXls(d);
+ assert.deepEqual(saveSheetsXlsx(xlsx,openSheetsXlsx(xlsx,d.documentId,d.title).document),xlsx);
+ assert.deepEqual(saveLegacyXls(xls,openLegacyXls(xls,d.documentId,d.title).document),xls);
+});
+
+test('XLSX noncanonical main URI survives native save and structural sheet changes',()=>{
+ const d=fixture(),original=openOpc(writeSheetsXlsx(d)),parts=new Map(original.parts),enc=(value:string)=>new TextEncoder().encode(value),dec=(value:Uint8Array)=>new TextDecoder().decode(value);
+ parts.set('book/main.xml',parts.get('xl/workbook.xml')!);parts.delete('xl/workbook.xml');
+ const oldRels=dec(parts.get('xl/_rels/workbook.xml.rels')!);
+ parts.set('book/_rels/main.xml.rels',enc(oldRels.replace(/Target="(worksheets\/[^"]+|styles.xml)"/g,(_all,path)=>'Target="/xl/'+path+'"')));parts.delete('xl/_rels/workbook.xml.rels');
+ parts.set('_rels/.rels',enc(dec(parts.get('_rels/.rels')!).replace('xl/workbook.xml','book/main.xml')));
+ parts.set('[Content_Types].xml',enc(dec(parts.get('[Content_Types].xml')!).replace('/xl/workbook.xml','/book/main.xml')));
+ const bytes=writeZip(parts),source=openSheetsXlsx(bytes,d.documentId,d.title);assert.equal(source.native.opc.mainPart,'book/main.xml');
+ assert.deepEqual(saveSheetsXlsx(bytes,source.document),bytes);
+ const model=source.document;model.sheets.reverse();model.sheets[1]!.cells['1:1']={value:{kind:'number',value:32}};
+ const edited=saveSheetsXlsx(bytes,model),after=openSheetsXlsx(edited,d.documentId,d.title);
+ assert.equal(after.native.opc.mainPart,'book/main.xml');assert.deepEqual(after.native.sheetParts.map(s=>s.path),['xl/worksheets/sheet2.xml','xl/worksheets/sheet1.xml']);
+ assert.equal(after.document.sheets[1]!.cells['1:1']!.value.kind,'number');
+ assert.ok(after.cachedValues.some(([key,value])=>key==='sheet-1!1:1'&&value.kind==='number'&&value.value===34));
+ assert.deepEqual(after.native.opc.parts.get('_rels/.rels'),parts.get('_rels/.rels'));
 });
