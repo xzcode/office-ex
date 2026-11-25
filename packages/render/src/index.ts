@@ -33,7 +33,8 @@ export function viewportTransform(viewport: Viewport, devicePixels = false): Mat
 }
 export function containsPoint(shape: DeepReadonly<Shape>, point: Point, tolerance = 0): boolean {
   assert(Number.isFinite(tolerance) && tolerance >= 0, 'invalid', 'Invalid hit tolerance');
-  const local = transform(inverse(shapeTransform(shape.geometry)), point); const { width, height } = shape.geometry;
+  let local = transform(inverse(shapeTransform(shape.geometry)), point); const { width, height } = shape.geometry;
+  local={x:shape.flipH?width-local.x:local.x,y:shape.flipV?height-local.y:local.y};
   if (shape.type === 'line') {
     const lengthSquared = width * width + height * height;
     const parameter = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, (local.x * width + local.y * height) / lengthSquared));
@@ -42,6 +43,13 @@ export function containsPoint(shape: DeepReadonly<Shape>, point: Point, toleranc
   if (shape.type === 'ellipse') {
     const rx = width / 2 + tolerance; const ry = height / 2 + tolerance;
     return rx > 0 && ry > 0 && ((local.x - width / 2) / rx) ** 2 + ((local.y - height / 2) / ry) ** 2 <= 1;
+  }
+  if(shape.type==='triangle'||shape.type==='diamond'||shape.type==='parallelogram'){
+    if(width<=0||height<=0)return false;
+    const u=local.x/width,v=local.y/height,eps=tolerance/Math.max(1,Math.min(width,height));
+    if(shape.type==='triangle')return v>=-eps&&v<=1+eps&&Math.abs(u-.5)<=v/2+eps;
+    if(shape.type==='diamond')return Math.abs(u-.5)+Math.abs(v-.5)<=.5+eps;
+    const inset=.25*Math.min(width,height)/width;return v>=-eps&&v<=1+eps&&u>=inset*(1-v)-eps&&u<=1-inset*v+eps;
   }
   return local.x >= -tolerance && local.y >= -tolerance && local.x <= width + tolerance && local.y <= height + tolerance;
 }

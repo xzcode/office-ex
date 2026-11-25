@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /** Presentation commands use stable IDs and one atomic patch per user action. */
 import { assert, assertId, assertUnicode, graphemeBoundaries } from '@office-ex/contracts';
-import { cloneData, patchCommand, DEFAULT_SLIDE_THEME_COLORS, validateColor, validateGeometry, validateTextStyle, validateSlideParagraph, resolveTextStyle, splitSlideParagraphs, firstSlideParagraphRun, validateImageResource, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type SlidesDocument, type Slide, type Shape, type Geometry, type Color, type TextRun, type TextStyle, type SlideTextFrame, type SlideParagraphFormat, type SlideTheme, type ImageResource, type PatchOperation } from '@office-ex/core';
+import { cloneData, patchCommand, DEFAULT_SLIDE_THEME_COLORS, validateColor, validateGeometry, validateSlideCrop, walkSlideShapes, validateTextStyle, validateSlideParagraph, resolveTextStyle, splitSlideParagraphs, firstSlideParagraphRun, validateImageResource, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type SlidesDocument, type Slide, type Shape, type Geometry, type Color, type TextRun, type TextStyle, type SlideTextFrame, type SlideCrop, type SlideStroke, type SlideParagraphFormat, type SlideTheme, type ImageResource, type PatchOperation } from '@office-ex/core';
 
 export type PresentationSnapshot = DeepReadonly<SlidesDocument>;
 export type SlideSnapshot = DeepReadonly<Slide>;
@@ -20,7 +20,7 @@ export function locateShape(snapshot: DocumentSnapshot, slideId: string, shapeId
 }
 function command(snapshot: DocumentSnapshot, operations: readonly PatchOperation[]): DocumentCommand { return patchCommand(snapshot, 'SLD-02', operations); }
 function uniqueIds(snapshot:DocumentSnapshot, factory:IdFactory):IdFactory {
-  const doc=presentation(snapshot),ids=new Set(doc.slides.flatMap(s=>[s.id,...s.shapes.flatMap(shape=>[shape.id,...(shape.type==='text'?shape.runs.map(r=>r.id):[])])]));
+  const doc=presentation(snapshot),ids=new Set(doc.slides.flatMap(s=>[s.id,...[...walkSlideShapes(s.shapes)].flatMap(shape=>[shape.id,...(shape.type==='text'?shape.runs.map(r=>r.id):[])])]));
   return ()=>{const id=factory();assertId(id);assert(!ids.has(id),'invalid','New node ID is not unique');ids.add(id);return id;};
 }
 export function addSlide(snapshot: DocumentSnapshot, index: number, id: string, background: Color = { kind:'rgba',red:255,green:255,blue:255,alpha:255 }): DocumentCommand {
@@ -29,7 +29,7 @@ export function addSlide(snapshot: DocumentSnapshot, index: number, id: string, 
 }
 export function duplicateSlide(snapshot:DocumentSnapshot,slideId:string,factory:IdFactory):DocumentCommand {
   const {slide,index}=locateSlide(snapshot,slideId),id=uniqueIds(snapshot,factory),copy=cloneData(slide) as Slide;copy.id=id();
-  for(const shape of copy.shapes){shape.id=id();if(shape.type==='text')for(const run of shape.runs)run.id=id();}
+  for(const shape of walkSlideShapes(copy.shapes)){shape.id=id();if(shape.type==='text')for(const run of shape.runs)run.id=id();}
   return command(snapshot,[{op:'splice',path:['slides'],index:index+1,deleteCount:0,items:[copy]}]);
 }
 export function deleteSlide(snapshot:DocumentSnapshot,slideId:string):DocumentCommand {
@@ -56,7 +56,7 @@ export function removeShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:r
 }
 export function duplicateShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],factory:IdFactory,offset={x:190500,y:190500}):DocumentCommand {
   const {slide}=locateSlide(snapshot,slideId),set=new Set(shapeIds),id=uniqueIds(snapshot,factory);assert(shapeIds.every(value=>slide.shapes.some(s=>s.id===value)),'invalid','Invalid shape selection');
-  const copies=slide.shapes.filter(s=>set.has(s.id)).map(s=>{const copy=cloneData(s) as Shape;copy.id=id();copy.geometry.x+=offset.x;copy.geometry.y+=offset.y;if(copy.type==='text')for(const r of copy.runs)r.id=id();return copy;});
+  const copies=slide.shapes.filter(s=>set.has(s.id)).map(s=>{const copy=cloneData(s) as Shape;copy.geometry.x+=offset.x;copy.geometry.y+=offset.y;for(const item of walkSlideShapes([copy])){item.id=id();if(item.type==='text')for(const r of item.runs)r.id=id();}return copy;});
   return insertShapes(snapshot,slideId,slide.shapes.length,copies);
 }
 /** Transient pointer previews are outside this API; a completed gesture uses one command. */
@@ -68,9 +68,9 @@ export function nudgeShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:re
   assert(Number.isSafeInteger(dx)&&Number.isSafeInteger(dy),'invalid','Invalid shape movement');
   return setShapeGeometries(snapshot,slideId,Object.fromEntries(shapeIds.map(id=>{const g=locateShape(snapshot,slideId,id).shape.geometry;return [id,{...g,x:g.x+dx,y:g.y+dy}];})));
 }
-export function setShapePaint(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],paint:{fill?:Color|null;stroke?:{color:Color;width:number}|null}):DocumentCommand {
+export function setShapePaint(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],paint:{fill?:Color|null;stroke?:SlideStroke|null}):DocumentCommand {
   const operations:PatchOperation[]=[];if(paint.fill)validateColor(paint.fill);if(paint.stroke){validateColor(paint.stroke.color);assert(Number.isSafeInteger(paint.stroke.width)&&paint.stroke.width>=0,'invalid','Invalid stroke width');}
-  for(const id of shapeIds){const l=locateShape(snapshot,slideId,id),base=['slides',l.slideIndex,'shapes',l.index];for(const key of ['fill','stroke'] as const)if(paint[key]!==undefined)operations.push(paint[key]===null?{op:'delete',path:[...base,key]}:{op:'set',path:[...base,key],value:paint[key]});}
+  for(const id of shapeIds){const l=locateShape(snapshot,slideId,id),base=['slides',l.slideIndex,'shapes',l.index];assert(l.shape.type!=='group','unsupported','Group paint requires ungrouping first');for(const key of ['fill','stroke'] as const)if(paint[key]!==undefined)operations.push(paint[key]===null?{op:'delete',path:[...base,key]}:{op:'set',path:[...base,key],value:paint[key]});}
   return command(snapshot,operations);
 }
 export type LayerMove='front'|'back'|'forward'|'backward';
@@ -162,6 +162,40 @@ export function setShapeTextFrame(snapshot:DocumentSnapshot,slideId:string,shape
 /** Paste copies model objects and immutable image assets, never active clipboard markup. */
 export function pasteShapes(snapshot:DocumentSnapshot,slideId:string,shapes:readonly ShapeSnapshot[],resources:Readonly<Record<string,DeepReadonly<ImageResource>>>,factory:IdFactory):DocumentCommand {
   const doc=presentation(snapshot),{slide,index}=locateSlide(snapshot,slideId),id=uniqueIds(snapshot,factory),operations:PatchOperation[]=[],added=new Set<string>();
-  const copies=shapes.map(s=>{const copy=cloneData(s) as Shape;copy.id=id();copy.geometry.x+=190500;copy.geometry.y+=190500;if(copy.type==='text')for(const run of copy.runs)run.id=id();if(copy.type==='image'){const resource=resources[copy.resourceId];assert(resource,'invalid','Copied image payload is missing');validateImageResource(resource);const existing=doc.resources[copy.resourceId];assert(!existing||existing.sha256===resource.sha256&&existing.dataBase64===resource.dataBase64,'conflict','Copied image payload differs');if(!existing&&!added.has(copy.resourceId)){added.add(copy.resourceId);operations.push({op:'set',path:['resources',copy.resourceId],value:resource});}}return copy;});
+  const copies=shapes.map(s=>{const copy=cloneData(s) as Shape;copy.geometry.x+=190500;copy.geometry.y+=190500;for(const item of walkSlideShapes([copy])){item.id=id();if(item.type==='text')for(const run of item.runs)run.id=id();if(item.type==='image'){const resource=resources[item.resourceId];assert(resource,'invalid','Copied image payload is missing');validateImageResource(resource);const existing=doc.resources[item.resourceId];assert(!existing||existing.sha256===resource.sha256&&existing.dataBase64===resource.dataBase64,'conflict','Copied image payload differs');if(!existing&&!added.has(item.resourceId)){added.add(item.resourceId);operations.push({op:'set',path:['resources',item.resourceId],value:resource});}}}return copy;});
   operations.push({op:'splice',path:['slides',index,'shapes'],index:slide.shapes.length,deleteCount:0,items:copies});return command(snapshot,operations);
+}
+
+/** Group contiguous paint-order objects without changing their world geometry. */
+export function groupShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],factory:IdFactory):DocumentCommand{
+ const l=locateSlide(snapshot,slideId),set=new Set(shapeIds),indices=l.slide.shapes.flatMap((shape,i)=>set.has(shape.id)?[i]:[]);
+ assert(set.size===shapeIds.length&&indices.length===shapeIds.length&&indices.length>=2,'invalid','Select at least two distinct shapes');
+ assert(indices.at(-1)!-indices[0]!+1===indices.length,'unsupported','Grouping noncontiguous paint layers would change their stacking order');
+ const selected=l.slide.shapes.slice(indices[0]!,indices.at(-1)!+1),points=selected.flatMap(({geometry:g})=>{
+  const a=g.rotation/60000*Math.PI/180,c=Math.cos(a),s=Math.sin(a),cx=g.x+g.width/2,cy=g.y+g.height/2;
+  return [[-g.width/2,-g.height/2],[g.width/2,-g.height/2],[g.width/2,g.height/2],[-g.width/2,g.height/2]].map(([x,y])=>({x:cx+x!*c-y!*s,y:cy+x!*s+y!*c}));
+ });
+ const x=Math.floor(Math.min(...points.map(p=>p.x))),y=Math.floor(Math.min(...points.map(p=>p.y))),width=Math.max(1,Math.ceil(Math.max(...points.map(p=>p.x)))-x),height=Math.max(1,Math.ceil(Math.max(...points.map(p=>p.y)))-y);
+ const group:Shape={type:'group',id:uniqueIds(snapshot,factory)(),geometry:{x,y,width,height,rotation:0},childSpace:{x,y,width,height},children:cloneData(selected) as Shape[]};
+ return command(snapshot,[{op:'splice',path:['slides',l.index,'shapes'],index:indices[0]!,deleteCount:indices.length,items:[group]}]);
+}
+/** Exact rigid ungrouping; refuse scaled/flipped groups instead of flattening
+ * text metrics, strokes or non-uniform transforms incorrectly. */
+export function canUngroupShape(shape:ShapeSnapshot):boolean{
+ return shape.type==='group'&&!shape.flipH&&!shape.flipV&&shape.geometry.width===shape.childSpace.width&&shape.geometry.height===shape.childSpace.height;
+}
+export function ungroupShape(snapshot:DocumentSnapshot,slideId:string,shapeId:string):DocumentCommand{
+ const l=locateShape(snapshot,slideId,shapeId),shape=l.shape;assert(shape.type==='group'&&canUngroupShape(shape),'unsupported','Restore group scale and flips before ungrouping');
+ const g=shape.geometry,space=shape.childSpace,a=g.rotation/60000*Math.PI/180,c=Math.cos(a),s=Math.sin(a),cx=g.x+g.width/2,cy=g.y+g.height/2;
+ const children=cloneData(shape.children) as Shape[];
+ for(const child of children){const v=child.geometry,x=v.x+v.width/2-space.x-space.width/2,y=v.y+v.height/2-space.y-space.height/2;child.geometry={...v,x:Math.round(cx+c*x-s*y-v.width/2),y:Math.round(cy+s*x+c*y-v.height/2),rotation:((v.rotation+g.rotation)%21600000+21600000)%21600000};}
+ return command(snapshot,[{op:'splice',path:['slides',l.slideIndex,'shapes'],index:l.index,deleteCount:1,items:children}]);
+}
+export function setSlideImageCrop(snapshot:DocumentSnapshot,slideId:string,shapeId:string,crop:SlideCrop):DocumentCommand{
+ validateSlideCrop(crop);const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type==='image','invalid','Expected a picture');
+ const path=['slides',l.slideIndex,'shapes',l.index,'crop'];
+ return command(snapshot,Object.values(crop).some(v=>v!==0)?[{op:'set',path,value:crop}]:l.shape.crop?[{op:'delete',path}]:[]);
+}
+export function flipSlideShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],axis:'flipH'|'flipV'):DocumentCommand{
+ return command(snapshot,shapeIds.map(shapeId=>{const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type!=='text','unsupported','Flipped text is outside the editable profile');return {op:'set',path:['slides',l.slideIndex,'shapes',l.index,axis],value:!l.shape[axis]};}));
 }

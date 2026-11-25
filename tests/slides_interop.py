@@ -160,4 +160,39 @@ with tempfile.TemporaryDirectory(prefix='office-ex-slides-interop-') as temporar
     ns='{http://schemas.openxmlformats.org/drawingml/2006/main}'
     assert body.text_frame._bodyPr.find(ns+'normAutofit').get('fontScale')=='85000'
     assert body.text_frame.paragraphs[3]._p.pPr.find(ns+'buAutoNum').get('startAt')=='7'
-    print('Independent PPT/PPTX interop passed: 11 readable/editable source and output fixtures, 2 protected external profiles.')
+    # Native nested grpSp transform and media graph from an independent writer.
+    graphics=Presentation();slide=graphics.slides.add_slide(graphics.slide_layouts[6]);group=slide.shapes.add_group_shape()
+    def add_vector(container,kind,x,y):
+        sh=container.add_shape(kind, Inches(x), Inches(y), Inches(1.25), Inches(1))
+        sh.fill.solid();sh.fill.fore_color.rgb=RGBColor(45,99,130);sh.line.color.rgb=RGBColor(15,25,35);sh.line.width=Pt(1)
+        sh._element.spPr.append(OxmlElement('a:effectLst'));sh.text_frame.auto_size=MSO_AUTO_SIZE.NONE
+        return sh
+    add_vector(group.shapes,MSO_SHAPE.ROUNDED_RECTANGLE,1,1)
+    add_vector(group.shapes,MSO_SHAPE.ISOSCELES_TRIANGLE,3,1)
+    nested=group.shapes.add_group_shape();photo=nested.shapes.add_picture(BytesIO(image),Inches(1),Inches(3),Inches(2),Inches(1.5))
+    photo.crop_left=.125;photo.crop_top=.1;photo.crop_right=.05
+    add_vector(nested.shapes,MSO_SHAPE.DIAMOND,3,3)
+    add_vector(nested.shapes,MSO_SHAPE.PARALLELOGRAM,5,3)
+    connector=slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT,Inches(1),Inches(6),Inches(4),Inches(5));connector.line.color.rgb=RGBColor(10,20,30);connector.line.width=Pt(2)
+    connector._element.spPr.append(OxmlElement('a:effectLst'))
+    ln=connector._element.spPr.ln
+    dash=OxmlElement('a:prstDash');dash.set('val','dashDot');ln.append(dash)
+    arrow=OxmlElement('a:tailEnd');arrow.set('type','triangle');ln.append(arrow)
+    group.rotation=30;group._element.grpSpPr.xfrm.set('flipH','1')
+    graphics.save(target/'external-graphics.pptx')
+    # A real attached connector must not be silently detached.
+    connected=Presentation(target/'external-graphics.pptx');line2=connected.slides[0].shapes[1]
+    nv=line2._element.nvCxnSpPr.cNvCxnSpPr
+    attached=OxmlElement('a:stCxn');attached.set('id',str(connected.slides[0].shapes[0].shape_id));attached.set('idx','0');nv.append(attached)
+    connected.save(target/'external-attached-connector.pptx')
+    subprocess.run([os.environ.get('NODE','node'),'--import','tsx','tests/slides-external-graphics.mjs',str(target)],cwd=ROOT,check=True)
+    graphics_saved=Presentation(target/'external-graphics-edited.pptx')
+    original_graphics=Presentation(target/'external-graphics.pptx')
+    g=graphics_saved.slides[0].shapes[0];assert g.shape_type==MSO_SHAPE_TYPE.GROUP and g.left==original_graphics.slides[0].shapes[0].left+Inches(1)
+    assert g._element.grpSpPr.xfrm.get('flipH')=='1';assert g.rotation==30
+    assert len(g.shapes)==3 and g.shapes[2].shape_type==MSO_SHAPE_TYPE.GROUP
+    p=g.shapes[2].shapes[0];assert p.image.blob==image and abs(p.crop_left-.2)<.00001
+    line3=graphics_saved.slides[0].shapes[1];assert line3.shape_type==MSO_SHAPE_TYPE.LINE
+    assert line3._element.spPr.ln.find(ns+'prstDash').get('val')=='dash'
+    assert line3._element.spPr.ln.find(ns+'tailEnd').get('type')=='arrow'
+    print('Independent PPT/PPTX interop passed: 13 readable/editable source and output fixtures, 3 protected external profiles.')

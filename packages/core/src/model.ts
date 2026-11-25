@@ -40,11 +40,17 @@ export interface Sheet {
 export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSystem: '1900' | '1904'; sheets: Sheet[] }
 
 export interface Geometry { x: number; y: number; width: number; height: number; rotation: number }
-interface ShapeBase { id: string; geometry: Geometry; fill?: Color; stroke?: { color: Color; width: number } }
+export type SlidePreset = 'rect'|'ellipse'|'line'|'roundRect'|'triangle'|'diamond'|'parallelogram';
+export type SlideDash = 'solid'|'dash'|'dot'|'dashDot'|'lgDash'|'lgDashDot'|'lgDashDotDot'|'sysDash'|'sysDot'|'sysDashDot'|'sysDashDotDot';
+export interface SlideArrow {type:'triangle'|'arrow';width?:'sm'|'med'|'lg';length?:'sm'|'med'|'lg'}
+export interface SlideStroke {color:Color;width:number;dash?:SlideDash;head?:SlideArrow;tail?:SlideArrow}
+export interface SlideCrop {left:number;top:number;right:number;bottom:number}
+export interface SlideChildSpace {x:number;y:number;width:number;height:number}
+interface ShapeBase { id: string; geometry: Geometry; fill?: Color; stroke?: SlideStroke; flipH?:boolean; flipV?:boolean }
 export interface SlideTextFrame { autofit?:{mode:'none'}|{mode:'normal';fontScale:number;lineReduction:number}; wrap?: boolean; verticalAlignment?: 'top'|'center'|'bottom'; margins?: {top:number;right:number;bottom:number;left:number}; direction?: 'ltr'|'rtl'|'auto' }
 export interface SlideThemeFontDetails { eastAsia?:string; complex?:string; scripts?:Record<string,string> }
 export interface SlideTheme { name:string; colors:Record<string,Extract<Color,{kind:'rgba'}>>; majorFont?:string; minorFont?:string; majorFontDetails?:SlideThemeFontDetails; minorFontDetails?:SlideThemeFontDetails }
-export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: 'rect' | 'ellipse' | 'line' }) | (ShapeBase & { type: 'image'; resourceId: string });
+export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: SlidePreset; connector?:true }) | (ShapeBase & { type: 'image'; resourceId: string; crop?:SlideCrop }) | (ShapeBase & {type:'group';childSpace:SlideChildSpace;children:Shape[]});
 export interface Slide { id: string; background: Color; shapes: Shape[] }
 export interface SlidesDocument extends DocumentBase { kind: 'slides'; size: { width: number; height: number }; slides: Slide[]; theme?: SlideTheme }
 export type OfficeDocument = WriterDocument | SheetsDocument | SlidesDocument;
@@ -160,6 +166,12 @@ export function validateTextStyle(value: unknown): asserts value is TextStyle {
   for (const key of ['spaceBefore', 'spaceAfter', 'lineHeight']) if (style[key] !== undefined) integer(style[key], 0);
 }
 
+/** Positive crop fractions of the original source image, in 1/1000 %. */
+export function validateSlideCrop(value:unknown):asserts value is SlideCrop{
+  const crop=object(value,['left','top','right','bottom']);
+  for(const k of ['left','top','right','bottom'])integer(crop[k],0,99999);
+  assert(Number(crop.left)+Number(crop.right)<100000&&Number(crop.top)+Number(crop.bottom)<100000,'invalid','Image crop removes the entire image');
+}
 export function validateGeometry(value: unknown): asserts value is Geometry {
   const geometry = object(value, ['x', 'y', 'width', 'height', 'rotation']);
   integer(geometry.x); integer(geometry.y); integer(geometry.width, 0); integer(geometry.height, 0); integer(geometry.rotation);
@@ -305,12 +317,23 @@ export function validateDocument(value: unknown): OfficeDocument {
       for(const key of ['majorFont','minorFont'])if(theme[key]!==undefined)validateTextStyle({fontFamily:theme[key]});
       for(const key of ['majorFontDetails','minorFontDetails'])if(theme[key]!==undefined){const details=object(theme[key],['eastAsia','complex','scripts']);for(const name of ['eastAsia','complex'])if(details[name]!==undefined)validateTextStyle({fontFamily:details[name]});if(details.scripts!==undefined){assert(isRecord(details.scripts)&&Object.keys(details.scripts).length<=128,'invalid','Invalid slide script font map');for(const [script,font]of Object.entries(details.scripts)){assert(/^[A-Z][a-z]{3}$/.test(script),'invalid','Invalid theme font script');validateTextStyle({fontFamily:font});}}}
     }
+    let shapeCount=0;
     list(model.slides).forEach((candidate) => {
       const slide = object(candidate, ['id', 'background', 'shapes']); id(slide.id); validateColor(slide.background);
-      list(slide.shapes).forEach((candidate) => {
-        const shape = object(candidate, ['id', 'type', 'geometry', 'fill', 'stroke', 'runs', 'resourceId', 'textStyle', 'textFrame']); id(shape.id); validateGeometry(shape.geometry);
+      const validateShape=(candidate:unknown,depth:number):void=>{
+        const shape = object(candidate, ['id', 'type', 'geometry', 'fill', 'stroke', 'runs', 'resourceId', 'textStyle', 'textFrame','flipH','flipV','connector','crop','childSpace','children']); id(shape.id); validateGeometry(shape.geometry);
+        assert(++shapeCount<=100000&&depth<=16,'limit','Presentation shape tree budget exceeded');
+        if(shape.flipH!==undefined)bool(shape.flipH);if(shape.flipV!==undefined)bool(shape.flipV);
+        if(shape.connector!==undefined)assert(shape.type==='line'&&shape.connector===true,'invalid','Invalid connector shape');
+        if(shape.type!=='group')assert(!('childSpace' in shape)&&!('children' in shape),'invalid','Unexpected group fields');
+        if(shape.type!=='image')assert(!('crop' in shape),'invalid','Unexpected image crop');
+        if(shape.type==='text')assert(!shape.flipH&&!shape.flipV,'unsupported','Flipped text is outside presentation profile');
         if (shape.fill !== undefined) validateColor(shape.fill);
-        if (shape.stroke !== undefined) { const stroke = object(shape.stroke, ['color', 'width']); validateColor(stroke.color); integer(stroke.width, 0); }
+        if (shape.stroke !== undefined) {
+          const stroke=object(shape.stroke,['color','width','dash','head','tail']);validateColor(stroke.color);integer(stroke.width,0,12700*1000);
+          if(stroke.dash!==undefined)assert(['solid','dash','dot','dashDot','lgDash','lgDashDot','lgDashDotDot','sysDash','sysDot','sysDashDot','sysDashDotDot'].includes(String(stroke.dash)),'invalid','Invalid presentation dash');
+          for(const end of ['head','tail'])if(stroke[end]!==undefined){const arrow=object(stroke[end],['type','width','length']);assert(shape.type==='line'&&['triangle','arrow'].includes(String(arrow.type)),'invalid','Unsupported arrow shape');for(const key of ['width','length'])if(arrow[key]!==undefined)assert(['sm','med','lg'].includes(String(arrow[key])),'invalid','Invalid arrow size');}
+        }
         if (shape.type === 'text') {
           assert(!('resourceId' in shape), 'invalid', 'Unexpected text shape fields'); list(shape.runs).forEach((item) => run(item, true));
           if(shape.textStyle!==undefined)validateTextStyle(shape.textStyle);
@@ -323,9 +346,16 @@ export function validateDocument(value: unknown): OfficeDocument {
             if(frame.margins!==undefined){const margins=object(frame.margins,['top','right','bottom','left']);for(const key of ['top','right','bottom','left'])integer(margins[key],0);}
           }
         }
-        else if (shape.type === 'image') { assert(!('textStyle' in shape)&&!('textFrame' in shape)&&!('runs' in shape) && shape.resourceId !== undefined, 'invalid', 'Invalid image shape'); optionalId(shape.resourceId, resources); }
-        else assert(['rect', 'ellipse', 'line'].includes(String(shape.type)) && !('textStyle' in shape)&&!('textFrame' in shape)&& !('runs' in shape) && !('resourceId' in shape), 'invalid', 'Invalid shape type');
-      });
+        else if (shape.type === 'image') { assert(!('textStyle' in shape)&&!('textFrame' in shape)&&!('runs' in shape) && shape.resourceId !== undefined, 'invalid', 'Invalid image shape'); optionalId(shape.resourceId, resources);if(shape.crop!==undefined)validateSlideCrop(shape.crop); }
+        else if(shape.type==='group'){
+          assert(!('textStyle' in shape)&&!('textFrame' in shape)&&!('runs' in shape)&&!('resourceId' in shape)&&!('fill' in shape)&&!('stroke' in shape),'invalid','Invalid group fields');
+          const space=object(shape.childSpace,['x','y','width','height']);integer(space.x,-2147483648,2147483647);integer(space.y,-2147483648,2147483647);integer(space.width,1,2147483647);integer(space.height,1,2147483647);
+          const geometry=shape.geometry as Geometry;assert(geometry.width>0&&geometry.height>0&&geometry.width/Number(space.width)<=1000&&geometry.height/Number(space.height)<=1000&&geometry.width/Number(space.width)>=.001&&geometry.height/Number(space.height)>=.001,'invalid','Group scale outside profile');
+          const children=list(shape.children);assert(children.length>0&&children.length<=10000,'limit','Invalid group child count');children.forEach(child=>validateShape(child,depth+1));
+        }
+        else assert(['rect','ellipse','line','roundRect','triangle','diamond','parallelogram'].includes(String(shape.type)) && !('textStyle' in shape)&&!('textFrame' in shape)&& !('runs' in shape) && !('resourceId' in shape), 'invalid', 'Invalid shape type');
+      };
+      list(slide.shapes).forEach(candidate=>validateShape(candidate,0));
     });
   } else throw new OfficeError('invalid', 'Invalid document kind');
   return value as unknown as OfficeDocument;

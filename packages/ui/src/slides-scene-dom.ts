@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /** Only trusted model values become DOM. Source markup is never inserted. */
 import { EMU_PER_CSS_PIXEL, ROTATION_UNITS_PER_DEGREE } from '@office-ex/contracts';
-import type { Color, DeepReadonly, TextStyle } from '@office-ex/core';
+import type { Color, DeepReadonly, TextStyle, Geometry, SlideDash, SlideArrow } from '@office-ex/core';
 import type { SlideScene, SlideSceneShape } from '@office-ex/render';
 import { bundledFontFamily } from '@office-ex/pdf';
 const px=(emu:number)=>emu/EMU_PER_CSS_PIXEL+'px';
@@ -17,17 +17,58 @@ function fittedStyle(style:DeepReadonly<TextStyle>,shape:TextScene,override?:num
  const fit=shape.autofit?.mode==='normal'?shape.autofit:undefined,scale=(override??fit?.fontScale??100000)/100000;
  return {...style,...(scale!==1?{fontSize:Math.max(1,Math.round((style.fontSize??304800)*scale)),...(style.complexFontSize!==undefined?{complexFontSize:Math.max(1,Math.round(style.complexFontSize*scale))}:{})}:{})};
 }
+const SVG='http://www.w3.org/2000/svg';
+const dashRatios:Record<SlideDash,number[]>={solid:[],dash:[4,3],dot:[1,3],dashDot:[4,3,1,3],lgDash:[8,3],lgDashDot:[8,3,1,3],lgDashDotDot:[8,3,1,3,1,3],sysDash:[3,1],sysDot:[1,1],sysDashDot:[3,1,1,1],sysDashDotDot:[3,1,1,1,1,1]};
+function svgNode<K extends keyof SVGElementTagNameMap>(tag:K,attrs:Record<string,string|number>={}):SVGElementTagNameMap[K]{const e=document.createElementNS(SVG,tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
+/** The same geometry projection drives editing previews and the final scene. */
+export function updateSlideShapeGeometry(element:HTMLElement,shape:SlideSceneShape,g:DeepReadonly<Geometry>=shape.geometry):void{
+ Object.assign(element.style,{left:px(g.x),top:px(g.y),width:px(g.width),height:px(g.height),transform:`rotate(${g.rotation/ROTATION_UNITS_PER_DEGREE}deg) scale(${shape.flipH?-1:1},${shape.flipV?-1:1})`});
+ if(shape.type==='group'){
+  const inner=element.firstElementChild as HTMLElement|null,space=shape.childSpace;if(inner)inner.style.transform=`scale(${g.width/space.width},${g.height/space.height}) translate(${px(-space.x)},${px(-space.y)})`;
+ }else if(shape.type!=='text'&&shape.type!=='image'){
+  const svg=element.firstElementChild as SVGSVGElement|null;if(svg&&(svg.dataset.width!==String(g.width)||svg.dataset.height!==String(g.height))){paintVector(svg,shape,g);svg.dataset.width=String(g.width);svg.dataset.height=String(g.height);}
+ }
+}
+function arrowGeometry(svg:SVGSVGElement,shape:SlideSceneShape,arrow:DeepReadonly<SlideArrow>,end:'head'|'tail',g:DeepReadonly<Geometry>):void{
+ const w=g.width,h=g.height,n=Math.hypot(w,h);if(!n||!shape.stroke?.width)return;
+ const stroke=shape.stroke.width,unit={sm:2,med:3,lg:5},length=stroke*unit[arrow.length??'med'],half=stroke*unit[arrow.width??'med']/2,ux=w/n*(end==='head'?-1:1),uy=h/n*(end==='head'?-1:1),tx=end==='head'?0:w,ty=end==='head'?0:h,bx=tx-ux*length,by=ty-uy*length;
+ const points=`${bx-uy*half},${by+ux*half} ${tx},${ty} ${bx+uy*half},${by-ux*half}`;
+ svg.append(svgNode(arrow.type==='triangle'?'polygon':'polyline',{points,fill:arrow.type==='triangle'?slideCssColor(shape.stroke.color):'none',stroke:arrow.type==='arrow'?slideCssColor(shape.stroke.color):'none','stroke-width':stroke,'stroke-linejoin':'miter'}));
+}
+function paintVector(svg:SVGSVGElement,shape:SlideSceneShape,g:DeepReadonly<Geometry>):void{
+ const w=g.width,h=g.height,min=Math.min(w,h);svg.replaceChildren();svg.setAttribute('viewBox',`0 0 ${Math.max(EMU_PER_CSS_PIXEL,w)} ${Math.max(EMU_PER_CSS_PIXEL,h)}`);svg.setAttribute('preserveAspectRatio','none');Object.assign(svg.style,{width:px(Math.max(EMU_PER_CSS_PIXEL,w)),height:px(Math.max(EMU_PER_CSS_PIXEL,h)),overflow:'visible',display:'block'});
+ let node:SVGElement;
+ switch(shape.type){
+  case 'line':node=svgNode('line',{x1:0,y1:0,x2:w,y2:h});break;
+  case 'ellipse':node=svgNode('ellipse',{cx:w/2,cy:h/2,rx:w/2,ry:h/2});break;
+  case 'roundRect':node=svgNode('rect',{x:0,y:0,width:w,height:h,rx:min*.16667,ry:min*.16667});break;
+  case 'triangle':node=svgNode('polygon',{points:`${w/2},0 ${w},${h} 0,${h}`});break;
+  case 'diamond':node=svgNode('polygon',{points:`${w/2},0 ${w},${h/2} ${w/2},${h} 0,${h/2}`});break;
+  case 'parallelogram':{const x=min*.25;node=svgNode('polygon',{points:`${x},0 ${w},0 ${w-x},${h} 0,${h}`});break;}
+  default:node=svgNode('rect',{x:0,y:0,width:w,height:h});
+ }
+ const stroke=shape.stroke;node.setAttribute('fill',shape.type==='line'?'none':shape.fill?slideCssColor(shape.fill):'none');node.setAttribute('stroke',stroke?slideCssColor(stroke.color):'none');node.setAttribute('stroke-width',String(stroke?.width??0));
+ if(stroke?.dash&&stroke.dash!=='solid')node.setAttribute('stroke-dasharray',dashRatios[stroke.dash].map(v=>v*stroke.width).join(' '));
+ svg.append(node);
+ if(shape.type==='line'&&stroke){if(stroke.head)arrowGeometry(svg,shape,stroke.head,'head',g);if(stroke.tail)arrowGeometry(svg,shape,stroke.tail,'tail',g);}
+}
 export function createSlideShapeElement(shape:SlideSceneShape,fitOverride?:number):HTMLElement {
   const element=document.createElement('div');element.className='slides-scene-shape';element.dataset.shapeId=shape.id;element.dataset.shapeType=shape.type;const g=shape.geometry;
   Object.assign(element.style,{position:'absolute',left:px(g.x),top:px(g.y),width:px(g.width),height:px(g.height),transform:`rotate(${g.rotation/ROTATION_UNITS_PER_DEGREE}deg)`,transformOrigin:'50% 50%',boxSizing:'border-box',overflow:'visible'});
-  if(shape.type==='line'){
-    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),line=document.createElementNS('http://www.w3.org/2000/svg','line');svg.setAttribute('viewBox',`0 0 ${Math.max(EMU_PER_CSS_PIXEL,g.width)} ${Math.max(EMU_PER_CSS_PIXEL,g.height)}`);svg.setAttribute('preserveAspectRatio','none');Object.assign(svg.style,{width:px(Math.max(EMU_PER_CSS_PIXEL,g.width)),height:px(Math.max(EMU_PER_CSS_PIXEL,g.height)),overflow:'visible'});line.setAttribute('x1','0');line.setAttribute('y1','0');line.setAttribute('x2',String(g.width));line.setAttribute('y2',String(g.height));line.setAttribute('stroke',shape.stroke?slideCssColor(shape.stroke.color):shape.fill?slideCssColor(shape.fill):'#182030');line.setAttribute('stroke-width',String(shape.stroke?.width??12700));svg.append(line);element.append(svg);
-  } else {
+  if(shape.type==='group'){
+    const inner=document.createElement('div');inner.className='slides-group-content';Object.assign(inner.style,{position:'absolute',left:'0',top:'0',width:px(shape.childSpace.width),height:px(shape.childSpace.height),transformOrigin:'0 0',overflow:'visible'});
+    for(const child of shape.children)inner.append(createSlideShapeElement(child));element.append(inner);
+  }else if(shape.type!=='text'&&shape.type!=='image'){
+    const svg=svgNode('svg');element.append(svg);
+  }else {
     if(shape.fill)element.style.backgroundColor=slideCssColor(shape.fill);
-    if(shape.stroke&&shape.stroke.width>0){element.style.outline=px(shape.stroke.width)+' solid '+slideCssColor(shape.stroke.color);element.style.outlineOffset=px(-shape.stroke.width/2);}
-    if(shape.type==='ellipse'){element.style.borderRadius='50%';if(shape.stroke){element.style.outline='none';element.style.border=px(shape.stroke.width)+' solid '+slideCssColor(shape.stroke.color);}}
+    if(shape.stroke&&shape.stroke.width>0){element.style.outline=px(shape.stroke.width)+' '+(shape.stroke.dash==='dot'||shape.stroke.dash==='sysDot'?'dotted':shape.stroke.dash&&shape.stroke.dash!=='solid'?'dashed':'solid')+' '+slideCssColor(shape.stroke.color);element.style.outlineOffset=px(-shape.stroke.width/2);}
     if(shape.type==='image'){
-      if(shape.resource?.dataBase64&&(shape.resource.mimeType==='image/png'||shape.resource.mimeType==='image/jpeg')){const img=document.createElement('img');img.alt='';img.draggable=false;img.src='data:'+shape.resource.mimeType+';base64,'+shape.resource.dataBase64;Object.assign(img.style,{width:'100%',height:'100%',display:'block',objectFit:'fill'});element.append(img);}else element.dataset.missingImage='true';
+      if(shape.resource?.dataBase64&&(shape.resource.mimeType==='image/png'||shape.resource.mimeType==='image/jpeg')){
+       const img=document.createElement('img');img.alt='';img.draggable=false;img.src='data:'+shape.resource.mimeType+';base64,'+shape.resource.dataBase64;
+       const c=shape.crop??{left:0,top:0,right:0,bottom:0},w=100000-c.left-c.right,h=100000-c.top-c.bottom,clip=document.createElement('div');clip.className='slides-image-crop';Object.assign(clip.style,{position:'relative',width:'100%',height:'100%',overflow:'hidden'});
+       Object.assign(img.style,{position:'absolute',left:-c.left/w*100+'%',top:-c.top/h*100+'%',width:100000/w*100+'%',height:100000/h*100+'%',maxWidth:'none',display:'block',objectFit:'fill'});clip.append(img);element.append(clip);
+      }else element.dataset.missingImage='true';
     } else if(shape.type==='text'){
       element.dataset.textFit=shape.autofit?.mode??'none';
       const frame=document.createElement('div');frame.className='slides-text-frame';frame.dataset.textFrame=shape.id;frame.dir=shape.direction;
@@ -48,6 +89,7 @@ export function createSlideShapeElement(shape:SlideSceneShape,fitOverride?:numbe
       frame.append(body);element.append(frame);
     }
   }
+  updateSlideShapeGeometry(element,shape);
   return element;
 }
 export function createSlideSceneElement(scene:SlideScene):HTMLDivElement {

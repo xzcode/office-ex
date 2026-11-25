@@ -4,7 +4,7 @@
 import { assert, EMU_PER_CSS_PIXEL, OfficeError } from '@office-ex/contracts';
 import { resolveTextStyle, type DeepReadonly, type DocumentSnapshot, type Paragraph, type TextStyle, type WriterDocument } from '@office-ex/core';
 import { locateParagraph } from '@office-ex/writer';
-import { WriterPaginationEngine, buildSlideScene, type WriterLine } from '@office-ex/render';
+import { WriterPaginationEngine, buildSlideScene, walkSlideScene, type WriterLine } from '@office-ex/render';
 import { PdfReader, PDF_EMBEDDABLE_FONT_FAMILIES, PDF_LIMITS, assertPdfFontFamily, assertPdfTextCoverage } from '@office-ex/pdf';
 import { BrowserParagraphShaper } from './native-writer-shaper.js';
 import { CanvasFontMetrics } from './font-metrics.js';
@@ -59,7 +59,7 @@ export async function prepareDocumentPdfOutput(snapshot: DocumentSnapshot, conta
       if (block.type === 'paragraph') paragraphFonts(model, block);
       else if (block.type === 'table') for (const row of block.rows) for (const cell of row.cells) for (const paragraph of cell.blocks) { assert(paragraph.type === 'paragraph', 'unsupported', 'Nested table printing is unsupported'); paragraphFonts(model, paragraph); }
     }
-  } else for (const slide of model.slides) for (const shape of buildSlideScene(snapshot, slide.id).shapes) if (shape.type === 'text') for (const paragraph of shape.paragraphs) { fontStyle(paragraph.style); if(paragraph.marker){fontStyle(paragraph.marker.style);assertPdfTextCoverage(paragraph.marker.text);} for (const run of paragraph.runs) { fontStyle(run.style); assertPdfTextCoverage(run.text); } }
+  } else for (const slide of model.slides) for (const shape of walkSlideScene(buildSlideScene(snapshot, slide.id).shapes)) if (shape.type === 'text') for (const paragraph of shape.paragraphs) { fontStyle(paragraph.style); if(paragraph.marker){fontStyle(paragraph.marker.style);assertPdfTextCoverage(paragraph.marker.text);} for (const run of paragraph.runs) { fontStyle(run.style); assertPdfTextCoverage(run.text); } }
   await ensurePdfFonts();
   if (model.kind === 'writer') {
     const shaper = new BrowserParagraphShaper(), metrics = new CanvasFontMetrics(), engine = new WriterPaginationEngine();

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, ROTATION_UNITS_PER_DEGREE, OfficeError } from '@office-ex/contracts';
-import type { DocumentSnapshot, DocumentCommand, ImageResource, Shape, Geometry, TextStyle, SlideParagraphFormat, Color, DeepReadonly } from '@office-ex/core';
-import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
+import { walkSlideShapes, type DocumentSnapshot, type DocumentCommand, type ImageResource, type Shape, type Geometry, type TextStyle, type SlideParagraphFormat, type Color, type DeepReadonly, type SlidePreset, type SlideCrop, type SlideStroke, type SlideDash } from '@office-ex/core';
+import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
 import { buildSlideScene, hitTest, shapeTransform, inverse, transform, type SlideScene, type Point } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
-import { createSlideSceneElement, slideCssColor, overflowingSlideText, measureSlideTextFit } from './slides-scene-dom.js';
+import { createSlideSceneElement, slideCssColor, overflowingSlideText, measureSlideTextFit, updateSlideShapeGeometry } from './slides-scene-dom.js';
 
 export interface SlidesViewState {slideId?:string;selectedIds:string[];zoom:number;lockAspect?:boolean;flush?:()=>boolean;dispose?:()=>void}
 export interface SlidesHost {
@@ -49,10 +49,10 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   }
   function changeSlide(slideId:string):void {if(!flush())return;state.slideId=slideId;state.selectedIds=[];editingId=undefined;refresh();stage.focus({preventScroll:true});}
   function choose(ids:string[]):void {if(!flush())return;state.selectedIds=ids;syncInspector();paintGeometry();}
-  function addShape(type:'text'|'rect'|'ellipse'|'line'):void {
+  function addShape(type:'text'|SlidePreset,connector=false):void {
     const m=doc(),slide=locateSlide(snap(),state.slideId!).slide,shapeId=id(),geometry={x:Math.round(m.size.width*.2),y:Math.round(m.size.height*.2),width:Math.round(m.size.width*.4),height:Math.round(m.size.height*(type==='line'?.15:type==='text'?.2:.3)),rotation:0};let shape:Shape;
     if(type==='text')shape={id:shapeId,type,runs:[{id:id(),type:'text',text:''}],textStyle:{fontSize:304800},geometry};
-    else shape={id:shapeId,type,geometry,...(type==='line'?{}:{fill:{kind:'theme',name:'accent1'} as Color}),stroke:{color:{kind:'theme',name:type==='line'?'accent1':'dk1'},width:12700}};
+    else shape={id:shapeId,type,geometry,...(connector?{connector:true as const}:{}),...(type==='line'?{}:{fill:{kind:'theme',name:'accent1'} as Color}),stroke:{color:{kind:'theme',name:type==='line'?'accent1':'dk1'},width:12700}};
     if(apply(insertShapes(snap(),state.slideId!,slide.shapes.length,[shape]))){choose([shapeId]);if(type==='text')textEditor.focus();}
   }
   button('slideAdd',()=>{const current=locateSlide(snap(),state.slideId!),newId=id();if(apply(addSlide(snap(),current.index+1,newId,current.slide.background as Color))){state.slideId=newId;state.selectedIds=[];refresh();}},toolbar,'slide-add');
@@ -61,6 +61,9 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   const earlier=button('slideEarlier',()=>{const current=locateSlide(snap(),state.slideId!);apply(moveSlide(snap(),state.slideId!,current.index-1));},toolbar,'slide-earlier');
   const later=button('slideLater',()=>{const current=locateSlide(snap(),state.slideId!);apply(moveSlide(snap(),state.slideId!,current.index+1));},toolbar,'slide-later');
   for(const [type,key] of [['text','slideText'],['rect','slideRectangle'],['ellipse','slideEllipse'],['line','slideLine']] as const)button(key,()=>addShape(type),toolbar,'slide-insert-'+type);
+  const advancedPresets:[SlidePreset,MessageKey][]=[['roundRect','slideRoundRect'],['triangle','slideTriangle'],['diamond','slideDiamond'],['parallelogram','slideParallelogram']];
+  const newGraphics:HTMLButtonElement[]=advancedPresets.map(([type,key])=>button(key,()=>addShape(type),toolbar,'slide-insert-'+type));
+  newGraphics.push(button('slideConnector',()=>addShape('line',true),toolbar,'slide-insert-connector'));
   const fileInput=element('input');fileInput.type='file';fileInput.accept='image/png,image/jpeg';fileInput.hidden=true;root.append(fileInput);
   let imageRequest=0;
   button('writerInsertImage',()=>fileInput.click(),toolbar,'slide-insert-image');
@@ -95,13 +98,32 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   const objectActions=element('div','','slides-tool-buttons');geometryGroup.append(objectActions);
   button('slideDuplicateObject',()=>{const count=locateSlide(snap(),state.slideId!).slide.shapes.length;if(apply(duplicateShapes(snap(),state.slideId!,state.selectedIds,id)))choose(locateSlide(snap(),state.slideId!).slide.shapes.slice(count).map(s=>s.id));},objectActions,'slide-object-duplicate',true);
   button('slideDeleteObject',()=>{if(apply(removeShapes(snap(),state.slideId!,state.selectedIds)))choose([]);},objectActions,'slide-object-delete',true);
+  const groupButton=button('slideGroupObjects',()=>{const groupId=id();if(apply(groupShapes(snap(),state.slideId!,state.selectedIds,()=>groupId)))choose([groupId]);},objectActions,'slide-group',true);
+  const ungroupButton=button('slideUngroupObjects',()=>{const shape=selected()[0];if(shape?.type==='group'){const ids=shape.children.map(child=>child.id);if(apply(ungroupShape(snap(),state.slideId!,shape.id)))choose(ids);}},objectActions,'slide-ungroup',true);
+  const flipButtons=(['flipH','flipV'] as const).map((axis,index)=>button(index?'slideFlipV':'slideFlipH',()=>apply(flipSlideShapes(snap(),state.slideId!,state.selectedIds,axis)),objectActions,'slide-'+axis,true));
   const arrangeGroup=element('div','','slides-tool-buttons');geometryGroup.append(arrangeGroup);
   for(const [move,key] of [['front','slideFront'],['back','slideBack'],['forward','slideForward'],['backward','slideBackward']] as const)button(key,()=>apply(reorderShapes(snap(),state.slideId!,state.selectedIds,move as LayerMove)),arrangeGroup,'slide-layer-'+move,true);
   for(const [alignment,key] of [['left','writerAlignLeft'],['center','writerAlignCenter'],['right','writerAlignRight'],['top','slideAlignTop'],['middle','slideAlignMiddle'],['bottom','slideAlignBottom']] as const)button(key,()=>apply(alignShapes(snap(),state.slideId!,state.selectedIds,alignment as ShapeAlignment)),arrangeGroup,'slide-align-'+alignment,true);
   const paintGroup=element('fieldset');paintGroup.append(element('legend',t('slideFill')));inspector.append(paintGroup);
   const fill=element('input');fill.type='color';field('slideFill',fill,paintGroup);selectionControls.push(fill);fill.onchange=()=>safe(()=>{if(flush())apply(setShapePaint(snap(),state.slideId!,state.selectedIds,{fill:rgb(fill.value)}));});
-  const stroke=element('input');stroke.type='color';field('slideStroke',stroke,paintGroup);selectionControls.push(stroke);stroke.onchange=()=>safe(()=>{if(flush())apply(setShapePaint(snap(),state.slideId!,state.selectedIds,{stroke:{color:rgb(stroke.value),width:emu(strokeWidth.value)}}));});
-  const strokeWidth=element('input');strokeWidth.type='number';strokeWidth.min='0';strokeWidth.max='100';strokeWidth.step='.25';field('slideStrokeWidth',strokeWidth,paintGroup);selectionControls.push(strokeWidth);strokeWidth.onchange=()=>safe(()=>{if(flush())apply(setShapePaint(snap(),state.slideId!,state.selectedIds,{stroke:{color:rgb(stroke.value),width:emu(strokeWidth.value)}}));});
+  function currentStroke():SlideStroke{const single=selected()[0];return single?.stroke?structuredClone(single.stroke):{color:{kind:'rgba',red:24,green:32,blue:48,alpha:255},width:12700};}
+  function updateStroke(patch:Partial<SlideStroke>,remove?:'head'|'tail'):void{
+    if(!flush()||state.selectedIds.length!==1)return;const value={...currentStroke(),...patch};if(remove)delete value[remove];
+    apply(setShapePaint(snap(),state.slideId!,state.selectedIds,{stroke:value}));
+  }
+  const stroke=element('input');stroke.type='color';field('slideStroke',stroke,paintGroup);selectionControls.push(stroke);stroke.onchange=()=>safe(()=>updateStroke({color:rgb(stroke.value)}));
+  const strokeWidth=element('input');strokeWidth.type='number';strokeWidth.min='0';strokeWidth.max='100';strokeWidth.step='.25';field('slideStrokeWidth',strokeWidth,paintGroup);selectionControls.push(strokeWidth);strokeWidth.onchange=()=>safe(()=>updateStroke({width:emu(strokeWidth.value)}));
+  const dash=element('select');dash.id='slide-stroke-dash';for(const [value,label]of [['solid','━━━━'],['dash','━ ━ ━'],['dot','• • •'],['dashDot','━ • ━ •'],['lgDash','━━ ━━'],['lgDashDot','━━ • ━━ •'],['lgDashDotDot','━━ • •'],['sysDash','– – –'],['sysDot','· · ·'],['sysDashDot','– · – ·'],['sysDashDotDot','– · ·']] as const){const option=element('option',label);option.value=value;dash.append(option);}field('slideStrokePattern',dash,paintGroup);dash.onchange=()=>safe(()=>updateStroke({dash:dash.value as SlideDash}));
+  function arrowSelect(end:'head'|'tail'):HTMLSelectElement{
+    const select=element('select');select.id='slide-arrow-'+end;for(const [value,label]of [['none',t('slideListNone')],['triangle','▶'],['arrow','➝']] as const){const option=element('option',label);option.value=value;select.append(option);}field(end==='head'?'slideArrowHead':'slideArrowTail',select,paintGroup);
+    select.onchange=()=>safe(()=>{const type=select.value;if(type==='none')updateStroke({},end);else updateStroke({[end]:{...currentStroke()[end],type:type as 'triangle'|'arrow'}});});return select;
+  }
+  const arrowHead=arrowSelect('head'),arrowTail=arrowSelect('tail');
+  const cropGroup=element('fieldset');cropGroup.append(element('legend',t('slideImageCrop')));inspector.append(cropGroup);
+  const cropFields={} as Record<keyof SlideCrop,HTMLInputElement>;
+  for(const [key,label]of [['left','slideCropLeft'],['top','slideCropTop'],['right','slideCropRight'],['bottom','slideCropBottom']] as const){const control=element('input');control.id='slide-crop-'+key;control.type='number';control.min='0';control.max='99.999';control.step='.1';field(label,control,cropGroup);cropFields[key]=control;}
+  const cropApply=button('slideApplyCrop',()=>{const shape=selected()[0];if(shape?.type==='image'){const values=Object.fromEntries(Object.entries(cropFields).map(([k,v])=>[k,Math.round(Number(v.value)*1000)])) as unknown as SlideCrop;apply(setSlideImageCrop(snap(),state.slideId!,shape.id,values));}},cropGroup,'slide-crop-apply',true);
+  const cropReset=button('slideResetCrop',()=>{const shape=selected()[0];if(shape?.type==='image')apply(setSlideImageCrop(snap(),state.slideId!,shape.id,{left:0,top:0,right:0,bottom:0}));},cropGroup,'slide-crop-reset',true);
   const textGroup=element('fieldset');textGroup.append(element('legend',t('slideTextEditor')));inspector.append(textGroup);
   const textEditor=element('textarea');textEditor.id='slide-text-editor';textEditor.rows=5;textEditor.dir='auto';textEditor.spellcheck=false;field('slideTextEditor',textEditor,textGroup);
   textEditor.oninput=()=>{textDirty=true;if(host.composing())return;if(textTimer!==undefined)clearTimeout(textTimer);textTimer=setTimeout(()=>{textTimer=undefined;safe(()=>commitText());},300);};
@@ -162,6 +184,19 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     for(const [key,control] of Object.entries(geometryFields)){control.disabled=!!host.readOnly||!single;control.value=single?String(Math.round(single.geometry[key as keyof Geometry]/(key==='rotation'?ROTATION_UNITS_PER_DEGREE:EMU_PER_POINT)*100)/100):'';}
     aspect.checked=single?.type==='image'||!!state.lockAspect;aspect.disabled=single?.type==='image'||!!host.readOnly;
     fill.value=colorHex(single?.fill);stroke.value=colorHex(single?.stroke?.color,'#182030');strokeWidth.value=String((single?.stroke?.width??12700)/EMU_PER_POINT);
+    const graphicsDisabled=!!host.readOnly||!!host.legacyPresentation;
+    for(const control of newGraphics)control.disabled=graphicsDisabled;
+    const selectedIndices=current.slide.shapes.flatMap((shape,i)=>state.selectedIds.includes(shape.id)?[i]:[]);
+    groupButton.disabled=graphicsDisabled||selectedIndices.length<2||selectedIndices.at(-1)!-selectedIndices[0]!+1!==selectedIndices.length;
+    ungroupButton.disabled=graphicsDisabled||!single||!canUngroupShape(single);
+    for(const control of flipButtons)control.disabled=graphicsDisabled||!shapes.length||shapes.some(shape=>shape.type==='text');
+    fill.disabled=!!host.readOnly||!single||single.type==='group';
+    stroke.disabled=strokeWidth.disabled=!!host.readOnly||!single||single.type==='group';
+    dash.disabled=graphicsDisabled||!single||['text','image','group'].includes(single.type);
+    arrowHead.disabled=arrowTail.disabled=graphicsDisabled||single?.type!=='line';
+    dash.value=single?.stroke?.dash??'solid';arrowHead.value=single?.stroke?.head?.type??'none';arrowTail.value=single?.stroke?.tail?.type??'none';
+    cropGroup.hidden=single?.type!=='image';cropGroup.disabled=graphicsDisabled||single?.type!=='image';cropApply.disabled=cropReset.disabled=cropGroup.disabled;
+    if(single?.type==='image')for(const key of Object.keys(cropFields) as (keyof SlideCrop)[])cropFields[key].value=String((single.crop?.[key]??0)/1000);
     textGroup.disabled=!text||!!host.readOnly;
     if(text){if(editingId!==text.id||!textDirty){const focused=document.activeElement===textEditor,start=textEditor.selectionStart,end=textEditor.selectionEnd;textEditor.value=shapeText(text);if(focused)textEditor.setSelectionRange(Math.min(start,textEditor.value.length),Math.min(end,textEditor.value.length));}editingId=text.id;const style={...m.defaultTextStyle,...text.textStyle,...text.runs[0]?.style};font.value=style.fontFamily??'sans-serif';size.value=String((style.fontSize??304800)/EMU_PER_POINT);textColor.value=colorHex(style.color,'#182030');language.value=style.language??'und';direction.value=text.textFrame?.direction==='rtl'?'rtl':'ltr';wrap.checked=text.textFrame?.wrap??true;vertical.value=text.textFrame?.verticalAlignment??'top';textEditor.dir=text.textFrame?.direction??style.paragraphDirection??'auto';}
     else {editingId=undefined;textEditor.value='';textDirty=false;}
@@ -185,7 +220,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     if(!scene)return;const width=scene.width/EMU_PER_CSS_PIXEL,height=scene.height/EMU_PER_CSS_PIXEL,fit=Math.max(.05,Math.min(1,(stage.clientWidth-56)/width,(Math.max(360,stage.clientHeight)-56)/height));zoom=state.zoom>0?state.zoom:fit;surface.style.width=width*zoom+'px';surface.style.height=height*zoom+'px';scaled.style.width=width+'px';scaled.style.height=height+'px';scaled.style.transform=`scale(${zoom})`;stage.dataset.zoom=String(zoom);paintGeometry();
   }
   function paintGeometry():void {
-    if(!sceneElement)return;const values=gesture?.preview??{};for(const node of sceneElement.querySelectorAll<HTMLElement>('[data-shape-id]')){const shape=scene.shapes.find(s=>s.id===node.dataset.shapeId);if(!shape)continue;const g=values[shape.id]??shape.geometry;Object.assign(node.style,{left:g.x/EMU_PER_CSS_PIXEL+'px',top:g.y/EMU_PER_CSS_PIXEL+'px',width:g.width/EMU_PER_CSS_PIXEL+'px',height:g.height/EMU_PER_CSS_PIXEL+'px',transform:`rotate(${g.rotation/ROTATION_UNITS_PER_DEGREE}deg)`});}
+    if(!sceneElement)return;const values=gesture?.preview??{};for(const node of sceneElement.querySelectorAll<HTMLElement>('[data-shape-id]')){const shape=scene.shapes.find(s=>s.id===node.dataset.shapeId);if(!shape)continue;const g=values[shape.id]??shape.geometry;updateSlideShapeGeometry(node,shape,g);}
     overlay.replaceChildren();for(const shapeId of state.selectedIds){const shape=scene.shapes.find(s=>s.id===shapeId);if(!shape)continue;const g=values[shapeId]??shape.geometry,box=element('div','','slides-selection-box');box.dataset.selectedShape=shapeId;Object.assign(box.style,{left:g.x/EMU_PER_CSS_PIXEL+'px',top:g.y/EMU_PER_CSS_PIXEL+'px',width:g.width/EMU_PER_CSS_PIXEL+'px',height:g.height/EMU_PER_CSS_PIXEL+'px',transform:`rotate(${g.rotation/ROTATION_UNITS_PER_DEGREE}deg)`,borderWidth:1.5/zoom+'px'});overlay.append(box);
       if(state.selectedIds.length===1&&!host.readOnly)for(const corner of ['nw','ne','se','sw','rotate']){const handle=element('span','','slides-handle slides-handle-'+corner);handle.dataset.handle=corner;handle.dataset.shapeId=shapeId;handle.style.width=9/zoom+'px';handle.style.height=9/zoom+'px';handle.style.borderWidth=1/zoom+'px';if(corner==='rotate')handle.style.top=-24/zoom+'px';handle.setAttribute('aria-hidden','true');box.append(handle);}}
   }
@@ -217,9 +252,9 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     if(event.key==='Enter'&&selectedText()){event.preventDefault();textEditor.focus();return;}
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();if(!flush())return;const step=(event.shiftKey?10:1)*EMU_PER_CSS_PIXEL,dx=event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0,dy=event.key==='ArrowUp'?-step:event.key==='ArrowDown'?step:0;apply(setShapeGeometries(snap(),state.slideId!,Object.fromEntries(selected().map(s=>[s.id,{...s.geometry,x:s.geometry.x+dx,y:s.geometry.y+dy}]))));}
   }));
-  root.addEventListener('copy',event=>safe(()=>{if(isTyping(event.target)||!state.selectedIds.length||!flush())return;const shapes=selected(),resources:Record<string,DeepReadonly<ImageResource>>={};for(const shape of shapes)if(shape.type==='image'){const r=doc().resources[shape.resourceId];if(r?.dataBase64)resources[shape.resourceId]=r as DeepReadonly<ImageResource>;}copiedShapes={nonce:id(),shapes,resources};event.clipboardData?.setData('application/x-office-ex-shapes',copiedShapes.nonce);event.clipboardData?.setData('text/plain',shapes.filter(s=>s.type==='text').map(shapeText).join('\n'));event.preventDefault();}));
+  root.addEventListener('copy',event=>safe(()=>{if(isTyping(event.target)||!state.selectedIds.length||!flush())return;const shapes=selected(),resources:Record<string,DeepReadonly<ImageResource>>={};for(const shape of walkSlideShapes(shapes))if(shape.type==='image'){const r=doc().resources[shape.resourceId];if(r?.dataBase64)resources[shape.resourceId]=r as DeepReadonly<ImageResource>;}copiedShapes={nonce:id(),shapes,resources};event.clipboardData?.setData('application/x-office-ex-shapes',copiedShapes.nonce);event.clipboardData?.setData('text/plain',shapes.filter(s=>s.type==='text').map(shapeText).join('\n'));event.preventDefault();}));
   root.addEventListener('cut',event=>safe(()=>{if(isTyping(event.target)||host.readOnly||!state.selectedIds.length||!flush())return;const copy=new ClipboardEvent('copy',{bubbles:true,clipboardData:event.clipboardData});stage.dispatchEvent(copy);if(copiedShapes&&event.clipboardData?.getData('application/x-office-ex-shapes')===copiedShapes.nonce){event.preventDefault();if(apply(removeShapes(snap(),state.slideId!,state.selectedIds)))choose([]);}}));
-  root.addEventListener('paste',event=>safe(()=>{if(isTyping(event.target)||!copiedShapes||event.clipboardData?.getData('application/x-office-ex-shapes')!==copiedShapes.nonce||host.readOnly||!flush())return;event.preventDefault();const count=locateSlide(snap(),state.slideId!).slide.shapes.length;if(apply(pasteShapes(snap(),state.slideId!,copiedShapes.shapes,copiedShapes.resources,id)))choose(locateSlide(snap(),state.slideId!).slide.shapes.slice(count).map(s=>s.id));}));
+  root.addEventListener('paste',event=>safe(()=>{if(isTyping(event.target)||!copiedShapes||event.clipboardData?.getData('application/x-office-ex-shapes')!==copiedShapes.nonce||host.readOnly||!flush())return;event.preventDefault();if(host.legacyPresentation&&copiedShapes.shapes.some(s=>!['rect','ellipse','line','image','text'].includes(s.type)||s.flipH||s.flipV||s.type==='image'&&s.crop||s.type==='line'&&s.connector||s.stroke?.dash&&s.stroke.dash!=='solid'||s.stroke?.head||s.stroke?.tail))throw new OfficeError('unsupported','Clipboard graphics cannot be preserved in legacy PPT');const count=locateSlide(snap(),state.slideId!).slide.shapes.length;if(apply(pasteShapes(snap(),state.slideId!,copiedShapes.shapes,copiedShapes.resources,id)))choose(locateSlide(snap(),state.slideId!).slide.shapes.slice(count).map(s=>s.id));}));
 
   function present():void {
     if(!flush())return;const snapshot=snap(),m=presentation(snapshot);let page=Math.max(0,m.slides.findIndex(s=>s.id===state.slideId));const dialog=element('dialog','','slides-presentation'),screen=element('div','','slides-presentation-screen'),bar=element('div','','slides-presentation-bar'),caption=element('span','');presentationDialog=dialog;dialog.tabIndex=-1;dialog.dataset.revision=String(snapshot.revision);root.append(dialog);dialog.append(screen,bar);

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDocument,resolveSlideThemeColor,DEFAULT_SLIDE_THEME_COLORS,type SlidesDocument,type Shape} from '@office-ex/core';
+import {createDocument,resolveSlideThemeColor,DEFAULT_SLIDE_THEME_COLORS,makeImageResource,walkSlideShapes,type SlidesDocument,type Shape} from '@office-ex/core';
 import {OfficeError} from '@office-ex/contracts';
 import {openOpc,writeZip,openSlidesPptx,writeSlidesPptx,saveSlidesPptx} from '@office-ex/ooxml';
 import {openLegacyPpt,writeLegacyPpt,saveLegacyPpt,prepareSlidesSave,serializeDraft,inspectForEditor} from '@office-ex/format-service';
 import {readCfb,writeCfb,type CfbEntry} from '@office-ex/cfb';
 import {slidesFormatFixture} from './slides-format-fixture.js';
+import {PNG} from './writer-image-fixture.js';
 
 const text=(s:Shape)=>s.type==='text'?s.runs.map(r=>r.text).join(''):'';
 const fail=(code?:string)=>(e:unknown)=>e instanceof OfficeError&&(!code||e.code===code);
@@ -164,4 +165,33 @@ test('PPTX multilevel bullet properties, decimal numbering, percentage spacing a
  assert.throws(()=>writeLegacyPpt(after),fail('unsupported'));
  shape.runs.find(r=>r.text==='Third')!.text='Edited third';const reopened=openSlidesPptx(saveSlidesPptx(source,after),d.documentId).document;
  assert.equal((reopened.slides[0]!.shapes[0] as Extract<Shape,{type:'text'}>).runs.map(r=>r.text).join(''),'First\nSecond\nEdited third');
+});
+
+test('PPTX nested groups, crop, flips, default presets, styled connectors and media relationships round trip',async()=>{
+ const d=createDocument('slides','graphics-interop'),asset=makeImageResource(PNG);d.resources[asset.id]=asset;
+ const geo={x:914400,y:914400,width:1828800,height:914400,rotation:0},color={kind:'rgba' as const,red:20,green:40,blue:80,alpha:255};
+ d.slides[0]!.shapes=[{id:'g',type:'group',geometry:{...geo,width:3657600,height:2743200,rotation:1800000},flipH:true,childSpace:{x:0,y:0,width:3657600,height:2743200},children:[
+ {id:'crop-image',type:'image',geometry:geo,resourceId:asset.id,crop:{left:12500,right:5000,top:2500,bottom:3000},flipV:true},
+ {id:'nested',type:'group',geometry:{...geo,x:0,y:0},childSpace:{x:0,y:0,width:1828800,height:914400},children:[
+ {id:'preset-1',type:'roundRect',geometry:{...geo,x:0,y:0},fill:color},
+ {id:'preset-2',type:'triangle',geometry:{...geo,x:0,y:0},stroke:{color,width:12700,dash:'dashDot'}},
+ {id:'preset-3',type:'diamond',geometry:{...geo,x:0,y:0},fill:color},
+ {id:'preset-4',type:'parallelogram',geometry:{...geo,x:0,y:0},fill:color},
+ {id:'cxn',type:'line',connector:true,geometry:{...geo,x:0,y:0},flipV:true,stroke:{color,width:25400,dash:'dash',head:{type:'arrow',width:'sm'},tail:{type:'triangle',length:'lg'}}}
+ ]}]}];
+ const input=writeSlidesPptx(d),opened=openSlidesPptx(input,d.documentId).document;
+ const source=Array.from(walkSlideShapes(d.slides[0]!.shapes)),actual=Array.from(walkSlideShapes(opened.slides[0]!.shapes));
+ assert.equal(actual.length,source.length);for(const [i,s] of actual.entries()){const {id:ignored,...value}=s;const {id:ignored2,...expected}=source[i]!;if(s.type==='group'){assert.equal(s.type,expected.type);assert.deepEqual(s.geometry,expected.geometry);assert.deepEqual(s.childSpace,(source[i] as Extract<Shape,{type:'group'}>).childSpace);}else assert.deepEqual(value,expected);}
+ assert.equal(Object.keys(opened.resources).length,1);assert.equal(opened.resources[asset.id]!.sha256,asset.sha256);assert.throws(()=>writeLegacyPpt(opened),fail('unsupported'));
+ assert.deepEqual(saveSlidesPptx(input,opened),input);
+ const picture=actual.find(s=>s.type==='image') as Extract<Shape,{type:'image'}>;picture.crop={left:10000,right:10000,top:0,bottom:0};
+ const group=opened.slides[0]!.shapes[0]!;group.geometry.x+=914400;
+ const saved=saveSlidesPptx(input,opened),reopened=openSlidesPptx(saved,d.documentId).document;
+ assert.equal(reopened.slides[0]!.shapes[0]!.geometry.x,group.geometry.x);
+ assert.deepEqual((Array.from(walkSlideShapes(reopened.slides[0]!.shapes)).find(s=>s.type==='image') as Extract<Shape,{type:'image'}>).crop,picture.crop);
+ const opc=openOpc(saved),slide='ppt/slides/slide1.xml';assert.equal(opc.relationships.get(slide)!.filter(r=>r.type.endsWith('/image')).length,1);
+ const parts=new Map(opc.parts),raw=new TextDecoder().decode(parts.get(slide)!);
+ for(const changed of [raw.replace(/(<p:cNvPr id=")3"/,(_,prefix)=>prefix+'2"'),raw.replace(/(<a:srcRect l=")10000"/,(_,prefix)=>prefix+'99999"'),raw.replace('<p:cNvCxnSpPr/>','<p:cNvCxnSpPr><a:stCxn id="2" idx="0"/></p:cNvCxnSpPr>')]){
+   assert.notEqual(changed,raw);const modified=new Map(parts);modified.set(slide,new TextEncoder().encode(changed));const bytes=writeZip(modified);assert.throws(()=>openSlidesPptx(bytes,d.documentId),fail());assert.equal((await inspectForEditor(bytes,'protected.pptx','protected')).report.readOnly,true);
+ }
 });
