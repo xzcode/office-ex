@@ -23,3 +23,5 @@ export function renameSheet(snapshot: DocumentSnapshot, sheetId: string, name: s
   assert(!snapshot.document.sheets.some((sheet) => Object.values(sheet.cells).some((cell) => cell.value.kind === 'formula')), 'unsupported', 'Formula-aware sheet renaming is not implemented');
   return patchCommand(snapshot, 'SHT-02', [{ op: 'set', path: ['sheets', index, 'name'], value: name }]);
 }
+
+export * from './formula.js';

@@ -108,3 +108,7 @@ M2 集成第六批候选：增加图片原始字节/摘要、受限 PNG/JPEG 插
 第七批最终受测 3e0a60f62d543d3f77cde6847f7fc0ee36f46f32；CI https://github.com/xzcode/office-ex/actions/runs/45527322279 基础 162/162、独立混合图片/分节/语言往返及 Python 修改后再导入互通均通过。记录时 verify-writer: success; native-other (ubuntu-24.04): in_progress; native-macos: in_progress; native-other (windows-2025): in_progress。继续时核对实际原生结果并优先修复；集中完成分页富文本编辑、复杂文字 shaping/RTL 和普通 Word 兼容，随后 M2-L DOC。M2 整体未 verified，未合并 master。详见 docs/M2-WRITER.md。
 
 2026-11-25 M2 集中收尾候选：基线 1a2f229，上一轮 CI 45527322279 原生三平台全通过。本轮页面富文本模式、Chromium 原生塑形/视觉簇、节和段落增量缓存、富格式剪贴板、普通默认模板 DOCX 和封闭 Word97 DOC 适配、独立转换会话均已实现。首尔实际 167/167、原有及新增独立互通、构建、许可证通过，另有独立 Chromium 混排页面输入证据。11 locale 221 键。详细实现及边界见 docs/M2-WRITER.md 第八批。M2/M2-L 仍需新版实际原生验收、历史 DOC 更广泛语义结构和参考 Word 排版等价证据；不得将窄 DOC 子集、正文预览、浏览器塑形视为完整 Word 97–2003 兼容。继续保持当前 Writer 分支；无正式 release。
+
+## M3 source recovery (2026-11-25)
+
+The previous M3 source tree was not found in the accessible workspaces or remote branches. Preserve browser output and raw measurement on recovery/m3-20261125 (b4d84c9); continue source reconstruction on m3-sheets-recovery-20261125. See [M3-RECOVERY.md](M3-RECOVERY.md) for scope, verification, and missing source. This first batch restores the typed formula lexer/parser/serializer and locale rules, not the complete calculation engine or M3. The M2 Writer and master branches are untouched.
