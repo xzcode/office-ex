@@ -2,19 +2,17 @@
 
 自主研发、跨平台、离线优先的开源办公套件。原创代码采用 MIT 许可证；文档模型、命令、撤销、格式语义、排版、公式和幻灯片场景由项目自己实现。通用开源依赖负责桌面运行时、压缩和 XML 等基础设施。
 
-## 当前进度：M1 基础设施已完成
+## 当前进度：M5 开发预览交付
 
-M1.1–M1.10 已完成并通过阶段验收：Electron 桌面工作台、多标签会话、共享模型与事务、ZIP/XML/OPC 与 CFB 容器、安全保存、备份、恢复、主题和中英文设置均已落地。源码 `7d0522d` 在 [同一轮 CI](https://github.com/xzcode/office-ex/actions/runs/45375454826) 通过 99 项基础回归，以及 macOS ARM64、Windows x64、Linux x64 各 15 项真实 Electron 检查。完整环境、平台测试计数、跳过项和截图见 [验收记录](docs/verification/m1/README.md)。
+**当前版本为 `0.1.0-dev.1` 开发预览，不是正式 Office 兼容产品。** M1 基础设施已验收；M2 Writer、M3 Sheets、M4 Slides/PDF 已实现限定格式子集，M5 正在完成六格式验收、分发和性能工作。
 
-**目前是 `0.1.0-dev.1` 开发预览，没有发布正式安装包。** 已验收的是 M1 基础设施范围，完整 Office 兼容能力继续按后续阶段实施。
+- Writer：段落与字符样式、分页、限定 DOCX 表格／图片／分节、限定 Word 97–2003 DOC 原格式读写。
+- Sheets：虚拟网格、稀疏单元格、公式计算、格式、限定 XLSX／BIFF8 XLS 原格式读写。
+- Slides：幻灯片与图形、母版／版式的已支持子集、段落列表、主题、嵌套组、裁剪、连接线、限定 PPTX／PPT 原格式读写。
+- PDF：离线阅读、搜索、翻页、Writer／Slides PDF 输出及 Unicode 字体嵌入。
+- 已接入六种格式的新建、编辑、原格式保存、复开和受支持的双向转换。未知特性或不安全源文件只读／拒绝，不强制转换，不静默删除。
 
-当前界面可以：
-
-- 新建 `.oex` 内部草稿，验证文字输入、A1:C3 单元格事务、矩形场景、撤销／重做、保存／另存和恢复。
-- 检查受支持 Office 文件的实际容器、格式标记、部件／流、大小、摘要和兼容性诊断。
-- 对检查成功的源 Office 文件执行**字节完全相同的原样另存**。
-
-**Office 源文件尚未导入为可编辑文档。** `.oex` 是 M1 会话与保存流程的内部草稿，不能交给 Microsoft Office 打开，也不能通过修改扩展名当作 DOCX、XLSX 或 PPTX。分页、公式求值、完整网格、幻灯片编辑、PDF 阅读／输出和六格式转换仍在后续里程碑。
+开发预览构建仍需按 [M5 交付与验收](docs/M5-DISTRIBUTION.md) 进行平台核验。完整 Office 参考应用、复杂文件、旧格式、人工语言审校及性能门槛仍未全部通过。M1 历史基础设施验收见 [M1 验收记录](docs/verification/m1/README.md)。
 
 ## 正式版格式目标
 
@@ -22,13 +20,11 @@ M1.1–M1.10 已完成并通过阶段验收：Electron 桌面工作台、多标�
 
 旧版目标为 **Office 97–2003，XLS 使用 BIFF8**。共享 CFB 容器已进入 M1；DOC、XLS、PPT 的语义读写分别属于 **M2-L、M3-L、M4-L**，全部是首个正式版的强制门槛。能够识别容器不等于已经实现旧格式编辑。
 
-## M2 Writer 开发进展
+## 实施与验收记录
 
-M2 第一批开发分支加入段落事务与窄范围 DOCX 语义读写 API（不等于桌面已支持编辑 Office 文件）。真实编辑界面、分页、普通 Word 文档样式/图片/表格及 DOC 仍在后续阶段。详见 [M2 Writer 实施说明](docs/M2-WRITER.md)。
+[Writer / DOC(X)](docs/M2-WRITER.md) · [Sheets / XLS(X)](docs/M3-RECOVERY.md) · [Slides / PPT(X) / PDF](docs/M4-SLIDES-PDF.md) · [M5 分发与正式版门槛](docs/M5-DISTRIBUTION.md)
 
-## 国际化规划
-
-M2-I18N 已编写 A 批 11 套候选界面资源：简体中文、繁体中文、英语、日语、韩语、法语、德语、西班牙语、巴西葡萄牙语、俄语、意大利语。B 批 11 个 UI locale 尚未实现。当前处于开发验证阶段，人工术语校订与正式验收尚未完成，详见 [实施记录](docs/M2-I18N.md)。自 M2-I18N 起实施共享语言包、自动识别系统语言、无需重启的切换、独立地区格式、文档语言与 RTL。首个正式版规划 22 个界面 locale（含简繁中、英、日、韩、欧洲主要语言、阿拉伯语、希伯来语、印地语及东南亚主要语言），并验收 Unicode/复杂文字、公式与 PDF 的语言兼容。完整语言表、实施阶段和门槛见 [国际化规范](docs/specs/09-i18n.md)。这些是新增规划，不是现有功能。
+22 套界面语言候选目录已建立，支持热切换、独立地区格式、文档语言与 RTL 布局。候选翻译不等于人工审校完成；正式版仍须通过 [I18N-01–05](docs/specs/09-i18n.md) 与 QA-07。
 
 ## 本地启动
 
@@ -42,6 +38,20 @@ npm run start
 ```
 
 `setup:desktop` 显式安装锁定版本的原生 Electron；`start` 构建后打开桌面窗口。Linux 需要图形会话、可用的 Chromium sandbox 和中文字体；Ubuntu CI 安装 `fonts-noto-cjk`、`fonts-noto-color-emoji`，使用 Xvfb。系统字体不随应用分发，sandbox 配置见工作流。
+
+## 开发预览打包
+
+在对应原生平台安装锁定依赖、字体及 Electron 后：
+
+```sh
+npm run build
+# 将实际源码提交 SHA 设为 OFFICE_EX_SOURCE_SHA（CI 自动提供）
+npm run package:preview
+npm run verify:preview -- out/m5-preview/Office-EX-0.1.0-dev.1-linux-x64.manifest.json # Linux x64 示例
+npm run release:readiness
+```
+
+`npm run package:preview -- --installer` 在对应构建机上生成 Linux DEB、macOS DMG 或 Windows 安装器。分发仍处于预览验证阶段，不自动发布 GitHub Release。打包文件附 SHA256SUMS、内容清单及第三方许可证。不要绕过系统安全策略或关闭 Chromium sandbox。正式发布检查使用 `npm run release:readiness -- --require-formal`。
 
 ## 开发验证
 

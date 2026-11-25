@@ -23,7 +23,10 @@
     "audit:licenses": "node scripts/dependency-inventory.mjs",
     "setup:desktop": "node node_modules/electron/install.js",
     "setup:fonts": "node scripts/setup-fonts.mjs",
-    "smoke:m4": "npm run build && node --import tsx scripts/smoke-m4-desktop.mjs"
+    "smoke:m4": "npm run build && node --import tsx scripts/smoke-m4-desktop.mjs",
+    "package:preview": "node scripts/package-preview.mjs",
+    "verify:preview": "node --import tsx scripts/verify-preview.mjs",
+    "release:readiness": "node scripts/release-readiness.mjs"
   },
   "devDependencies": {
     "typescript": "7.0.2",

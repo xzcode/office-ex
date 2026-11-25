@@ -1,0 +1,24 @@
+# M5 — Distribution and release readiness
+
+Scope: QA-03–07, six native Office formats, M2-L/M3-L/M4-L, installation, compatibility, safety, performance and language release gates. The v1.1 normative specs remain authoritative.
+
+## Batch 1: native development-preview packaging
+
+M5 development branch starts from M4 commit `3b49ace8560839354700f3c97aba01de439f0eef`, which completed all four jobs in [Actions 45595130602](https://github.com/xzcode/office-ex/actions/runs/45595130602). This is the M4 bounded implementation evidence, not formal compatibility certification.
+
+- `scripts/package-preview.mjs`: packages the actual pinned Electron distribution plus prebuilt self-contained application, offline PDF resources, hash-verified OFL fonts and third-party notices. Linux x64 tar.gz, Windows x64 ZIP, macOS ARM64 ZIP; native installer option generates DEB, Inno Setup EXE or DMG respectively on the matching native host. No new runtime dependency, network updater, release credentials or publishing action.
+- The preview version is retained, macOS signing is ad-hoc only, Windows unsigned, Linux portable archive has a non-setuid sandbox helper and requires a supported Chromium sandbox configuration. The installer workflow uses the native OS build tools; no installation or global file associations are claimed on the developer host.
+- `scripts/verify-preview.mjs`: verifies SHA256SUMS, exact per-file content manifest and internal symlinks, extracts the trusted locally produced archive, starts the **packaged executable** with a temporary profile, confirms sandbox/context isolation/no Node/no DevTools, exercises creation/native save/independent semantic parse/reopen for DOC/DOCX/XLS/XLSX/PPT/PPTX, blocks external fetch, and checks orderly quit. Native dialog choices are automated; this is not independent Microsoft Office GUI testing.
+- `.github/workflows/m5.yml`: one locked core/interop/license check and three native packaging jobs, archive launch verification and development-preview artifact uploads only on success. Native installers require the platform tools; the new cross-platform workflow remains to be verified. No automatic GitHub Release.
+- `scripts/release-readiness.mjs` plus `docs/verification/m5/release-gates.json`: explicit non-bypassable-by-preview-version check of tracked mandatory feature statuses and nine acceptance gates. The report is generated locally; `--require-formal` exits nonzero when not ready.
+- First packaged test exposed a genuine blank DOC round-trip bug: empty text run paragraph-mark styling was dropped by the canonical binary writer. Preserve the effective character style of an empty run for an empty paragraph, keeping the original binary structural equality guard. Added a targeted blank/styled-empty DOC regression; Writer focused tests 6/6, TypeScript and build passed.
+
+## Open formal release gates
+
+The preview archive and installer workflows do not authorize formal release. Reference Office GUI and legacy acceptance, three-platform installer installation/uninstallation and trust, full QA-05 budgets, all 22 locales' human review and native IME/printer verification remain open or blocked. See the gate ledger and normative `docs/specs/08-quality.md`, `09-i18n.md`. Next M5 batch prioritizes six-format compatibility corpus, Sheet performance and reproducible installation evidence. No master merge or release.
+
+## Local packaged executable evidence
+
+Seoul Linux x64, sandboxed headless Electron 45.4.1 / Chromium 156.0.8078.100. Final locally built archive: 142,396,197 bytes; SHA256 `104ee956360b16d8a66f5e86be4f03f28a723b6c05f83a5131a7150774193947`; 327 exact manifest entries. All 10 packaged checks passed after the empty DOC fix, including empty DOC native save and reopening, other five native formats, offline renderer boundary and normal shutdown. Measured one instrumented launch to renderer ready: 1312.5 ms, not a five-run cold-start or RSS certification. The local artifact was built from the M4 base plus this uncommitted M5 working tree; `sourceClean:false` is retained, and the forthcoming source-correlated CI must rebuild it. The full package stays in the authorized host's out/m5-preview (not committed or released). See `docs/verification/m5/linux-packaged-preview.json`. Windows and macOS native installer builds, Linux DEB generation and actual installation remain pending; local Linux test is archive extraction, not DEB installation.
+
+The first smoke had an Electron web preference metadata mismatch and premature cleanup; the corrected check verifies that DevTools cannot actually be opened and waits for process exit before removing test files. The first empty DOC save then exposed the canonical round-trip failure, which was fixed and verified from the rebuilt packaged executable. The formal readiness command rejects this development version and all still-open gates.

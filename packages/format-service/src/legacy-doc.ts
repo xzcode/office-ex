@@ -176,6 +176,7 @@ function writeStreams(candidate:unknown):Streams{
       const base=resolveTextStyle(checked.defaultTextStyle,{},[],block.style??{}).style;
       const paragraph=Object.fromEntries(PARA.filter(k=>base[k]!==undefined).map(k=>[k,base[k]])) as TextStyle;
       paragraphStyles.push(paragraph);
+      let emptyStyle:TextStyle|undefined;
       for(const run of block.runs){
         valid(run.type!=='image','Pictures are outside the closed DOC profile');
         const direct=run.type==='text'?run.style??{}:{};
@@ -184,8 +185,9 @@ function writeStreams(candidate:unknown):Streams{
         const value=run.type==='text'?run.text:run.type==='tab'?'\t':'\n';
         valid(!/[\x00-\x08\x0b-\x1f\x7f\uFFFC]/.test(value),'Unsupported DOC control character');
         if(value){fonts.add(style.fontFamily??'Arial');list.push({text:value.replace(/\n/g,'\v'),style});}
+        else if(run.type==='text')emptyStyle=style;
       }
-      if(!list.length){const style=Object.fromEntries(CHAR.filter(k=>base[k]!==undefined).map(k=>[k,base[k]])) as TextStyle;fonts.add(style.fontFamily??'Arial');list.push({text:'',style});}
+      if(!list.length){const style=emptyStyle??Object.fromEntries(CHAR.filter(k=>base[k]!==undefined).map(k=>[k,base[k]])) as TextStyle;fonts.add(style.fontFamily??'Arial');list.push({text:'',style});}
     }
     total+=list.reduce((n,r)=>n+r.text.length,0)+1;valid(total<=MAX_TEXT,'DOC text budget exceeded');texts.push(list);
   }

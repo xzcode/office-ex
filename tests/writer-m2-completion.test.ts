@@ -85,3 +85,26 @@ test('WRT-02 incremental pagination retains unchanged section pages and invalida
   assert.deepEqual(next.pages,layoutWriter(s.snapshot(),font).pages);
   assert.throws(()=>engine.layout(s.snapshot(),font,{maxPages:1}),fails('limit'));
 });
+
+test('M5 empty DOC paragraphs retain paragraph-mark character styles and native round trip',()=>{
+ const d=createDocument('writer','blank-doc','Blank DOC');
+ d.defaultTextStyle={fontFamily:'Arial',fontSize:152400,language:'en-US'};
+ const blank=writeLegacyDoc(d),opened=openLegacyDoc(blank,d.documentId,d.title);
+ assert.equal(inspectLegacyDocText(blank).text,'\r');
+ assert.equal(opened.document.sections[0]!.blocks[0]!.type,'paragraph');
+ assert.deepEqual(saveLegacyDoc(opened,opened.document),blank);
+ const section=d.sections[0]!;section.blocks=[
+   {id:'p-blank1',type:'paragraph',runs:[{id:'r-blank1',type:'text',text:'',style:{fontFamily:'Times New Roman',fontSize:254000,bold:true}}]},
+   {id:'p-text',type:'paragraph',runs:[{id:'r-text',type:'text',text:'Paragraph'}]},
+   {id:'p-blank2',type:'paragraph',runs:[{id:'r-blank2',type:'text',text:'',style:{fontFamily:'Arial',fontSize:228600,italic:true}}]}
+ ];
+ const bytes=writeLegacyDoc(d),reopened=openLegacyDoc(bytes,d.documentId,d.title);
+ assert.equal(inspectLegacyDocText(bytes).text,'\rParagraph\r\r');
+ const [first,,last]=reopened.document.sections[0]!.blocks;
+ assert.equal(first?.type,'paragraph');assert.equal(last?.type,'paragraph');
+ if(first?.type==='paragraph'&&last?.type==='paragraph'){
+  assert.equal(first.runs[0]?.type,'text');assert.equal(last.runs[0]?.type,'text');
+  if(first.runs[0]?.type==='text'&&last.runs[0]?.type==='text'){assert.equal(first.runs[0].style?.fontFamily,'Times New Roman');assert.equal(first.runs[0].style?.bold,true);assert.equal(last.runs[0].style?.italic,true);}
+ }
+ assert.deepEqual(saveLegacyDoc(reopened,reopened.document),bytes);
+});
