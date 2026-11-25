@@ -25,6 +25,7 @@ const api: DesktopBridge = {
   confirmClose: id => ipcRenderer.invoke('office:confirm-close',id),
   releaseDocument: (id,discard) => ipcRenderer.invoke('office:release',id,discard),
   finishClose: () => ipcRenderer.invoke('office:finish-close'),
+  cancelWindowClose: () => ipcRenderer.invoke('office:cancel-window-close'),
   updateSettings: patch => ipcRenderer.invoke('office:settings',patch),
   recover: id => ipcRenderer.invoke('office:recover',id),
   discardRecovery: id => ipcRenderer.invoke('office:discard-recovery',id),

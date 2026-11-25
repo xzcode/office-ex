@@ -56,4 +56,8 @@ try{
   const rejected=await page.evaluate(async()=>{const a=await Promise.allSettled([fetch('https://example.invalid/office-ex-probe'),fetch('file:///etc/passwd')]);return a.map(x=>x.status);});assert.deepEqual(rejected,['rejected','rejected']);assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1);record('New PDF assets keep external/file fetch blocked and output windows are destroyed');
   assert.deepEqual(errors,[]);evidence.completedAt=new Date().toISOString();evidence.files={pptx:hash(await readFile(pptxPath)),ppt:hash(await readFile(pptPath)),pdf:hash(await readFile(pdfPath))};
 }catch(error){evidence.failure=String(error);evidence.rendererErrors=errors;if(page)await screenshot('failure.png').catch(()=>{});throw error;}
-finally{await writeFile(join(output,'result.json'),JSON.stringify(evidence,null,2)+'\n');await app?.close();}
+finally{
+  try{if(app){if(evidence.failure)await app.evaluate(({app})=>app.exit(1)).catch(()=>{});else{let timer;try{await Promise.race([app.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Orderly desktop quit exceeded 20 seconds')),20000);})]);evidence.orderlyQuit=true;}finally{clearTimeout(timer);}}}}
+  catch(error){evidence.failure??=String(error);await app?.evaluate(({app})=>app.exit(1)).catch(()=>{});throw error;}
+  finally{await writeFile(join(output,'result.json'),JSON.stringify(evidence,null,2)+'\n');}
+}

@@ -26,6 +26,7 @@ const ownsProfile = app.requestSingleInstanceLock();
 if(!ownsProfile)app.quit();
 let window:BrowserWindow|null = null;
 let allowClose = false;
+let quitRequested = false;
 let rendererReady = false;
 let drainingFiles = false;
 let createMainWindow:(()=>Promise<void>)|undefined;
@@ -327,6 +328,7 @@ function installIpc():void {
     for(const token of originals.keys()){try{authority.get(token,window!.id,candidate);}catch{let live=false;for(const doc of tabs.keys()){try{authority.get(token,window!.id,doc);live=true;break;}catch{/* different session */}}if(!live)originals.delete(token);}}
   });
   handle('office:finish-close',async()=>{if(tabs.size||runningSaves.size)throw new OfficeError('conflict','Document sessions remain open');allowClose=true;window!.close();});
+  handle('office:cancel-window-close',async()=>{quitRequested=false;});
   handle('office:settings',async(_event,candidate)=>{const patch=parseSettingsPatch(candidate);await settings.update(patch);nativeTheme.themeSource=settings.value().theme;installMenu();return settings.publicValue();});
   handle('office:recover',async(_event,candidate)=>{return recovery.load(parseRecoveryId(candidate));});
   handle('office:discard-recovery',async(_event,candidate)=>{await recovery.discard(parseRecoveryId(candidate));});
@@ -342,8 +344,10 @@ app.on('second-instance',(_event,argv,cwd)=>{
   for(const path of commandLineFiles(argv,Boolean(process.defaultApp),cwd)){try{enqueueFile(path);}catch{break;}}
   if(!window&&createMainWindow)void createMainWindow().catch(()=>dialog.showErrorBox('Office EX',t('windowFailed')));
 });
-app.on('before-quit',event=>{if(window&&!allowClose){event.preventDefault();send('close-window');}});
-app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
+// On macOS closing the last window is not quitting the app. Preserve an
+// explicit Quit request across the asynchronous document close handshake.
+app.on('before-quit',event=>{if(window&&!allowClose){event.preventDefault();quitRequested=true;send('close-window');}});
+app.on('window-all-closed',()=>{if(process.platform!=='darwin'||quitRequested){quitRequested=false;app.quit();}});
 if(ownsProfile)app.whenReady().then(async()=>{
   await mkdir(app.getPath('userData'),{recursive:true,mode:0o700});
   for(const path of commandLineFiles(process.argv,Boolean(process.defaultApp),process.cwd()))enqueueFile(path);
@@ -369,7 +373,7 @@ if(ownsProfile)app.whenReady().then(async()=>{
   installIpc();installMenu();
   const createWindow=async():Promise<void>=>{
     if(window&&!window.isDestroyed())return;
-    allowClose=false;rendererReady=false;
+    allowClose=false;quitRequested=false;rendererReady=false;
     window=new BrowserWindow({width:1280,height:840,minWidth:880,minHeight:600,show:false,title:'Office EX',backgroundColor:'#f7f8fa',webPreferences:{preload:join(__dirname,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false,nodeIntegrationInWorker:false,nodeIntegrationInSubFrames:false,webSecurity:true,webviewTag:false,spellcheck:false,devTools:!app.isPackaged}});
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     window.webContents.on('will-navigate',event=>event.preventDefault());

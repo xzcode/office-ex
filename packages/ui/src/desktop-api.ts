@@ -25,6 +25,7 @@ export interface DesktopBridge {
   confirmClose(documentId:string):Promise<Result<'save'|'discard'|'close'|'cancel'>>;
   releaseDocument(documentId:string,discardRecovery:boolean):Promise<Result<void>>;
   finishClose():Promise<Result<void>>;
+  cancelWindowClose():Promise<Result<void>>;
   updateSettings(patch:{theme?:PublicSettings['theme'];language?:PublicSettings['language'];region?:PublicSettings['region'];documentLanguage?:PublicSettings['documentLanguage'];clearRecent?:boolean}):Promise<Result<PublicSettings>>;
   recover(id:string):Promise<Result<{bytes:Uint8Array;metadata:RecoveryItem}>>;
   discardRecovery(id:string):Promise<Result<void>>;

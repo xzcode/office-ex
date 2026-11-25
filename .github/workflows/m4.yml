@@ -46,6 +46,8 @@ jobs:
         run: npm run smoke:m4
       - name: Focused PDF cancellation regression (macOS)
         run: node scripts/smoke-pdf-cancel.mjs
+      - name: Explicit application Quit regression (macOS)
+        run: node scripts/smoke-window-quit.mjs
       - run: npm run smoke:desktop
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
@@ -55,6 +57,7 @@ jobs:
             out/native
             out/m4-native
             out/pdf-cancel
+            out/window-quit
           if-no-files-found: warn
   native-other:
     needs: verify-m4
@@ -101,6 +104,12 @@ jobs:
       - name: Focused PDF cancellation regression (Windows)
         if: runner.os == 'Windows'
         run: node scripts/smoke-pdf-cancel.mjs
+      - name: Explicit application Quit regression (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a --server-args="-screen 0 1280x900x24" node scripts/smoke-window-quit.mjs
+      - name: Explicit application Quit regression (Windows)
+        if: runner.os == 'Windows'
+        run: node scripts/smoke-window-quit.mjs
       - name: Native Linux smoke with sandbox enabled
         if: runner.os == 'Linux'
         run: xvfb-run -a --server-args="-screen 0 1280x900x24" npm run smoke:desktop
@@ -115,4 +124,5 @@ jobs:
             out/native
             out/m4-native
             out/pdf-cancel
+            out/window-quit
           if-no-files-found: warn

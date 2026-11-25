@@ -33,6 +33,8 @@ test('SEC-01: custom-scheme allowlist inspects scheme, hostname, port and creden
 });
 test('IPC argument counts reject unknown channels and ignored trailing payloads', () => {
   assert.doesNotThrow(() => assertIpcArity('office:release', ['tab-1', false]));
+  assert.doesNotThrow(() => assertIpcArity('office:cancel-window-close', []));
+  assert.throws(() => assertIpcArity('office:cancel-window-close', [true]), fails('invalid'));
   for (const [channel, args] of [['office:initialize', [1]], ['office:save-draft', []], ['office:save-draft', [save, 'unexpected']], ['office:arbitrary-fs', ['/tmp/x']]] as const) assert.throws(() => assertIpcArity(channel, args), fails('invalid'));
 });
 test('IPC identifiers and native path strings cannot inject paths or shell arguments', () => {

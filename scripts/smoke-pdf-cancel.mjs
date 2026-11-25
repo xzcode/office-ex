@@ -25,4 +25,8 @@ try{
   await page.locator('.tab[aria-selected=true] .tab-close').click();await page.waitForSelector('#pdf-workspace',{state:'detached'});await page.waitForTimeout(600);assert.deepEqual(errors,[]);evidence.checks.push('Tab close leaves no renderer stream exceptions');
   console.log('PDF cancellation regression passed: '+evidence.checks.length+' checks, 0 renderer errors');
 }catch(e){evidence.failure=String(e);throw e;}
-finally{await writeFile(join(output,'result.json'),JSON.stringify(evidence,null,2)+'\n');await app?.close();await rm(work,{recursive:true,force:true});}
+finally{
+  try{if(app){if(evidence.failure)await app.evaluate(({app})=>app.exit(1)).catch(()=>{});else{let timer;try{await Promise.race([app.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Orderly desktop quit exceeded 20 seconds')),20000);})]);evidence.orderlyQuit=true;}finally{clearTimeout(timer);}}}}
+  catch(error){evidence.failure??=String(error);await app?.evaluate(({app})=>app.exit(1)).catch(()=>{});throw error;}
+  finally{await writeFile(join(output,'result.json'),JSON.stringify(evidence,null,2)+'\n');await rm(work,{recursive:true,force:true});}
+}

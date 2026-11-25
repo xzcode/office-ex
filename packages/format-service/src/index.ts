@@ -13,7 +13,7 @@ import { inspectLegacyDocText, openLegacyDoc, writeLegacyDoc, saveLegacyDoc, typ
 export { inspectLegacyDocText, openLegacyDoc, writeLegacyDoc, saveLegacyDoc } from './legacy-doc.js';
 
 export interface ContainerEntry { name: string; size: number; sha256: string }
-export interface Inspection { detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument; editableWriterFormat?: 'doc'|'docx'; legacyDocText?: LegacyDocText; editableSheets?: SheetsDocument; editableSheetsFormat?: 'xls'|'xlsx'; sheetsCachedValues?: [string,CalculatedValue][]; editableSlides?: SlidesDocument; editableSlidesFormat?: 'ppt'|'pptx' }
+export interface Inspection { detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument; editableWriterFormat?: 'doc'|'docx'; legacyDocText?: LegacyDocText; editableSheets?: SheetsDocument; editableSheetsFormat?: 'xls'|'xlsx'; sheetsCachedValues?: [string,CalculatedValue][]; editableSlides?: SlidesDocument; editableSlidesFormat?: 'ppt'|'pptx'; slidesTemplateConversionBlocked?: boolean }
 const MAX_INPUT = 100 * 1024 * 1024;
 const MAX_DRAFT = 32 * 1024 * 1024;
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -164,7 +164,7 @@ export async function inspectForEditor(bytes:Uint8Array,filename:string,document
       const source=format==='pptx'?openSlidesPptx(bytes,documentId,filename,{signal}):openLegacyPpt(bytes,documentId,filename,{signal});
       const editableSlides=validateDocument(source.document) as SlidesDocument,featureId=format==='ppt'?'LEG-04':'SLD-03';
       const diagnostics=sortedDiagnostics([...inspection.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),{code:format==='ppt'?'PPT_PROFILE_ACTIVE':'PPTX_PROFILE_ACTIVE',featureId,messageKey:format==='ppt'?'format.pptProfile':'format.pptxProfile',severity:'info',safeAction:'none'}]);
-      return {...inspection,editableSlides,editableSlidesFormat:format,detection:{...inspection.detection,diagnostics},report:{...inspection.report,readOnly:false,diagnostics,features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]}};
+      return {...inspection,editableSlides,editableSlidesFormat:format,...('native' in source&&source.native.layoutPaths.length>1?{slidesTemplateConversionBlocked:true}:{}),detection:{...inspection.detection,diagnostics},report:{...inspection.report,readOnly:false,diagnostics,features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]}};
     }catch(error){if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code))return inspection;throw error;}
   }
   if((format==='xls'||format==='xlsx')&&filename.toLowerCase().endsWith('.'+format)&&bytes.byteLength<=MAX_DRAFT&&!inspection.detection.encrypted){
