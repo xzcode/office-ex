@@ -18,6 +18,24 @@ try {
   const cell=address=>page.locator(`[data-address="${address}"]`);
   const select=async(address)=>{await page.locator('#sheets-address').fill(address);await page.locator('#sheets-address').press('Enter');await page.locator('#sheets-scroll').focus();};
   const enter=async(address,text)=>{await select(address);await page.locator('#sheets-formula').fill(text);await page.locator('#sheets-formula').press('Enter');await page.waitForFunction(({address,text})=>{const match=/([A-Z]+)([0-9]+)/.exec(address);const col=[...match[1]].reduce((n,c)=>n*26+c.charCodeAt(0)-64,0);const c=window.testSheets.snapshot().document.sheets.find(s=>s.id===document.querySelector('[role=tab][aria-selected=true]')?.dataset.sheetId)?.cells[match[2]+':'+col];return c&&(c.value.source===text||String(c.value.value)===text||text==='25%'&&c.value.value===.25);},{address,text});};
+  const addressInput=page.locator('#sheets-address');
+  await addressInput.fill('B1');
+  await page.evaluate(async()=>{document.querySelector('#sheets-scroll').dispatchEvent(new Event('scroll'));await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
+  assert.equal(await addressInput.inputValue(),'B1','Grid repaint must preserve an uncommitted address');
+  await addressInput.press('Enter');
+  await page.locator('#sheets-formula').fill('12');await page.locator('#sheets-formula').press('Enter');
+  await page.waitForFunction(()=>window.testSheets.snapshot().document.sheets[0].cells['1:2']?.value.value===12);
+  assert.equal(await cell('A1').textContent(),'');
+  evidence.checks.push('Address survives a scheduled grid repaint; subsequent input commits to the intended cell');
+  await page.locator('#sheets-formula').fill('21');
+  await addressInput.fill('D2');await addressInput.press('Enter');
+  await page.locator('#sheets-formula').fill('=B1*2');await page.locator('#sheets-formula').press('Enter');
+  await page.waitForFunction(()=>window.testSheets.snapshot().document.sheets[0].cells['2:4']?.value.source==='=B1*2');
+  assert.equal(await page.evaluate(()=>window.testSheets.snapshot().document.sheets[0].cells['1:2'].value.value),21);
+  await page.waitForFunction(()=>document.querySelector('[data-address=D2]')?.textContent==='42');
+  evidence.checks.push('Navigating from a pending formula commits it and selects the requested address after remount');
+  await page.evaluate(()=>window.testSheets.load(window.testSheets.fixture(0)));
+  if(process.env.OFFICE_EX_ADDRESS_ONLY!=='1'){
   await enter('A1','12');await enter('B1','8');await enter('C1','=SUM(A1:B1)');await page.waitForFunction(()=>document.querySelector('[data-address=C1]')?.textContent==='20');
   await page.evaluate(()=>window.testSheets.undo());await page.waitForFunction(()=>document.querySelector('[data-address=C1]')?.textContent==='');await page.evaluate(()=>window.testSheets.redo());await page.waitForFunction(()=>document.querySelector('[data-address=C1]')?.textContent==='20');evidence.checks.push('Real formula bar and grid calculate 20; one-step undo/redo restores source and derived result');
   await select('A2');await page.locator('#sheets-scroll').evaluate(el=>{const data=new DataTransfer();data.setData('text/plain','中文\tTRUE\t25%\n"line\nwrap"\t2\t=ROUND(B1/3,2)');el.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,clipboardData:data}));});
@@ -59,5 +77,6 @@ try {
   const latency=await page.evaluate(async()=>{const samples=[],grid=document.querySelector('#sheets-scroll');for(let i=0;i<30;i++){await new Promise(r=>requestAnimationFrame(r));const start=performance.now();await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{observer.disconnect();reject(new Error('Viewport projection timeout'));},2000);const observer=new MutationObserver(()=>{observer.disconnect();clearTimeout(timer);resolve();});observer.observe(grid.querySelector('.sheets-cell-layer'),{childList:true,subtree:true,attributes:true});grid.scrollTop=200000+i*777;});samples.push(performance.now()-start);}return samples;});
   evidence.performance.scrollToDomUpdate={description:'Scroll assignment to MutationObserver delivery after the next viewport projection; excludes compositor presentation.',samples:latency,p95:[...latency].sort((a,b)=>a-b)[Math.floor(latency.length*.95)],max:Math.max(...latency)};
   await select('J10000');assert.equal(await cell('J10000').textContent(),'100000');assert.ok(await page.locator('[role=gridcell]').count()<1600);evidence.checks.push('100,000 nonempty cells, bounded DOM viewport, scroll and jump to final source cell');
+  }
   const errors=await page.evaluate(()=>window.testSheets.errors);assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);evidence.completedAt=new Date().toISOString();console.log(JSON.stringify(evidence,null,2));
 } catch(error) {evidence.failure=String(error);evidence.browserErrors=failures;if(page)await page.screenshot({path:join(output,'failure.png')}).catch(()=>{});throw error;} finally {await writeFile(join(output,'result.json'),JSON.stringify(evidence,null,2)+'\n');await browser?.close();await new Promise(r=>server.close(r));}

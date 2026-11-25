@@ -106,7 +106,14 @@ try{
   check('Writer multi-paragraph controls, selected formatting, split/join, explicit page navigation and caret hit-test');
   // Each domain uses the same session and persistence contract in its own tab.
   await page.locator('#home').click();await page.locator('[data-kind=sheets]').click();
-  const enterSheet=async(address,value)=>{await page.locator('#sheets-address').fill(address);await page.locator('#sheets-address').press('Enter');await page.locator('#sheets-formula').fill(value);await page.locator('#sheets-formula').press('Enter');};
+  // A real queued viewport repaint used to replace the address draft before Enter.
+  await page.locator('#sheets-address').fill('B1');
+  await page.evaluate(async()=>{document.querySelector('#sheets-scroll').dispatchEvent(new Event('scroll'));await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
+  assert.equal(await page.locator('#sheets-address').inputValue(),'B1');
+  await page.locator('#sheets-address').press('Enter');
+  assert.equal(await page.locator('#sheets-address').inputValue(),'B1');
+  check('Sheet address survives asynchronous viewport repaint');
+  const enterSheet=async(address,value)=>{await page.locator('#sheets-address').fill(address);await page.locator('#sheets-address').press('Enter');assert.equal(await page.locator('#sheets-address').inputValue(),address);await page.locator('#sheets-formula').fill(value);await page.locator('#sheets-formula').press('Enter');};
   const sheetValue=(address,value)=>page.waitForFunction(({address,value})=>document.querySelector('[data-address="'+address+'"]')?.textContent===value,{address,value});
   await enterSheet('A1','单元格 中文');await enterSheet('B1','12');await enterSheet('C1','=SUM(B1:B3)');await sheetValue('C1','12');
   await page.locator('#undo').click();await sheetValue('C1','');

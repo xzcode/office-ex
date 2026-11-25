@@ -13,6 +13,7 @@ export interface SheetsViewState {
   calculating?:boolean; calculationError?:boolean; onCalculation?:()=>void;
   cachedValues?:[string,CalculatedValue][]; cachedSources?:[string,string][];
   unsupportedFormulas?:string[]; flush?:()=>boolean;
+  navigate?: (row:number, column:number, endRow:number, endColumn:number, focusGrid:boolean)=>void;
 }
 export interface SheetsHost {
   snapshot():DocumentSnapshot;
@@ -398,7 +399,7 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
     paint();
   }, false));
   root2.append(status, make("p", t(host.readOnly ? "sheetSourceProtected" : "sheetHelp"), "muted sheets-help"));
-  let editing = false, formulaDirty = false, frame = 0, dragging = false, summaryKey = "", controlsKey = "";
+  let editing = false, formulaDirty = false, addressDirty = false, frame = 0, dragging = false, summaryKey = "", controlsKey = "";
   const options = ():CellInputOptions => ({ mode: state2.inputMode, locale: host.locale(), dateSystem: model.dateSystem });
   const rangeAddress = () => {
     const range = selectionRange(), first = cellLabel(range.row, range.column);
@@ -654,7 +655,7 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
     layer.append(fragment);
     if (painted.has(state2.row + ":" + state2.column)) scroll.setAttribute("aria-activedescendant", activeId);
     else scroll.removeAttribute("aria-activedescendant");
-    address.value = rangeAddress();
+    if (!addressDirty) address.value = rangeAddress();
     if (!formulaDirty && !editing) formula.value = cellSource();
     const selectionKey = state2.row + ":" + state2.column;
     if (controlsKey !== selectionKey) {
@@ -827,21 +828,40 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
   editor.oninput = () => {
     formula.value = editor.value;
   };
-  address.onchange = () => guard(() => {
-    const match = /^\$?([A-Za-z]{1,3})\$?([1-9][0-9]*)(?::\$?([A-Za-z]{1,3})\$?([1-9][0-9]*))?$/.exec(address.value.trim());
-    if (!match) throw new OfficeError("invalid", t("sheetInputInvalid"));
-    const col = (s:string) => [...s.toUpperCase()].reduce((n, c3) => n * 26 + c3.charCodeAt(0) - 64, 0);
-    const r = Number(match[2]), c = col(match[1]), r2 = Number(match[4] ?? match[2]), c2 = col(match[3] ?? match[1]);
-    if (Math.max(r, r2) > limits.rows || Math.max(c, c2) > limits.columns) throw new OfficeError("limit", "Selection exceeds workbook format limits");
-    select(r, c, false);
-    select(r2, c2, true);
-    scroll.focus();
-  });
+  // The address bar has independent draft input. Worker replies and resize/scroll
+  // repaints must not replace it before the user confirms navigation.
+  state2.navigate = (row, column, endRow, endColumn, focusGrid) => {
+    if (!root2.isConnected || !host.isCurrent()) return;
+    addressDirty = false;
+    select(row, column, false);
+    select(endRow, endColumn, true);
+    if (focusGrid) scroll.focus();
+  };
+  function commitAddress(focusGrid:boolean):void {
+    if (!addressDirty && address.value === rangeAddress()) { if(focusGrid) scroll.focus(); return; }
+    // Capture the target before flush(), which can synchronously remount the grid.
+    const target=address.value.trim();
+    try {
+      const match = /^\$?([A-Za-z]{1,3})\$?([1-9][0-9]*)(?::\$?([A-Za-z]{1,3})\$?([1-9][0-9]*))?$/.exec(target);
+      if (!match) throw new OfficeError("invalid", t("sheetInputInvalid"));
+      const col = (value:string) => [...value.toUpperCase()].reduce((n, character) => n * 26 + character.charCodeAt(0) - 64, 0);
+      const row=Number(match[2]), column=col(match[1]), endRow=Number(match[4]??match[2]), endColumn=col(match[3]??match[1]);
+      if (Math.max(row,endRow)>limits.rows || Math.max(column,endColumn)>limits.columns) throw new OfficeError("limit", "Selection exceeds workbook format limits");
+      if (!flush()) return;
+      addressDirty=false;
+      // Dispatch to the live workspace, not a detached DOM captured before flush.
+      state2.navigate?.(row,column,endRow,endColumn,focusGrid);
+    } catch(error) { host.error(error); }
+  }
+  address.oninput = () => { addressDirty=true; };
+  address.onchange = () => commitAddress(false);
   address.onkeydown = (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      address.dispatchEvent(new Event("change"));
+      commitAddress(true);
     } else if (event.key === "Escape") {
+      event.preventDefault();
+      addressDirty=false;
       address.value = rangeAddress();
       scroll.focus();
     }
