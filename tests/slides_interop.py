@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import olefile
 from pptx import Presentation
+from pptx.util import Inches
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,4 +77,19 @@ with tempfile.TemporaryDirectory(prefix='office-ex-slides-interop-') as temporar
     for name in ('scene.ppt','pptx-to-ppt.ppt','edited.ppt'):
         edits=check_ppt(target/name,expected)
         if name=='edited.ppt': assert edits>=2
-    print('Independent PPTX semantic read and PPT OLE/record-chain inspection passed (5 fixtures).')
+    # An independent authoring tool changes the package and adds core properties.
+    independent = Presentation(target/'scene.pptx')
+    independent.core_properties.title = 'External presentation 中文'
+    independent.core_properties.author = 'Independent fixture author'
+    independent.slides[0].shapes[0].left = Inches(2)
+    independent.save(target/'external-python.pptx')
+    subprocess.run([os.environ.get('NODE','node'),'--import','tsx','tests/slides-external-edit.mjs',str(target)],cwd=ROOT,check=True)
+    result = Presentation(target/'external-edited.pptx')
+    assert result.core_properties.title == independent.core_properties.title
+    assert result.core_properties.author == independent.core_properties.author
+    assert result.slides[0].shapes[0].left == Inches(3)
+    assert len(result.slides) == len(independent.slides) == 3
+    with zipfile.ZipFile(target/'external-python.pptx') as before, zipfile.ZipFile(target/'external-edited.pptx') as after:
+        assert before.read('docProps/core.xml') == after.read('docProps/core.xml')
+        assert before.read('_rels/.rels') == after.read('_rels/.rels')
+    print('Independent PPTX semantic read, PPT OLE records and externally edited PPTX metadata-preserving round trip passed (7 fixtures).')

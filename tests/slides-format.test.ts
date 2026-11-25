@@ -103,3 +103,14 @@ test('target limitations are explicit and deleting an image does not strand the 
  const d=slidesFormatFixture();const shape=d.slides[0]!.shapes.find(s=>s.type==='text')!;if(shape.type!=='text')return;shape.runs[0]!.style!.fontSize=260350;assert.throws(()=>writeLegacyPpt(d),fail('unsupported'));assert.doesNotThrow(()=>writeSlidesPptx(d));
  shape.runs[0]!.style!.fontSize=254000;for(const slide of d.slides)slide.shapes=slide.shapes.filter(s=>s.type!=='image');for(const[,write,open]of formats)assert.equal(open(write(d),d.documentId).document.slides[0]!.shapes.length,4);
 });
+
+
+test('PPTX retains standard dependency-free core properties across native saves',async()=>{
+ const source=openOpc(writeSlidesPptx(slidesFormatFixture())),parts=new Map(source.parts),encode=(text:string)=>new TextEncoder().encode(text),decode=(bytes:Uint8Array)=>new TextDecoder().decode(bytes);
+ const path='metadata/external-core.xml',core='<c:coreProperties xmlns:c="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:d="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>External deck 中文</dc:title><dc:creator>Independent author</dc:creator><c:revision>3</c:revision><d:modified xsi:type="d:W3CDTF">2026-11-25T00:00:00Z</d:modified></c:coreProperties>';
+ const rootRel=decode(parts.get('_rels/.rels')!).replace('</Relationships>','<Relationship Id="externalMetadata" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="metadata/external-core.xml"/></Relationships>');
+ parts.set('_rels/.rels',encode(rootRel));parts.set(path,encode(core));parts.set('[Content_Types].xml',encode(decode(parts.get('[Content_Types].xml')!).replace('</Types>','<Override PartName="/metadata/external-core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>')));
+ const input=writeZip(parts),opened=openSlidesPptx(input,'external-core');assert.deepEqual(opened.native.metadataPaths,[path]);assert.deepEqual(saveSlidesPptx(input,opened.document),input);
+ opened.document.slides[0]!.shapes[0]!.geometry.x+=914400;opened.document.slides.pop();const output=saveSlidesPptx(input,opened.document),saved=openOpc(output);assert.deepEqual(saved.parts.get(path),parts.get(path));assert.deepEqual(saved.parts.get('_rels/.rels'),parts.get('_rels/.rels'));assert.equal(openSlidesPptx(output,'external-core').document.slides.length,2);
+ for(const invalid of [core.replace('</dc:title>','</dc:title><dc:title>Duplicate</dc:title>'),core.replace('Independent author','<c:category>nested</c:category>'),core.replace('xsi:type="d:W3CDTF"','xsi:type="c:W3CDTF"')]){const changed=new Map(parts);changed.set(path,encode(invalid));const bytes=writeZip(changed);assert.throws(()=>openSlidesPptx(bytes,'external-core'),fail());assert.equal((await inspectForEditor(bytes,'external.pptx','external-core')).report.readOnly,true);}
+});
