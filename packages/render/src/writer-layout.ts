@@ -4,25 +4,26 @@
  * Document coordinates are EMU. No derived geometry is persisted in the source model.
  */
 import { assert, graphemeBoundaries, type Cancellation } from '@office-ex/contracts';
-import { resolveTextStyle, freezeData, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterSection, type Paragraph, type WriterDocument, type Table, type ResourceRef } from '@office-ex/core';
+import { resolveTextStyle, freezeData, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterSection, type Paragraph, type WriterDocument, type Table, type Inline } from '@office-ex/core';
 import { measureText, type FontMetrics, type FontRequest, type Point } from './index.js';
 
 export interface WriterPosition {paragraphId:string;offset:number}
 export interface WriterCaret {offset:number;x:number}
 export interface WriterFragment {text:string;x:number;width:number;request:FontRequest;style:DeepReadonly<TextStyle>}
-export interface WriterLine {paragraphId:string;start:number;end:number;x:number;y:number;width:number;height:number;baseline:number;carets:WriterCaret[];fragments:WriterFragment[]}
+export interface WriterLine {paragraphId:string;start:number;end:number;x:number;y:number;width:number;height:number;baseline:number;carets:WriterCaret[];fragments:WriterFragment[];images:WriterImageBox[]}
 export interface WriterTableCellBox {tableId:string;rowId:string;cellId:string;paragraphIds:string[];x:number;y:number;width:number;height:number;border?:DeepReadonly<NonNullable<Table['border']>>}
 export interface WriterImageBox {paragraphId:string;imageId:string;resourceId:string;x:number;y:number;width:number;height:number}
 export interface WriterPage {sectionId:string;width:number;height:number;margins:DeepReadonly<WriterSection['page']['margins']>;lines:WriterLine[];tableCells:WriterTableCellBox[];images:WriterImageBox[]}
 export interface WriterLayout {revision:number;contentId:string;environmentId:string;pages:WriterPage[];warnings:string[]}
 export interface WriterLayoutOptions {maxPages?:number;maxClusters?:number;cancellation?:Cancellation}
-type Glyph={start:number;end:number;text:string;advance:number;ascent:number;descent:number;style:DeepReadonly<TextStyle>;request:FontRequest;kind:'text'|'tab'|'break'};
+type ImageRun=DeepReadonly<Extract<Inline,{type:'image'}>>;
+type Glyph={start:number;end:number;text:string;advance:number;ascent:number;descent:number;style:DeepReadonly<TextStyle>;request:FontRequest;kind:'text'|'tab'|'break'|'image';image?:ImageRun};
 const COMPLEX=/[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Devanagari}\p{Script=Bengali}\p{Script=Gujarati}\p{Script=Gurmukhi}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Kannada}\p{Script=Malayalam}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\u202a-\u202e\u2066-\u2069]/u;
 const CJK=/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const NO_START=/^[、。，．？！：；）］｝〉》」』】〕〗〙〛ぁぃぅぇぉっゃゅょァィゥェォッャュョー]/u;
 const NO_END=/[（［｛〈《「『【〔〖〘〚]$/u;
 function breakBetween(a:Glyph,b:Glyph|undefined):boolean{
-  if(!b||a.kind==='break'||b.kind==='break')return true;
+  if(!b||a.kind==='break'||b.kind==='break'||a.kind==='image'||b.kind==='image')return true;
   if(NO_END.test(a.text)||NO_START.test(b.text))return false;
   return a.kind==='tab'||/[\u0020\u2000-\u200A\u3000\-]$/u.test(a.text)||CJK.test(a.text)||CJK.test(b.text);
 }
@@ -39,11 +40,12 @@ function glyphsFor(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>,
   const paragraphStyle=p.styleId??model.defaultParagraphStyleId;
   const para=resolveTextStyle(model.defaultTextStyle,model.styles,paragraphStyle?[paragraphStyle]:[],p.style??{});
   for(const d of para.diagnostics)warnings.add(d.code);
-  const style=para.style;const pieces:{text:string;style:DeepReadonly<TextStyle>}[]=[];
+  const style=para.style;const pieces:{text:string;style:DeepReadonly<TextStyle>;image?:ImageRun}[]=[];
   for(const run of p.runs){
     check();
-    assert(run.type!=='image','unsupported','Inline images need a later layout adapter');
-    if(run.type==='text'){
+    if(run.type==='image'){
+      assert(model.resources[run.resourceId]?.dataBase64,'unsupported','Missing packaged image resource');pieces.push({text:OBJECT_REPLACEMENT,style,image:run});
+    }else if(run.type==='text'){
       const resolved=resolveTextStyle(style,model.styles,run.styleId?[run.styleId]:[],run.style??{});
       for(const d of resolved.diagnostics)warnings.add(d.code);
       pieces.push({text:run.text,style:resolved.style});
@@ -52,13 +54,14 @@ function glyphsFor(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>,
   const whole=pieces.map(x=>x.text).join('');
   assert(whole.length<=100000,'limit','Paragraph exceeds Writer layout text budget');
   assert(!COMPLEX.test(whole),'unsupported','Complex-script and bidi shaping need a later layout adapter');
-  const boundary=graphemeBoundaries(whole),valid=new Set(boundary);
+  const boundary=paragraphBoundaries(p),valid=new Set(boundary);
   charge(boundary.length-1);
   const glyphs:Glyph[]=[];let offset=0;
   for(const piece of pieces){
     check();const end=offset+piece.text.length;
     // Don't measure halves of a combined character using different fonts.
     assert(valid.has(offset)&&valid.has(end),'unsupported','Grapheme crosses a formatting boundary');
+    if(piece.image){const image=piece.image,m=requestFor(provider,' ',piece.style,warnings);glyphs.push({start:offset,end:offset+1,text:OBJECT_REPLACEMENT,advance:image.width,ascent:image.height,descent:0,style:piece.style,request:m.request,kind:'image',image});offset=end;continue;}
     const bounds=graphemeBoundaries(piece.text);let index=0;
     while(index<bounds.length-1){
       check();
@@ -116,18 +119,21 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
       const emit=(tokens:Glyph[],start:number,end:number,forced:boolean)=>{
         check();
         const width=tokens.reduce((sum,g)=>sum+g.advance,0);
-        let ascent=Math.ceil((style.fontSize??152400)*0.8),descent=Math.ceil((style.fontSize??152400)*0.2);
-        for(const g of tokens){ascent=Math.max(ascent,g.ascent,Math.ceil(g.request.size*0.8));descent=Math.max(descent,g.descent,Math.ceil(g.request.size*0.2));}
-        const natural=Math.max(minimum,ascent+descent);
+        const picturesOnly=tokens.length>0&&tokens.every(g=>g.kind==='image');
+        let ascent=picturesOnly?0:Math.ceil((style.fontSize??152400)*0.8),descent=picturesOnly?0:Math.ceil((style.fontSize??152400)*0.2);
+        for(const g of tokens){if(g.image){assert(g.advance<=available,'unsupported','Inline image exceeds paragraph width');ascent=Math.max(ascent,g.ascent);}else{ascent=Math.max(ascent,g.ascent,Math.ceil(g.request.size*0.8));descent=Math.max(descent,g.descent,Math.ceil(g.request.size*0.2));}}
+        const natural=Math.max(picturesOnly?0:minimum,ascent+descent);
         if(style.lineHeight!==undefined&&style.lineHeight<natural)warnings.add('writer.exact-lineheight-limited');
         const height=Math.max(natural,style.lineHeight??0);
         assert(height<=usableHeight,'unsupported','Line exceeds usable page height');
         const x=originX+indent+(style.alignment==='center'?Math.max(0,Math.round((available-width)/2)):style.alignment==='end'?Math.max(0,available-width):0);
         if(width>available)warnings.add('writer.line-overflow');
         if(forced)warnings.add('writer.grapheme-wrap');
-        const carets:WriterCaret[]=[{offset:start,x}],fragments:WriterFragment[]=[];let px=x;
+        const baseline=Math.floor((height-ascent-descent)/2)+ascent;
+        const carets:WriterCaret[]=[{offset:start,x}],fragments:WriterFragment[]=[],images:WriterImageBox[]=[];let px=x;
         for(const g of tokens){
-          if(g.kind==='text'){
+          if(g.image){images.push({paragraphId:block.id,imageId:g.image.id,resourceId:g.image.resourceId,x:px,y:baseline-g.image.height,width:g.image.width,height:g.image.height});}
+          else if(g.kind==='text'){
             const prev=fragments.at(-1);
             if(prev&&prev.x+prev.width===px&&prev.style===g.style&&JSON.stringify(prev.request)===JSON.stringify(g.request)){prev.text+=g.text;prev.width+=g.advance;}
             else fragments.push({text:g.text,x:px,width:g.advance,request:g.request,style:g.style});
@@ -135,7 +141,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
           px+=g.advance;carets.push({offset:g.end,x:px});
         }
         if(carets.at(-1)!.offset!==end)carets.push({offset:end,x:px});
-        place({paragraphId:block.id,start,end,x,y:0,width,height,baseline:Math.floor((height-ascent-descent)/2)+ascent,carets,fragments});
+        place({paragraphId:block.id,start,end,x,y:0,width,height,baseline,carets,fragments,images});
       };
       let begin=0;let finalHard=false;
       while(begin<glyphs.length){
@@ -155,9 +161,13 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
       if(!glyphs.length||finalHard){const end=glyphs.at(-1)?.end??0;emit([],end,end,false);}
       addSpace(style.spaceAfter??0);
     };
+    const placeLine=(line:WriterLine,top:number):void=>{
+      const images=line.images.map(image=>({...image,y:image.y+top}));
+      page.lines.push({...line,y:top,baseline:line.baseline+top,images});page.images.push(...images);
+    };
     const placeTop=(line:WriterLine):void=>{
       if(y+line.height>spec.height-m.bottom)advancePage();
-      page.lines.push({...line,y,baseline:y+line.baseline});y+=line.height;
+      placeLine(line,y);y+=line.height;
     };
     const layTable=(table:DeepReadonly<Table>):void=>{
       const pad=table.cellPadding??{top:38100,right:57150,bottom:38100,left:57150};
@@ -174,7 +184,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
           const addSpace=(n:number)=>{localY+=n;assert(localY+pad.bottom<=usableHeight,'unsupported','Table row exceeds page content height');};
           const place=(line:WriterLine)=>{
             assert(line.x+line.width<=x+width-pad.right,'unsupported','Table cell line exceeds content width');
-            lines.push({...line,y:localY,baseline:localY+line.baseline});addSpace(line.height);
+            lines.push({...line,y:localY,baseline:localY+line.baseline,images:line.images.map(image=>({...image,y:image.y+localY}))});addSpace(line.height);
           };
           for(const child of cell.blocks){
             assert(child.type==='paragraph','unsupported','Nested tables and page breaks within cells unsupported');
@@ -190,7 +200,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
         if(y+rowHeight>spec.height-m.bottom)advancePage();
         for(const item of rowCells){
           page.tableCells.push({...item.box,y,height:rowHeight});
-          for(const line of item.lines)page.lines.push({...line,y:y+line.y,baseline:y+line.baseline});
+          for(const line of item.lines){const images=line.images.map(image=>({...image,y:image.y+y}));page.lines.push({...line,y:y+line.y,baseline:y+line.baseline,images});page.images.push(...images);}
         }
         y+=rowHeight;
       }
@@ -199,20 +209,6 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
       check();
       if(block.type==='page-break'){assert(++blocks<=10000,'limit','Writer layout block budget exceeded');advancePage();continue;}
       if(block.type==='table'){layTable(block);continue;}
-      const image=block.runs.length===1&&block.runs[0]?.type==='image'?block.runs[0]:undefined;
-      if(image){
-        assert(++blocks<=10000,'limit','Writer layout block budget exceeded');
-        const resource=model.resources[image.resourceId];
-        assert(resource?.dataBase64,'unsupported','Missing packaged image resource');
-        const named=block.styleId??model.defaultParagraphStyleId,style=resolveTextStyle(model.defaultTextStyle,model.styles,named?[named]:[],block.style??{}).style;
-        const indent=Math.max(0,style.indent??0),available=usableWidth-indent;
-        assert(image.width<=available&&image.height<=usableHeight,'unsupported','Inline image exceeds page');
-        space(style.spaceBefore??0);
-        if(y+image.height>spec.height-m.bottom)advancePage();
-        const x=m.left+indent+(style.alignment==='center'?Math.floor((available-image.width)/2):style.alignment==='end'?available-image.width:0);
-        page.images.push({paragraphId:block.id,imageId:image.id,resourceId:image.resourceId,x,y,width:image.width,height:image.height});y+=image.height;
-        space(style.spaceAfter??0);continue;
-      }
       layParagraph(block,m.left,usableWidth,space,placeTop);
     }
   }

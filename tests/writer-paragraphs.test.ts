@@ -63,12 +63,14 @@ test('WRT-03 empty paragraph remains editable; explicit break does not merge acr
   assert.equal(blocks(s)[1]!.type,'page-break');
   assert.throws(()=>joinParagraphs(s.snapshot(),'paragraph-1',second),fails('invalid'));
 });
-test('WRT-03 unsupported inline objects are blocked rather than flattened',()=>{
+test('WRT-03 explicit tab is an atomic logical unit and unaffected tab identity is preserved',()=>{
   const d=createDocument('writer','inline');
   d.sections[0]!.blocks=[{id:'p',type:'paragraph',runs:[{id:'t',type:'tab'},{id:'r',type:'text',text:'hello'}]}];
   const s=new DocumentSession(d,{saved:true});
-  assert.throws(()=>replaceParagraphRange(s.snapshot(),'p',0,1,'x','op'),fails('unsupported'));
-  assert.equal(s.dirty,false);assert.equal(s.revision,0);
+  assert.equal(paragraphText(s.snapshot(),'p'),'\thello');
+  s.execute(replaceParagraphRange(s.snapshot(),'p',1,2,'H','op'));
+  const block=blocks(s)[0]!;if(block.type!=='paragraph')throw Error();assert.equal(block.runs[0]!.id,'t');assert.equal(block.runs[0]!.type,'tab');
+  assert.equal(paragraphText(s.snapshot(),'p'),'\tHello');s.undo();assert.equal(s.dirty,false);
 });
 
 test('WRT-03 direct formatting rejects accessor-backed data without invoking it',()=>{

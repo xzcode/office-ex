@@ -75,9 +75,9 @@ export function readInlinePicture(drawing:Element,graph:MediaGraph,id:string):Im
 function relationshipPath(main:string):string{const i=main.lastIndexOf('/');return main.slice(0,i+1)+'_rels/'+main.slice(i+1)+'.rels';}
 export function planMedia(resources:Readonly<Record<string,DeepReadonly<ResourceRef>>>,main:string,source?:OpcPackage,baseline?:MediaGraph):MediaPlan{
   const relationships=new Map<string,string>(),additions:{id:string;path:string;resource:DeepReadonly<ImageResource>}[]=[];
-  for(const [id,resource] of Object.entries(baseline?.resources??{})){const actual=resources[id];valid(actual&&actual.sha256===resource.sha256&&actual.byteLength===resource.byteLength,'Source image resource must be retained');}
+  for(const [id,resource] of Object.entries(baseline?.resources??{})){const actual=resources[id];valid(!actual||actual.sha256===resource.sha256&&actual.byteLength===resource.byteLength,'Source image resource mismatch');}
   const used=new Set((source?.relationships.get(main)??[]).map(r=>r.id));let total=0;
-  for(const resource of Object.values(resources).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)){
+  for(const resource of Object.values({...baseline?.resources,...resources}).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)){
     validateImageResource(resource);total+=resource.byteLength;valid(total<=16*1024*1024,'Document image budget exceeded');
     const previous=baseline?.byResource.get(resource.id);
     if(previous){relationships.set(resource.id,previous);continue;}

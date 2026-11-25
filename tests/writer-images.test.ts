@@ -59,7 +59,7 @@ test('WRT-04 adding media to a source-owned styles profile changes only explicit
   assert.equal(Object.keys(reopened.document.resources).length,1);assert.deepEqual(reopened.document.styles,source.document.styles);
   assert.deepEqual(saveWriterDocx(reopened,reopened.document),updated);
 });
-test('WRT-04 unsupported floating, cropped or mixed drawings stay read-only and preserve original',async()=>{
+test('WRT-04 unsupported floating, cropped or same-run mixed drawings stay read-only and preserve original',async()=>{
   const original=writeWriterDocx(model(imageFixture())),pkg=openOpc(original),dec=new TextDecoder(),enc=new TextEncoder();
   for(const mutate of [
     (s:string)=>s.replace('<wp:inline ','<wp:anchor ').replace('</wp:inline>','</wp:anchor>'),

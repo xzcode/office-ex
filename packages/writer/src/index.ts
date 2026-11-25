@@ -39,3 +39,5 @@ export * from './tables.js';
 
 export * from './images.js';
 export * from './page.js';
+
+export * from './ranges.js';

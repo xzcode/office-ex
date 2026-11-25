@@ -99,3 +99,7 @@ npm run smoke:desktop
 ### M2 Writer 图片与页面设置开发预览
 
 增加受限 PNG/JPEG 内嵌图片段落、原始图片资源保存、页面纸型/方向/边距与段落间距。本阶段仍为限定功能开发版，不等于完整 Word 或旧 DOC 兼容。验收范围及剩余门槛见 [Writer 记录](docs/M2-WRITER.md)。
+
+### Writer 连续文字与行内图片开发预览
+
+新增连续相邻段落的原子范围编辑、纯文本剪贴板和图文混排（独立 DrawingML run，含单元格图片）。仍为受限 DOCX 与估算分页，非完整 M2 验收。详见 [Writer](docs/M2-WRITER.md)。

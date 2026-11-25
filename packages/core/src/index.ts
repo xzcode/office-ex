@@ -3,3 +3,5 @@ export * from './session.js';
 export * from './resources.js';
 
 export * from './images.js';
+
+export * from './writer-text.js';

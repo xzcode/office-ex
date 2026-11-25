@@ -158,7 +158,7 @@ export const russian = {
   "writerUnsupportedBlock": "Этот блок пока нельзя редактировать.",
   "docxNew": "Новый документ DOCX",
   "docxDocument": "Документ DOCX",
-  "docxNote": "Ограниченный DOCX: текст, прямое форматирование, поддерживаемые стили, фиксированные таблицы, абзацы с PNG/JPEG и базовая разметка. Сложные документы доступны только для чтения.",
+  "docxNote": "Ограниченный DOCX: текст, прямое форматирование, поддерживаемые стили, фиксированные таблицы, встроенные PNG/JPEG и базовая разметка. Сложные документы доступны только для чтения.",
   "writerFontFamily": "Шрифт",
   "writerFontSize": "Размер (пт)",
   "writerTextColor": "Цвет текста",
@@ -199,7 +199,12 @@ export const russian = {
   "writerIndent": "Отступ (пт)",
   "writerSpaceBefore": "Перед абзацем (пт)",
   "writerSpaceAfter": "После абзаца (пт)",
-  "writerLineHeight": "Высота строки (пт; 0 = авто)"
+  "writerLineHeight": "Высота строки (пт; 0 = авто)",
+  "writerInsertInlineImage": "Вставить изображение в позиции курсора",
+  "writerInlineImageNote": "Маркер объекта обозначает встроенное изображение. Изменяйте размер и удаляйте его с помощью элементов управления изображением.",
+  "writerContinuous": "Редактировать непрерывный текст",
+  "writerExitContinuous": "Вернуться к редактору абзацев",
+  "writerContinuousNote": "Выделяйте, копируйте, вырезайте, вставляйте и форматируйте соседние текстовые абзацы. Таблицы, разрывы страниц, разделы и абзацы с изображениями ограничивают выделение. Вставленные новые строки становятся абзацами."
 } as const;
 export const italian = {
   "open": "Apri file",
@@ -359,7 +364,7 @@ export const italian = {
   "writerUnsupportedBlock": "Questo blocco non è modificabile in questa anteprima.",
   "docxNew": "Nuovo documento DOCX",
   "docxDocument": "Documento DOCX",
-  "docxNote": "Profilo DOCX limitato: testo, formattazione diretta, stili supportati, tabelle fisse, paragrafi con immagini PNG/JPEG e layout di base. I documenti complessi restano in sola lettura.",
+  "docxNote": "Profilo DOCX limitato: testo, formattazione diretta, stili supportati, tabelle fisse, immagini PNG/JPEG in linea e layout di base. I documenti complessi restano in sola lettura.",
   "writerFontFamily": "Carattere",
   "writerFontSize": "Dimensione (pt)",
   "writerTextColor": "Colore del testo",
@@ -400,5 +405,10 @@ export const italian = {
   "writerIndent": "Rientro (pt)",
   "writerSpaceBefore": "Prima (pt)",
   "writerSpaceAfter": "Dopo (pt)",
-  "writerLineHeight": "Altezza riga (pt; 0 = auto)"
+  "writerLineHeight": "Altezza riga (pt; 0 = auto)",
+  "writerInsertInlineImage": "Inserisci immagine al cursore",
+  "writerInlineImageNote": "Il simbolo rappresenta un'immagine in linea. Usa i controlli dell'immagine per ridimensionarla o rimuoverla.",
+  "writerContinuous": "Modifica testo continuo",
+  "writerExitContinuous": "Torna all'editor dei paragrafi",
+  "writerContinuousNote": "Seleziona, copia, taglia, incolla o formatta paragrafi di testo adiacenti. Tabelle, interruzioni di pagina, sezioni e paragrafi con immagini delimitano la selezione. Le nuove righe incollate diventano paragrafi."
 } as const;

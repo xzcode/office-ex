@@ -10,7 +10,11 @@ export function setWriterPage(snapshot:DocumentSnapshot,sectionId:string,page:Wr
   assert(width>0&&height>0,'invalid','Margins leave no content area');
   const index=snapshot.document.sections.findIndex(s=>s.id===sectionId);assert(index>=0,'invalid','Section not found');
   for(const block of snapshot.document.sections[index]!.blocks){
-    if(block.type==='table')assert(block.columnWidths.reduce((a,b)=>a+b,0)<=width,'unsupported','Resize the table before reducing page width');
+    if(block.type==='table'){
+      assert(block.columnWidths.reduce((a,b)=>a+b,0)<=width,'unsupported','Resize the table before reducing page width');
+      const pad=block.cellPadding??{top:38100,bottom:38100,left:57150,right:57150};
+      for(const row of block.rows)for(const cell of row.cells)for(const p of cell.blocks)if(p.type==='paragraph')for(const run of p.runs)if(run.type==='image')assert(run.height+pad.top+pad.bottom<=height,'unsupported','Resize the cell image before reducing page height');
+    }
     if(block.type==='paragraph')for(const run of block.runs)if(run.type==='image')assert(run.width<=width&&run.height<=height,'unsupported','Resize the image before reducing page size');
   }
   return patchCommand(snapshot,'WRT-02',[{op:'set',path:['sections',index,'page'],value:page}]);

@@ -312,6 +312,46 @@ try{
   await page.waitForFunction(n=>document.querySelectorAll('.tab').length===n-1,reopenedImages);
   check('Writer inserts bounded PNG/JPEG, resizes, saves landscape DOCX, reopens and undoes removal');
 
+  // Native continuous input edits a real range spanning multiple paragraphs.
+  const continuousPath=join(work,'continuous.docx');
+  await page.locator('#home').click();await page.locator('#new-docx').click();
+  await inputEquals('#draft-text','','New continuous document');
+  await page.locator('#draft-text').fill('First 中文');
+  await page.locator('#draft-text').evaluate(el=>{el.focus();el.setSelectionRange(el.value.length,el.value.length);el.dispatchEvent(new Event('select'));});
+  await page.locator('#writer-split').click();
+  await page.locator('#writer-paragraph-1').fill('Second 😀');
+  await page.locator('#draft-text').click();
+  await page.locator('#writer-continuous').click();
+  await inputEquals('#writer-continuous-text','First 中文\nSecond 😀','Continuous paragraphs');
+  const continuous=page.locator('#writer-continuous-text');
+  await continuous.evaluate(el=>{el.focus();el.setSelectionRange(6,15);el.dispatchEvent(new Event('select'));});
+  await page.locator('#writer-continuous-bold').click();
+  await continuous.evaluate(el=>{el.focus();el.setSelectionRange(6,15);el.dispatchEvent(new Event('select'));});
+  await continuous.press('Backspace');
+  await inputEquals('#writer-continuous-text','First  😀','Cross-paragraph deletion');
+  await page.locator('#undo').click();
+  await inputEquals('#writer-continuous-text','First 中文\nSecond 😀','Cross-paragraph undo');
+  await page.locator('#writer-continuous').click();
+  await inputEquals('#draft-text','First 中文','Return to paragraph mode');
+  // Add an image inside a text run using the native file input.
+  await page.locator('#draft-text').evaluate(el=>{el.focus();el.setSelectionRange(6,6);el.dispatchEvent(new Event('select'));});
+  const chooserPromise=page.waitForEvent('filechooser');
+  await page.locator('#writer-insert-inline-image').click();
+  await (await chooserPromise).setFiles({name:'inline.png',mimeType:'image/png',buffer:PNG});
+  await page.waitForSelector('.writer-image-card img',{timeout:30000});
+  await inputEquals('#draft-text','First \uFFFC中文','Inline object projection');
+  await dialogSave(continuousPath);await page.locator('#save').click();
+  await waitFor(async()=>{try{return (await readFile(continuousPath)).length>100;}catch{return false;}},'mixed DOCX save',30000);
+  await page.waitForFunction(()=>!document.querySelector('#save').disabled&&document.querySelector('#document-status').textContent.includes('已保存'));
+  const mixed=openWriterDocx(await readFile(continuousPath),'continuous-reader','Continuous').document;
+  const first=mixed.sections[0].blocks[0];assert.equal(first.runs.filter(r=>r.type==='image').length,1);
+  assert.equal(first.runs.filter(r=>r.type==='text').map(r=>r.text).join(''),'First 中文');
+  assert.ok(first.runs.some(r=>r.type==='text'&&r.text==='中文'&&r.style.bold));
+  await screenshot('writer-inline-range');
+  const continuousCount=await page.locator('.tab').count();await page.locator('.tab[aria-selected=true] .tab-close').click();
+  await page.waitForFunction(n=>document.querySelectorAll('.tab').length===n-1,continuousCount);
+  check('Native continuous cross-paragraph selection, formatting, deletion, undo and inline image DOCX save');
+
   await page.locator('.tab').first().click();assert.equal(await page.locator('#draft-text').inputValue(),'Edit made while saving');
   // Bad save destination keeps the document dirty, usable and the old file unchanged.
   const stable=await readFile(draftCopyPath);await page.locator('#draft-text').fill('Dirty content before simulated crash');

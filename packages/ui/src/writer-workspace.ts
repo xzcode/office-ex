@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, EMU_PER_TWIP, graphemeBoundaries, OfficeError } from '@office-ex/contracts';
-import { resolveTextStyle, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterBlock, type Paragraph, type Table, type ImageResource } from '@office-ex/core';
-import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation, insertImageAfter, resizeInlineImage, removeInlineImage, setWriterPage, setParagraphMetrics } from '@office-ex/writer';
+import { resolveTextStyle, inlineText, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterBlock, type Paragraph, type Table, type ImageResource } from '@office-ex/core';
+import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation, insertImageAfter, insertImageAt, resizeInlineImage, removeInlineImage, setWriterPage, setParagraphMetrics, locateParagraph, writerTextGroup, textGroupPoint, textGroupOffset, replaceWriterRange, resolveWriterRange, formatWriterRange, type WriterRange, type WriterTextGroup } from '@office-ex/writer';
 import { layoutWriter, hitTestWriterPage, writerCaretBox, writerSelectionBoxes, type WriterLayout } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
 
-export interface WriterViewState{paragraphId?:string;start:number;end:number;pageIndex:number;focus?:boolean}
+export interface WriterViewState{paragraphId?:string;start:number;end:number;pageIndex:number;focus?:boolean;continuous?:boolean;groupRange?:WriterRange}
 export interface WriterHost{
   snapshot():DocumentSnapshot;
   execute(command:DocumentCommand):boolean;
@@ -54,6 +54,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   previous.disabled=true;next.disabled=true;pageBar.append(previous,pageText,next);preview.append(pageBar,canvas,layoutNote);
   let layout:DeepReadonly<WriterLayout>|undefined, timer:ReturnType<typeof setTimeout>|undefined;
   const provider=new CanvasFontMetrics();
+  let continuousRange:WriterRange|undefined,continuousPick:((id:string,offset:number)=>boolean)|undefined;
   const decodedImages=new Map<string,HTMLImageElement>();
   function raster(resourceId:string):HTMLImageElement|undefined{
     const prior=decodedImages.get(resourceId);if(prior)return prior;
@@ -61,9 +62,14 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     const image=new Image();decodedImages.set(resourceId,image);image.onload=()=>paint();image.onerror=()=>{if(root.isConnected)layoutNote.textContent=t('writerPreviewUnavailable');};image.src='data:'+r.mimeType+';base64,'+r.dataBase64;return image;
   }
   function activeParagraph(){return state.paragraphId?inputs.get(state.paragraphId):undefined;}
+  function paragraphBoundary(id:string,offset:number):number{
+    const p=locateParagraph(host.snapshot(),id).paragraph;let best=0;
+    for(const n of paragraphBoundaries(p))if(Math.abs(n-offset)<Math.abs(best-offset))best=n;
+    return best;
+  }
   function select(id:string,start:number,end=start,focus=false):void{
     const input=inputs.get(id);if(!input)return;
-    const a=nearestBoundary(input.value,Math.max(0,Math.min(start,input.value.length))),b=nearestBoundary(input.value,Math.max(0,Math.min(end,input.value.length)));
+    const a=paragraphBoundary(id,start),b=paragraphBoundary(id,end);
     state.paragraphId=id;state.start=Math.min(a,b);state.end=Math.max(a,b);
     input.setSelectionRange(Math.min(a,b),Math.max(a,b));if(focus)input.focus({preventScroll:true});state.paragraphId=id;state.start=Math.min(a,b);state.end=Math.max(a,b);
     syncControls();follow();paint();
@@ -88,7 +94,8 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     if(state.paragraphId){
       try{
         ctx.fillStyle='#dce8ff';
-        for(const rect of writerSelectionBoxes(layout,state.paragraphId,state.start,state.end))if(rect.pageIndex===state.pageIndex)ctx.fillRect(px(rect.x),px(rect.y),px(rect.width),px(rect.height));
+        const segments=continuousRange?resolveWriterRange(host.snapshot(),continuousRange).segments:[{paragraphId:state.paragraphId,start:state.start,end:state.end}];
+        for(const seg of segments)for(const rect of writerSelectionBoxes(layout,seg.paragraphId,seg.start,seg.end))if(rect.pageIndex===state.pageIndex)ctx.fillRect(px(rect.x),px(rect.y),px(rect.width),px(rect.height));
       }catch{/* Native textarea may temporarily select inside a grapheme. Never mutate source. */}
     }
     for(const cell of page.tableCells){
@@ -131,10 +138,10 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     if(!layout||host.composing()||layout.revision!==host.snapshot().revision)return;
     const page=layout.pages[state.pageIndex],box=canvas.getBoundingClientRect();if(!page||box.width<=0||box.height<=0)return;
     const hit=hitTestWriterPage(layout,state.pageIndex,{x:(e.clientX-box.left)/box.width*page.width,y:(e.clientY-box.top)/box.height*page.height});
-    if(hit)select(hit.paragraphId,hit.offset,hit.offset,true);
+    if(hit){if(continuousPick){if(!continuousPick(hit.paragraphId,hit.offset))return;}else if(inputs.has(hit.paragraphId))select(hit.paragraphId,hit.offset,hit.offset,true);}
   };
   function currentSelection(){const input=activeParagraph();if(!input||!state.paragraphId)return undefined;
-    const start=nearestBoundary(input.value,input.selectionStart),end=nearestBoundary(input.value,input.selectionEnd);
+    const start=paragraphBoundary(state.paragraphId,input.selectionStart),end=paragraphBoundary(state.paragraphId,input.selectionEnd);
     return {id:state.paragraphId,input,start:Math.min(start,end),end:Math.max(start,end)};
   }
   function safe(fn:()=>void):void{try{fn();}catch(e){host.error(e);}}
@@ -153,8 +160,8 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     if(!p||p.type!=='paragraph')return false;
     const base=resolveTextStyle(doc.defaultTextStyle,doc.styles,(p.styleId??doc.defaultParagraphStyleId)?[p.styleId??doc.defaultParagraphStyleId!]:[],p.style??{}).style;
     let cursor=0,selected=0,all=true;
-    for(const r of p.runs){if(r.type!=='text')return false;const end=cursor+r.text.length;
-      if(cursor<selection.end&&end>selection.start){selected++;all=all&&resolveTextStyle(base,doc.styles,r.styleId?[r.styleId]:[],r.style??{}).style[key]===true;}cursor=end;}
+    for(const r of p.runs){const end=cursor+inlineText(r).length;
+      if(r.type==='text'&&cursor<selection.end&&end>selection.start){selected++;all=all&&resolveTextStyle(base,doc.styles,r.styleId?[r.styleId]:[],r.style??{}).style[key]===true;}cursor=end;}
     return selected>0&&all;
   }
   function selectedParagraph(){
@@ -170,8 +177,8 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     const selection=currentSelection(),p=selectedParagraph();if(!selection||!p)return undefined;
     const doc=modelOf(host.snapshot()),base=resolveTextStyle(doc.defaultTextStyle,doc.styles,(p.styleId??doc.defaultParagraphStyleId)?[p.styleId??doc.defaultParagraphStyleId!]:[],p.style??{}).style;
     let cursor=0;
-    for(const r of p.runs){if(r.type!=='text')return base;const end=cursor+r.text.length;
-      if(selection.start<=end&&(selection.start<end||selection.start===selection.end))return resolveTextStyle(base,doc.styles,r.styleId?[r.styleId]:[],r.style??{}).style;cursor=end;
+    for(const r of p.runs){const end=cursor+inlineText(r).length;
+      if(r.type==='text'&&selection.start<=end&&(selection.start<end||selection.start===selection.end))return resolveTextStyle(base,doc.styles,r.styleId?[r.styleId]:[],r.style??{}).style;cursor=end;
     }
     return base;
   }
@@ -201,7 +208,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
       const character=root.querySelector<HTMLSelectElement>('#writer-character-style');
       if(character&&document.activeElement!==character){
         const sel=currentSelection();let offset=0,current='';
-        if(sel&&p)for(const r of p.runs){if(r.type!=='text')break;const end=offset+r.text.length;if(sel.start<end||sel.start===end&&sel.start===sel.end){current=r.styleId??'';break;}offset=end;}
+        if(sel&&p)for(const r of p.runs){const end=offset+inlineText(r).length;if(r.type==='text'&&(sel.start<end||sel.start===end&&sel.start===sel.end)){current=r.styleId??'';break;}offset=end;}
         character.value=current;
       }
     }
@@ -297,16 +304,19 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   },false,()=>!!contextTable(),tableBar);
   root.insertBefore(tableBar,note);
   const pictureBar=node('div','','writer-table-controls');
+  let pictureMode:'after'|'inline'='after';
   const imagePicker=node('input');imagePicker.type='file';imagePicker.accept='image/png,image/jpeg,.png,.jpg,.jpeg';imagePicker.id='writer-image-file';imagePicker.hidden=true;
   pictureBar.append(imagePicker);
-  tool('writerInsertImage','writer-insert-image',()=>imagePicker.click(),false,()=>!contextTable(),pictureBar);
-  imagePicker.onchange=()=>{const file=imagePicker.files?.[0],sel=currentSelection(),revision=host.snapshot().revision;imagePicker.value='';
-    if(!file||!sel||host.composing()||contextTable())return;
+  tool('writerInsertImage','writer-insert-image',()=>{pictureMode='after';imagePicker.click();},false,undefined,pictureBar);
+  tool('writerInsertInlineImage','writer-insert-inline-image',()=>{pictureMode='inline';imagePicker.click();},false,undefined,pictureBar);
+  imagePicker.onchange=()=>{const file=imagePicker.files?.[0],sel=currentSelection(),revision=host.snapshot().revision,mode=pictureMode;imagePicker.value='';
+    if(!file||!sel||host.composing())return;
     void(async()=>{
       if(file.size>8*1024*1024)throw new OfficeError('limit','Image exceeds byte budget');
       const resource=await host.prepareImage(new Uint8Array(await file.arrayBuffer()));
       if(!root.isConnected||!host.isCurrent()||host.composing()||host.snapshot().revision!==revision)throw new OfficeError('conflict','Document changed during image selection');
-      if(host.execute(insertImageAfter(host.snapshot(),sel.id,resource,crypto.randomUUID())))host.render();
+      const id=crypto.randomUUID(),command=mode==='inline'?insertImageAt(host.snapshot(),sel.id,sel.start,sel.end,resource,id):insertImageAfter(host.snapshot(),sel.id,resource,id);
+      if(host.execute(command)){if(mode==='inline'){state.start=state.end=sel.start+1;state.focus=true;}host.render();}
     })().catch(host.error);
   };
   root.insertBefore(pictureBar,note);
@@ -355,27 +365,31 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     }
   }
   let index=0;
-  function renderParagraph(p:DeepReadonly<WriterBlock>,parent:HTMLElement,cell?:{row:number;column:number}):void{
-    if(p.type==='paragraph'&&!cell&&p.runs.length===1&&p.runs[0]?.type==='image'){
-      const image=p.runs[0],r=modelOf(host.snapshot()).resources[image.resourceId],card=node('div','','writer-image-card');card.dataset.imageId=image.id;
+  function renderImageCard(image:DeepReadonly<Extract<Paragraph['runs'][number],{type:'image'}>>,parent:HTMLElement):void{
+      const r=modelOf(host.snapshot()).resources[image.resourceId],card=node('div','','writer-image-card');card.dataset.imageId=image.id;
       if(r?.dataBase64&&(r.mimeType==='image/png'||r.mimeType==='image/jpeg')){const preview=node('img');preview.alt=t('writerImage');preview.src='data:'+r.mimeType+';base64,'+r.dataBase64;preview.width=Math.max(1,Math.min(480,Math.round(image.width/EMU_PER_CSS_PIXEL)));card.append(preview);}
       const label=node('label','','writer-format-field'),width=node('input');width.type='number';width.min='1';width.max='1584';width.step='0.05';width.value=String(Math.round(image.width/EMU_PER_TWIP)/20);width.setAttribute('aria-label',t('writerImageWidth'));width.className='writer-image-width';
       label.append(node('span',t('writerImageWidth')),width);
       width.onchange=()=>safe(()=>{if(host.composing())return;const n=Math.round(width.valueAsNumber*20)*EMU_PER_TWIP;if(host.execute(resizeInlineImage(host.snapshot(),image.id,n)))host.render();});
       const remove=button(t('writerRemoveImage'),()=>safe(()=>{if(!host.composing()&&host.execute(removeInlineImage(host.snapshot(),image.id)))host.render();}),'writer-remove-image');
-      const actions=node('div','','writer-table-controls');actions.append(label,remove);card.append(actions);parent.append(card);return;
-    }
-    if(p.type!=='paragraph'||p.runs.some(r=>r.type!=='text')){
+      const actions=node('div','','writer-table-controls');actions.append(label,remove);card.append(actions);parent.append(card);
+  }
+  function renderParagraph(p:DeepReadonly<WriterBlock>,parent:HTMLElement,cell?:{row:number;column:number}):void{
+    if(p.type==='paragraph'&&!cell&&p.runs.length===1&&p.runs[0]?.type==='image'){renderImageCard(p.runs[0],parent);return;}
+    if(p.type!=='paragraph'){
       const indicator=node('p',t(p.type==='page-break'?'writerPageBreak':'writerUnsupportedBlock'),'writer-block-note');parent.append(indicator);return;
     }
     const input=node('textarea','','writer-paragraph draft-text');input.id=inputId(index++);input.dataset.paragraphId=p.id;
     input.dir='auto';input.rows=cell?2:3;input.setAttribute('aria-label',cell?t('writerCell',{row:host.number(cell.row+1),column:host.number(cell.column+1)})+' · '+host.number(index):t('textLabel')+' '+host.number(index));input.value=paragraphText(host.snapshot(),p.id);
     if(cell){input.classList.add('writer-cell-input');input.dataset.row=String(cell.row);input.dataset.column=String(cell.column);}
     inputs.set(p.id,input);parent.append(input);
+    const pictures=p.runs.filter(r=>r.type==='image');
+    if(pictures.length){parent.append(node('p',t('writerInlineImageNote'),'muted'));for(const picture of pictures)renderImageCard(picture,parent);}
     const commit=()=>{
       try{
         const s=host.snapshot(),old=paragraphText(s,p.id),change=paragraphEditDiff(old,input.value);
-        if(change&&!host.execute(replaceParagraphRange(s,p.id,change.start,change.end,change.replacement,crypto.randomUUID())))input.value=paragraphText(host.snapshot(),p.id);
+        if(change){if(old.slice(change.start,change.end).includes(OBJECT_REPLACEMENT)||change.replacement.includes(OBJECT_REPLACEMENT))throw new OfficeError('unsupported','Use the explicit image actions to change inline objects');
+          if(!host.execute(replaceParagraphRange(s,p.id,change.start,change.end,change.replacement,crypto.randomUUID())))input.value=paragraphText(host.snapshot(),p.id);}
       }catch(error){input.value=paragraphText(host.snapshot(),p.id);host.error(error);}
       readSelection(input,p.id);scheduleLayout();
     };
@@ -384,6 +398,27 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     input.oninput=event=>{if(!host.composing()&&!(event as InputEvent).isComposing)commit();};
     input.onfocus=()=>readSelection(input,p.id);input.onselect=()=>readSelection(input,p.id);input.onkeyup=()=>readSelection(input,p.id);
     input.onpointerup=()=>readSelection(input,p.id);
+    for(const event of ['copy','cut'] as const)input.addEventListener(event,e=>{
+      if(input.value.slice(input.selectionStart,input.selectionEnd).includes(OBJECT_REPLACEMENT)){
+        e.preventDefault();host.error(new OfficeError('unsupported','Plain text clipboard cannot represent images'));
+      }
+    });
+    input.onpaste=e=>{
+      if(host.composing())return;
+      e.preventDefault();safe(()=>{
+        const raw=e.clipboardData?.getData('text/plain');if(raw===undefined)return;
+        const start=paragraphBoundary(p.id,input.selectionStart),end=paragraphBoundary(p.id,input.selectionEnd);
+        if(input.value.slice(start,end).includes(OBJECT_REPLACEMENT)||raw.includes(OBJECT_REPLACEMENT))throw new OfficeError('unsupported','Plain text paste cannot replace images');
+        if(!/[\r\n]/.test(raw)){
+          if(host.execute(replaceParagraphRange(host.snapshot(),p.id,start,end,raw,crypto.randomUUID()))){
+            input.value=paragraphText(host.snapshot(),p.id);select(p.id,start+raw.length,start+raw.length,true);scheduleLayout();
+          }
+        }else{
+          const change=replaceWriterRange(host.snapshot(),{anchor:{paragraphId:p.id,offset:start},focus:{paragraphId:p.id,offset:end}},raw,crypto.randomUUID());
+          if(host.execute(change.command)){state.paragraphId=change.caret.paragraphId;state.start=state.end=change.caret.offset;state.focus=true;host.render();}
+        }
+      });
+    };
     input.onkeydown=e=>{
       if(host.composing()||e.isComposing||e.key==='Process'||e.ctrlKey||e.metaKey||e.altKey)return;
       if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();readSelection(input,p.id);safe(split);}
@@ -411,5 +446,78 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   }
   if(!state.paragraphId||!inputs.has(state.paragraphId)){state.paragraphId=inputs.keys().next().value;state.start=0;state.end=0;}
   const initial=activeParagraph();if(initial){initial.setSelectionRange(state.start,state.end);if(state.focus){state.focus=false;requestAnimationFrame(()=>{if(initial.isConnected)initial.focus({preventScroll:true});});}}
+  const continuousToggle=button(t('writerContinuous'),()=>safe(()=>{
+    if(host.composing()||!state.paragraphId)return;
+    if(state.continuous){state.continuous=false;state.groupRange=undefined;state.focus=true;host.render();return;}
+    writerTextGroup(host.snapshot(),state.paragraphId);state.continuous=true;
+    state.groupRange={anchor:{paragraphId:state.paragraphId,offset:state.start},focus:{paragraphId:state.paragraphId,offset:state.end}};host.render();
+  }),'writer-continuous');
+  continuousToggle.disabled=!state.paragraphId||host.composing();
+  root.insertBefore(continuousToggle,controls);
+  if(state.continuous&&state.paragraphId){
+    try{
+      let group=writerTextGroup(host.snapshot(),state.paragraphId);
+      if(group.text.includes('\r'))throw new OfficeError('unsupported','Continuous native input cannot preserve raw CR');
+      root.dataset.continuous='true';continuousToggle.textContent=t('writerExitContinuous');
+      const panel=node('section','','writer-continuous-panel'),toolbar=node('div','','writer-controls'),input=node('textarea','','writer-continuous-input draft-text');
+      input.id='writer-continuous-text';input.rows=14;input.dir='auto';input.setAttribute('aria-label',t('writerContinuous'));input.value=group.text;
+      const help=node('p',t('writerContinuousNote'),'muted');panel.append(toolbar,help,input);edit.append(panel);
+      function currentRange():WriterRange{
+        const start=nearestBoundary(group.text,input.selectionStart),end=nearestBoundary(group.text,input.selectionEnd);
+        return {anchor:textGroupPoint(group,input.selectionDirection==='backward'?end:start),focus:textGroupPoint(group,input.selectionDirection==='backward'?start:end)};
+      }
+      function storeRange():void{
+        if(host.composing())return;
+        const r=currentRange();continuousRange=r;state.groupRange=r;state.paragraphId=r.focus.paragraphId;state.start=state.end=r.focus.offset;
+        follow();paint();
+      }
+      function setGroupRange(r:WriterRange):void{
+        const a=textGroupOffset(group,r.anchor),b=textGroupOffset(group,r.focus);input.setSelectionRange(Math.min(a,b),Math.max(a,b),a>b?'backward':'forward');
+        storeRange();
+      }
+      try{if(state.groupRange)setGroupRange(state.groupRange);else{input.setSelectionRange(0,0);storeRange();}}catch{input.setSelectionRange(0,0);storeRange();}
+      continuousPick=(id,offset)=>{try{setGroupRange({anchor:{paragraphId:id,offset},focus:{paragraphId:id,offset}});input.focus({preventScroll:true});return true;}catch{return false;}};
+      let captured:{start:number;end:number;revision:number}|undefined;
+      input.addEventListener('beforeinput',()=>{if(!host.composing())captured={start:input.selectionStart,end:input.selectionEnd,revision:host.snapshot().revision};});
+      const commit=()=>{
+        try{
+          const old=group.text,next=input.value;
+          let diff=paragraphEditDiff(old,next);
+          // Use a captured native selection when its replacement exactly
+          // explains the input; this avoids ambiguity across identical runs.
+          if(diff&&captured&&captured.revision===host.snapshot().revision){
+            const {start,end}=captured,suffix=old.slice(end),prefix=old.slice(0,start);
+            if(start<=end&&next.length>=prefix.length+suffix.length&&next.startsWith(prefix)&&next.endsWith(suffix)&&nearestBoundary(old,start)===start&&nearestBoundary(old,end)===end)
+              diff={start,end,replacement:next.slice(start,next.length-suffix.length)};
+          }
+          captured=undefined;
+          if(diff){
+            const range={anchor:textGroupPoint(group,diff.start),focus:textGroupPoint(group,diff.end)};
+            const change=replaceWriterRange(host.snapshot(),range,diff.replacement,crypto.randomUUID());
+            if(!host.execute(change.command)){input.value=group.text;return;}
+            group=writerTextGroup(host.snapshot(),change.caret.paragraphId);input.value=group.text;setGroupRange({anchor:change.caret,focus:change.caret});
+          }
+          storeRange();scheduleLayout();
+        }catch(error){input.value=group.text;captured=undefined;host.error(error);}
+      };
+      input.addEventListener('compositionstart',()=>{host.setComposing(true);});
+      input.addEventListener('compositionend',()=>{host.setComposing(false);commit();});
+      input.oninput=e=>{if(!host.composing()&&!(e as InputEvent).isComposing)commit();};
+      input.onselect=storeRange;input.onkeyup=storeRange;input.onpointerup=storeRange;
+      input.addEventListener('copy',e=>{if(input.value.slice(input.selectionStart,input.selectionEnd).includes(OBJECT_REPLACEMENT)){e.preventDefault();host.error(new OfficeError('unsupported','Object marker cannot be copied as text'));}});
+      for(const [key,label] of [['bold','writerBold'],['italic','writerItalic'],['underline','writerUnderline']] as const){
+        const b=button(t(label),()=>safe(()=>{
+          if(host.composing())return;const range=currentRange(),segments=resolveWriterRange(host.snapshot(),range).segments;
+          const doc=modelOf(host.snapshot());let all=true,count=0;
+          for(const seg of segments){
+            const p=seg.paragraph,named=p.styleId??doc.defaultParagraphStyleId,base=resolveTextStyle(doc.defaultTextStyle,doc.styles,named?[named]:[],p.style??{}).style;let offset=0;
+            for(const r of p.runs){const end=offset+inlineText(r).length;if(r.type==='text'&&offset<seg.end&&end>seg.start){count++;all=all&&resolveTextStyle(base,doc.styles,r.styleId?[r.styleId]:[],r.style??{}).style[key]===true;}offset=end;}
+          }
+          if(count&&host.execute(formatWriterRange(host.snapshot(),range,{[key]:!all},crypto.randomUUID()))){setGroupRange(range);input.focus({preventScroll:true});scheduleLayout();}
+        }),'writer-continuous-'+key);b.onmousedown=e=>e.preventDefault();toolbar.append(b);
+      }
+      requestAnimationFrame(()=>{if(input.isConnected){input.focus({preventScroll:true});storeRange();}});
+    }catch(error){state.continuous=false;state.groupRange=undefined;host.error(error);}
+  }
   syncControls();requestAnimationFrame(updateLayout);return root;
 }

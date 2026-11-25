@@ -14,7 +14,7 @@ function get(snapshot:DocumentSnapshot,id:string):TableLocation{
     if(index<0)continue;const table=section.blocks[index]!;
     assert(table.type==='table','invalid','Expected table ID');
     // All mutating table commands are limited to the rectangular paragraph-only profile.
-    assert(table.rows.every(r=>r.cells.every(c=>c.blocks.every(b=>b.type==='paragraph'&&b.runs.every(run=>run.type==='text')))),'unsupported','Table contains unsupported blocks or inline content');
+    assert(table.rows.every(r=>r.cells.every(c=>c.blocks.every(b=>b.type==='paragraph'))),'unsupported','Table contains unsupported blocks or inline content');
     return {section:s,index,table,path:['sections',s,'blocks',index],maxWidth:section.page.width-section.page.margins.left-section.page.margins.right};
   }
   assert(false,'invalid','Table not found');
@@ -30,6 +30,7 @@ function widthBounds(table:DeepReadonly<Table>,widths:readonly number[],max:numb
   const pad=table.cellPadding??DEFAULT_TABLE_PADDING;
   assert(widths.every(w=>Number.isSafeInteger(w)&&w%EMU_PER_TWIP===0&&w>=Math.max(TABLE_LIMITS.minWidth,pad.left+pad.right+EMU_PER_TWIP)),'invalid','Column width is too small or not a whole twip');
   assert(widths.reduce((a,b)=>a+b,0)<=max,'invalid','Table width exceeds page content width');
+  for(const row of table.rows)for(let col=0;col<row.cells.length;col++)for(const block of row.cells[col]!.blocks)if(block.type==='paragraph')for(const run of block.runs)if(run.type==='image')assert(run.width<=(widths[col]??0)-pad.left-pad.right,'unsupported','Resize the image before narrowing its column');
 }
 function replace(snapshot:DocumentSnapshot,loc:TableLocation,table:Table):DocumentCommand{
   return patchCommand(snapshot,'WRT-03',[{op:'set',path:loc.path,value:table}]);
@@ -61,8 +62,9 @@ export function deleteTableRow(snapshot:DocumentSnapshot,id:string,at:number):Do
 export function insertTableColumn(snapshot:DocumentSnapshot,id:string,at:number,operationId:string):DocumentCommand{
   const loc=get(snapshot,id),table=cloneData(loc.table) as Table;index(at,table.columnWidths.length,true);counts(table.rows.length,table.columnWidths.length+1);
   const neighbor=at===table.columnWidths.length?at-1:at,original=table.columnWidths[neighbor]!,half=Math.floor(original/(2*EMU_PER_TWIP))*EMU_PER_TWIP;
-  table.columnWidths[neighbor]=original-half;table.columnWidths.splice(at,0,half);widthBounds(table,table.columnWidths,loc.maxWidth);
+  table.columnWidths[neighbor]=original-half;table.columnWidths.splice(at,0,half);
   const next=allocate(operationId);for(const row of table.rows)row.cells.splice(at,0,cell(next,model(snapshot).defaultParagraphStyleId));
+  widthBounds(table,table.columnWidths,loc.maxWidth);
   return replace(snapshot,loc,table);
 }
 export function deleteTableColumn(snapshot:DocumentSnapshot,id:string,at:number):DocumentCommand{

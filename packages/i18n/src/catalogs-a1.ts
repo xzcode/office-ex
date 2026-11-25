@@ -158,7 +158,7 @@ export const korean = {
   "writerUnsupportedBlock": "이 블록은 현재 미리보기에서 편집할 수 없습니다.",
   "docxNew": "새 DOCX 문서",
   "docxDocument": "DOCX 문서",
-  "docxNote": "제한된 DOCX 지원: 텍스트, 직접 서식, 일부 스타일, 고정 너비 표, 독립 PNG/JPEG 이미지 문단 및 기본 배치. 복잡한 문서는 읽기 전용입니다.",
+  "docxNote": "제한된 DOCX 지원: 텍스트, 직접 서식, 일부 스타일, 고정 너비 표, 인라인 PNG/JPEG 이미지 및 기본 배치. 복잡한 문서는 읽기 전용입니다.",
   "writerFontFamily": "글꼴",
   "writerFontSize": "크기 (pt)",
   "writerTextColor": "글자 색",
@@ -199,7 +199,12 @@ export const korean = {
   "writerIndent": "들여쓰기 (pt)",
   "writerSpaceBefore": "문단 앞 (pt)",
   "writerSpaceAfter": "문단 뒤 (pt)",
-  "writerLineHeight": "줄 높이 (pt, 0은 자동)"
+  "writerLineHeight": "줄 높이 (pt, 0은 자동)",
+  "writerInsertInlineImage": "커서 위치에 이미지 삽입",
+  "writerInlineImageNote": "개체 표시는 인라인 이미지입니다. 이미지 컨트롤에서 크기를 조정하거나 삭제하세요.",
+  "writerContinuous": "연속 텍스트 편집",
+  "writerExitContinuous": "문단 편집으로 돌아가기",
+  "writerContinuousNote": "인접 텍스트 문단을 선택, 복사, 잘라내기, 붙여넣기 및 서식 지정할 수 있습니다. 표, 페이지 나누기, 구역 및 이미지 문단은 선택 경계입니다. 붙여넣은 줄바꿈은 새 문단이 됩니다."
 } as const;
 export const french = {
   "open": "Ouvrir un fichier",
@@ -359,7 +364,7 @@ export const french = {
   "writerUnsupportedBlock": "Ce bloc ne peut pas être modifié dans cet aperçu.",
   "docxNew": "Nouveau document DOCX",
   "docxDocument": "Document DOCX",
-  "docxNote": "Profil DOCX limité : texte, formatage direct, styles pris en charge, tableaux fixes, paragraphes d’images PNG/JPEG intégrées et mise en page de base. Documents complexes en lecture seule.",
+  "docxNote": "Profil DOCX limité : texte, formatage direct, styles pris en charge, tableaux fixes, images PNG/JPEG intégrées et mise en page de base. Documents complexes en lecture seule.",
   "writerFontFamily": "Police",
   "writerFontSize": "Taille (pt)",
   "writerTextColor": "Couleur du texte",
@@ -400,7 +405,12 @@ export const french = {
   "writerIndent": "Retrait (pt)",
   "writerSpaceBefore": "Avant (pt)",
   "writerSpaceAfter": "Après (pt)",
-  "writerLineHeight": "Hauteur de ligne (pt ; 0 = auto)"
+  "writerLineHeight": "Hauteur de ligne (pt ; 0 = auto)",
+  "writerInsertInlineImage": "Insérer une image au curseur",
+  "writerInlineImageNote": "Le repère d'objet représente une image intégrée. Utilisez ses commandes pour la redimensionner ou la supprimer.",
+  "writerContinuous": "Éditer le texte continu",
+  "writerExitContinuous": "Revenir à l'éditeur de paragraphes",
+  "writerContinuousNote": "Sélectionnez, copiez, coupez, collez ou mettez en forme plusieurs paragraphes de texte adjacents. Les tableaux, sauts de page, sections et paragraphes avec images délimitent la sélection. Les nouvelles lignes collées deviennent des paragraphes."
 } as const;
 export const german = {
   "open": "Datei öffnen",
@@ -560,7 +570,7 @@ export const german = {
   "writerUnsupportedBlock": "Dieser Block ist in dieser Vorschau nicht bearbeitbar.",
   "docxNew": "Neues DOCX-Dokument",
   "docxDocument": "DOCX-Dokument",
-  "docxNote": "Begrenztes DOCX-Profil: Text, direkte Formatierung, unterstützte Stile, feste Tabellen, eingebettete PNG/JPEG-Bildabsätze und einfaches Layout. Komplexe Dokumente bleiben schreibgeschützt.",
+  "docxNote": "Begrenztes DOCX-Profil: Text, direkte Formatierung, unterstützte Stile, feste Tabellen, Inline-Bilder (PNG/JPEG) und einfaches Layout. Komplexe Dokumente bleiben schreibgeschützt.",
   "writerFontFamily": "Schriftart",
   "writerFontSize": "Größe (pt)",
   "writerTextColor": "Textfarbe",
@@ -601,5 +611,10 @@ export const german = {
   "writerIndent": "Einzug (pt)",
   "writerSpaceBefore": "Abstand davor (pt)",
   "writerSpaceAfter": "Abstand danach (pt)",
-  "writerLineHeight": "Zeilenhöhe (pt; 0 = automatisch)"
+  "writerLineHeight": "Zeilenhöhe (pt; 0 = automatisch)",
+  "writerInsertInlineImage": "Bild am Cursor einfügen",
+  "writerInlineImageNote": "Die Objektmarke steht für ein Inline-Bild. Verwenden Sie die Bildsteuerung zum Verkleinern, Vergrößern oder Entfernen.",
+  "writerContinuous": "Zusammenhängenden Text bearbeiten",
+  "writerExitContinuous": "Zurück zum Absatzeditor",
+  "writerContinuousNote": "Markieren, kopieren, schneiden, fügen oder formatieren Sie benachbarte Textabsätze. Tabellen, Seitenumbrüche, Abschnitte und Bildabsätze begrenzen die Auswahl. Eingefügte neue Zeilen werden Absätze."
 } as const;

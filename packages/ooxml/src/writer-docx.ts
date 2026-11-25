@@ -163,7 +163,8 @@ function readTable(el:Element,id:string,maxWidth:number,read:(p:Element)=>Writer
       valid(body.length>=2&&isW(body[0]!,'tcPr'),'Explicit cell properties and paragraph required');
       const tcPr=body[0]!;attrs(tcPr);const items=elements(tcPr);
       valid(items.length===1&&isW(items[0]!,'tcW')&&dxa(items[0]!,1)===columnWidths[ci],'Cell width differs from grid or unsupported cell properties');
-      const blocks=body.slice(1).map(p=>{requireElement(p,'p');const block=read(p);valid(block.type==='paragraph','Page break in table cell');return block;});
+      const blocks=body.slice(1).map(p=>{requireElement(p,'p');const block=read(p);valid(block.type==='paragraph','Page break in table cell');
+        for(const run of block.runs)if(run.type==='image')valid(run.width<=columnWidths[ci]!-padding!.left-padding!.right,'Image exceeds cell width');return block;});
       return {id:id+'-cell-'+ri+'-'+ci,blocks};
     })};
   })};
@@ -184,6 +185,7 @@ function writeTable(table:DeepReadonly<Table>,maxWidth:number,write:(p:DeepReado
   properties+=tag('tblLayout',{type:'fixed'})+'<w:tblCellMar>'+CELL_EDGES.map(edge=>tag(edge,{w:exact(pad[edge]),type:'dxa'})).join('')+'</w:tblCellMar>';
   return '<w:tbl><w:tblPr>'+properties+'</w:tblPr><w:tblGrid>'+widths.map(w=>tag('gridCol',{w})).join('')+'</w:tblGrid>'+table.rows.map(row=>'<w:tr>'+row.cells.map((cell,i)=>{
     valid(cell.blocks.length>0&&cell.blocks.every(b=>b.type==='paragraph'),'Nested tables or non-paragraph cell blocks unsupported');
+    for(const block of cell.blocks)if(block.type==='paragraph')for(const run of block.runs)if(run.type==='image')valid(run.width<=table.columnWidths[i]!-pad.left-pad.right,'Image exceeds cell width');
     return '<w:tc><w:tcPr>'+tag('tcW',{w:widths[i]!,type:'dxa'})+'</w:tcPr>'+cell.blocks.map(b=>write(b as DeepReadonly<Paragraph>)).join('')+'</w:tc>';
   }).join('')+'</w:tr>').join('')+'</w:tbl>';
 }
@@ -206,8 +208,8 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
       const items=elements(r);let j=0;let direct:TextStyle|undefined,runStyleId:string|undefined;
       if(items[0]&&isW(items[0],'rPr')){direct=readRunStyle(items[0],profile?id=>{runStyleId=requireStyleReference(profile,id,'character');}:undefined);j++;}
       if(items[j]&&isW(items[j]!,'drawing')){
-        valid(!inCell&&items.length===1&&nodes.length===i+1&&runs.length===0&&!direct&&!runStyleId,'Only a dedicated image paragraph is supported');
-        const picture=readInlinePicture(items[j]!,media,'r-'+bi+'-image');
+        valid(items.length===1&&!direct&&!runStyleId,'An inline drawing must be in its own unformatted run');
+        const picture=readInlinePicture(items[j]!,media,'r-'+bi+'-image-'+runs.length);
         valid(picture.width<=page.width-page.margins.left-page.margins.right&&picture.height<=page.height-page.margins.top-page.margins.bottom,'Image exceeds usable page');runs.push(picture);continue;
       }
       let text='';
@@ -298,7 +300,7 @@ function mainXml(candidate:unknown,profile:DocxStyleProfile|undefined,media:Medi
     for(const inline of block.runs.length?block.runs:[{id:'empty',type:'text' as const,text:''}]){
       valid(++totalRuns<=MAX_RUNS,'Run budget exceeded');
       if(inline.type==='image'){
-        valid(!inCell&&block.runs.length===1&&inline.width<=section.page.width-section.page.margins.left-section.page.margins.right&&inline.height<=section.page.height-section.page.margins.top-section.page.margins.bottom,'Only a dedicated inline image paragraph within the page is supported');
+        valid(inline.width<=section.page.width-section.page.margins.left-section.page.margins.right&&inline.height<=section.page.height-section.page.margins.top-section.page.margins.bottom,'Inline image exceeds page bounds');
         body+='<w:r>'+writeInlinePicture(inline,media,++imageCount)+'</w:r>';
       }else if(inline.type==='text'){
         if(inline.styleId)requireStyleReference(profile,inline.styleId,'character');totalText+=inline.text.length;valid(totalText<=MAX_TEXT,'Text budget exceeded');
@@ -348,6 +350,6 @@ export function saveWriterDocx(source:WriterDocxSource,candidate:unknown,options
   if(xml===saved.canonical&&!media.additions.length)return writeOpc(saved.pkg,new Map(),options);
   const bytes=saveMediaPackage(saved.pkg,source.mainPart,xml,media,options);
   const checked=openWriterDocx(bytes,model.documentId,model.title,options);
-  valid(sources.get(checked)?.canonical===xml&&canonicalData(checked.document.resources)===canonicalData(model.resources)&&canonicalData(checked.document.styles)===canonicalData(model.styles)&&canonicalData(checked.document.defaultTextStyle)===canonicalData(saved.profile?.defaults??{}),'Edited DOCX verification failed');
+  valid(sources.get(checked)?.canonical===xml&&canonicalData(checked.document.resources)===canonicalData({...saved.media.resources,...model.resources})&&canonicalData(checked.document.styles)===canonicalData(model.styles)&&canonicalData(checked.document.defaultTextStyle)===canonicalData(saved.profile?.defaults??{}),'Edited DOCX verification failed');
   return bytes;
 }

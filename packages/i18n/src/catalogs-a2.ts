@@ -158,7 +158,7 @@ export const spanish = {
   "writerUnsupportedBlock": "Este bloque no se puede editar en esta vista previa.",
   "docxNew": "Nuevo documento DOCX",
   "docxDocument": "Documento DOCX",
-  "docxNote": "Perfil DOCX limitado: texto, formato directo, estilos compatibles, tablas fijas, párrafos de imagen PNG/JPEG y diseño básico. Documentos complejos de solo lectura.",
+  "docxNote": "Perfil DOCX limitado: texto, formato directo, estilos compatibles, tablas fijas, imágenes PNG/JPEG en línea y diseño básico. Documentos complejos de solo lectura.",
   "writerFontFamily": "Fuente",
   "writerFontSize": "Tamaño (pt)",
   "writerTextColor": "Color del texto",
@@ -199,7 +199,12 @@ export const spanish = {
   "writerIndent": "Sangría (pt)",
   "writerSpaceBefore": "Anterior (pt)",
   "writerSpaceAfter": "Posterior (pt)",
-  "writerLineHeight": "Altura de línea (pt; 0 = auto)"
+  "writerLineHeight": "Altura de línea (pt; 0 = auto)",
+  "writerInsertInlineImage": "Insertar imagen en el cursor",
+  "writerInlineImageNote": "La marca de objeto representa una imagen en línea. Usa sus controles para cambiar el tamaño o eliminarla.",
+  "writerContinuous": "Editar texto continuo",
+  "writerExitContinuous": "Volver al editor de párrafos",
+  "writerContinuousNote": "Selecciona, copia, corta, pega o da formato a párrafos de texto contiguos. Las tablas, saltos de página, secciones y párrafos con imágenes delimitan la selección. Las nuevas líneas pegadas se convierten en párrafos."
 } as const;
 export const portuguese = {
   "open": "Abrir arquivo",
@@ -359,7 +364,7 @@ export const portuguese = {
   "writerUnsupportedBlock": "Este bloco não pode ser editado nesta prévia.",
   "docxNew": "Novo documento DOCX",
   "docxDocument": "Documento DOCX",
-  "docxNote": "Perfil DOCX limitado: texto, formatação direta, estilos compatíveis, tabelas fixas, parágrafos de imagens PNG/JPEG e layout básico. Documentos complexos são somente leitura.",
+  "docxNote": "Perfil DOCX limitado: texto, formatação direta, estilos compatíveis, tabelas fixas, imagens PNG/JPEG em linha e layout básico. Documentos complexos são somente leitura.",
   "writerFontFamily": "Fonte",
   "writerFontSize": "Tamanho (pt)",
   "writerTextColor": "Cor do texto",
@@ -400,5 +405,10 @@ export const portuguese = {
   "writerIndent": "Recuo (pt)",
   "writerSpaceBefore": "Antes (pt)",
   "writerSpaceAfter": "Depois (pt)",
-  "writerLineHeight": "Altura da linha (pt; 0 = auto)"
+  "writerLineHeight": "Altura da linha (pt; 0 = auto)",
+  "writerInsertInlineImage": "Inserir imagem no cursor",
+  "writerInlineImageNote": "O marcador de objeto representa uma imagem em linha. Use os controles da imagem para redimensioná-la ou removê-la.",
+  "writerContinuous": "Editar texto contínuo",
+  "writerExitContinuous": "Voltar ao editor de parágrafos",
+  "writerContinuousNote": "Selecione, copie, recorte, cole ou formate parágrafos de texto adjacentes. Tabelas, quebras de página, seções e parágrafos com imagens delimitam a seleção. Novas linhas coladas se tornam parágrafos."
 } as const;

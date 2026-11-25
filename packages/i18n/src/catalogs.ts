@@ -158,7 +158,7 @@ export const english = {
   "writerUnsupportedBlock": "This block is not editable in this preview.",
   "docxNew": "New DOCX document",
   "docxDocument": "DOCX document",
-  "docxNote": "Limited DOCX profile: text, direct formatting, supported named styles, fixed rectangular tables, embedded PNG/JPEG picture paragraphs and basic layout. Complex documents remain read-only.",
+  "docxNote": "Limited DOCX profile: text, direct formatting, supported named styles, fixed rectangular tables, embedded inline PNG/JPEG pictures and basic layout. Complex documents remain read-only.",
   "writerFontFamily": "Font",
   "writerFontSize": "Size (pt)",
   "writerTextColor": "Text color",
@@ -199,7 +199,12 @@ export const english = {
   "writerIndent": "Indent (pt)",
   "writerSpaceBefore": "Before (pt)",
   "writerSpaceAfter": "After (pt)",
-  "writerLineHeight": "Line height (pt; 0 = auto)"
+  "writerLineHeight": "Line height (pt; 0 = auto)",
+  "writerInsertInlineImage": "Insert image at caret",
+  "writerInlineImageNote": "The object marker represents an inline image. Use its picture controls to resize or remove it.",
+  "writerContinuous": "Edit continuous text",
+  "writerExitContinuous": "Back to paragraph editor",
+  "writerContinuousNote": "Select, copy, cut, paste or format across adjacent text paragraphs. Tables, page breaks, sections and image paragraphs are selection boundaries. New pasted lines become paragraphs."
 } as const;
 export const simplified = {
   "open": "打开文件",
@@ -359,7 +364,7 @@ export const simplified = {
   "writerUnsupportedBlock": "此内容块暂不可编辑。",
   "docxNew": "新建 DOCX 文档",
   "docxDocument": "DOCX 文档",
-  "docxNote": "当前 DOCX 支持文本、直接格式、部分命名样式、固定矩形表格、独立 PNG/JPEG 图片段落及基础排版，复杂文档仍只读。",
+  "docxNote": "当前 DOCX 支持文本、直接格式、部分命名样式、固定矩形表格、内嵌行内 PNG/JPEG 图片及基础排版，复杂文档仍只读。",
   "writerFontFamily": "字体",
   "writerFontSize": "字号（磅）",
   "writerTextColor": "文字颜色",
@@ -400,7 +405,12 @@ export const simplified = {
   "writerIndent": "缩进（磅）",
   "writerSpaceBefore": "段前（磅）",
   "writerSpaceAfter": "段后（磅）",
-  "writerLineHeight": "行距（磅；0 为自动）"
+  "writerLineHeight": "行距（磅；0 为自动）",
+  "writerInsertInlineImage": "光标处插入图片",
+  "writerInlineImageNote": "对象标记代表行内图片。请通过图片控件缩放或删除。",
+  "writerContinuous": "连续文字编辑",
+  "writerExitContinuous": "返回段落编辑",
+  "writerContinuousNote": "可跨相邻文字段落选取、复制、剪切、粘贴和设置格式。表格、分页符、分节及图片段落是选区边界。新粘贴的换行成为新段落。"
 } as const;
 export const traditional = {
   "open": "開啟檔案",
@@ -560,7 +570,7 @@ export const traditional = {
   "writerUnsupportedBlock": "此內容區塊暫不可編輯。",
   "docxNew": "新增 DOCX 文件",
   "docxDocument": "DOCX 文件",
-  "docxNote": "目前 DOCX 支援文字、直接格式、部分命名樣式、固定矩形表格、獨立 PNG/JPEG 圖片段落與基本排版，複雜文件仍唯讀。",
+  "docxNote": "目前 DOCX 支援文字、直接格式、部分命名樣式、固定矩形表格、內嵌行內 PNG/JPEG 圖片與基本排版，複雜文件仍唯讀。",
   "writerFontFamily": "字型",
   "writerFontSize": "字級（點）",
   "writerTextColor": "文字顏色",
@@ -601,7 +611,12 @@ export const traditional = {
   "writerIndent": "縮排（點）",
   "writerSpaceBefore": "段前（點）",
   "writerSpaceAfter": "段後（點）",
-  "writerLineHeight": "行距（點；0 為自動）"
+  "writerLineHeight": "行距（點；0 為自動）",
+  "writerInsertInlineImage": "在游標處插入圖片",
+  "writerInlineImageNote": "物件標記代表行內圖片。請透過圖片控制項縮放或刪除。",
+  "writerContinuous": "連續文字編輯",
+  "writerExitContinuous": "返回段落編輯",
+  "writerContinuousNote": "可跨相鄰文字段落選取、複製、剪下、貼上和設定格式。表格、分頁符、分節與圖片段落是選取邊界。新貼上的換行成為新段落。"
 } as const;
 export const japanese = {
   "open": "ファイルを開く",
@@ -761,7 +776,7 @@ export const japanese = {
   "writerUnsupportedBlock": "このブロックは現在のプレビューでは編集できません。",
   "docxNew": "DOCX 文書を新規作成",
   "docxDocument": "DOCX 文書",
-  "docxNote": "限定 DOCX 対応：文字、直接書式、対応スタイル、固定幅の表、独立した PNG/JPEG 画像段落、基本レイアウト。複雑な文書は読み取り専用です。",
+  "docxNote": "限定 DOCX 対応：文字、直接書式、対応スタイル、固定幅の表、行内 PNG/JPEG 画像、基本レイアウト。複雑な文書は読み取り専用です。",
   "writerFontFamily": "フォント",
   "writerFontSize": "サイズ（pt）",
   "writerTextColor": "文字色",
@@ -802,5 +817,10 @@ export const japanese = {
   "writerIndent": "インデント (pt)",
   "writerSpaceBefore": "段落前 (pt)",
   "writerSpaceAfter": "段落後 (pt)",
-  "writerLineHeight": "行間 (pt、0 は自動)"
+  "writerLineHeight": "行間 (pt、0 は自動)",
+  "writerInsertInlineImage": "カーソル位置に画像を挿入",
+  "writerInlineImageNote": "オブジェクト記号は行内画像を表します。画像の操作欄でサイズ変更や削除を行います。",
+  "writerContinuous": "連続テキスト編集",
+  "writerExitContinuous": "段落編集に戻る",
+  "writerContinuousNote": "隣接する段落をまたいで選択、コピー、切り取り、貼り付け、書式設定ができます。表、改ページ、セクション、画像段落は選択範囲の境界です。貼り付けた改行は新しい段落になります。"
 } as const;
