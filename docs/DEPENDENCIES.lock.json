@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "reviewedOn": "2026-11-24",
-  "lockSha256": "f5cbc02fffd416b6b12137dd68ec0a596f9c9eed38a8e57e007bae42544da2ec",
+  "lockSha256": "6072145bed062014d3728a1627c3f8b9d8490475ee13f47a4986298883e8d87a",
   "policy": "docs/DEPENDENCIES.md",
   "packages": [
     {

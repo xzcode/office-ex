@@ -113,6 +113,6 @@ test('I18N settings v1 migration retains theme and recents and persists v2 on ne
   assert.deepEqual(await store.load(),{...defaults,theme:'dark',language:'en-US',recent});
   await store.update({region:'de-DE',documentLanguage:'ja-JP',language:'zh-TW'});
   assert.deepEqual(await new SettingsStore(path).load(),{...defaults,theme:'dark',language:'zh-TW',region:'de-DE',documentLanguage:'ja-JP',recent});
-  await assert.rejects(store.update({language:'ar'}),fails('invalid')); // Registry target, not a complete UI catalog.
+  await store.update({language:'ar'}); assert.equal(store.value().language,'ar'); // Candidate RTL catalog now available.
   await assert.rejects(store.update({region:'not-a-locale'}),fails('invalid'));
 });

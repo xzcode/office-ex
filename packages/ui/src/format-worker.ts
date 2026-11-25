@@ -1,7 +1,7 @@
 import { makeImageResource, decodeImageBytes, validateImageResource, type OfficeDocument } from '@office-ex/core';
 import { OfficeError, asFailure } from '@office-ex/contracts';
-import { inspectFile, inspectForEditor, serializeDraft, parseDraft, prepareWriterDocxSave, prepareWriterDocSave } from '@office-ex/format-service';
-interface WorkerRequest {id:number;type:'inspect'|'serialize'|'recover'|'docx-save'|'doc-save'|'convert-doc'|'convert-docx'|'image';bytes?:Uint8Array;filename?:string;documentId?:string;sourceBytes?:Uint8Array;document?:unknown}
+import { inspectFile, inspectForEditor, serializeDraft, parseDraft, prepareWriterDocxSave, prepareWriterDocSave, prepareSheetsSave } from '@office-ex/format-service';
+interface WorkerRequest {id:number;type:'inspect'|'serialize'|'recover'|'docx-save'|'doc-save'|'convert-doc'|'convert-docx'|'xls-save'|'xlsx-save'|'convert-xls'|'convert-xlsx'|'image';bytes?:Uint8Array;filename?:string;documentId?:string;sourceBytes?:Uint8Array;document?:unknown}
 async function verifyRaster(bytes:Uint8Array,mimeType:string,width:number,height:number):Promise<void>{
   try{
     const bitmap=await createImageBitmap(new Blob([bytes.slice().buffer],{type:mimeType}));
@@ -21,6 +21,8 @@ self.onmessage = async (event:MessageEvent<WorkerRequest>):Promise<void> => {
        : request.type === 'docx-save' ? prepareWriterDocxSave(request.bytes!,request.documentId!,request.sourceBytes)
       : request.type === 'doc-save' ? prepareWriterDocSave(request.bytes!,request.documentId!,request.sourceBytes)
       : request.type === 'convert-doc' ? (prepareWriterDocSave(serializeDraft(request.document),request.documentId!),true)
+      : request.type === 'xls-save'||request.type === 'xlsx-save' ? prepareSheetsSave(request.type==='xls-save'?'xls':'xlsx',request.bytes!,request.documentId!,request.sourceBytes)
+      : request.type === 'convert-xls'||request.type === 'convert-xlsx' ? (prepareSheetsSave(request.type==='convert-xls'?'xls':'xlsx',serializeDraft(request.document),request.documentId!),true)
       : request.type === 'convert-docx' ? (prepareWriterDocxSave(serializeDraft(request.document),request.documentId!),true)
       : request.type === 'image' ? makeImageResource(request.bytes!) : (() => {throw new Error('Invalid worker request');})();
     if(request.type==='image'){const r=makeImageResource(request.bytes!);await verifyRaster(request.bytes!,r.mimeType,r.pixelWidth,r.pixelHeight);}

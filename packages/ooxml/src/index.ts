@@ -5,3 +5,5 @@ export * from './zip.js';
 export * from './xml.js';
 export * from './opc.js';
 export * from './writer-docx.js';
+
+export * from './sheets-xlsx.js';

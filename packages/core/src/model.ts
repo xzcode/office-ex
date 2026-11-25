@@ -23,12 +23,15 @@ export interface WriterSection { id: string; pageExtras?: {headerDistance?:numbe
 export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string }
 
 export type CellValue = { kind: 'blank' } | { kind: 'string'; value: string } | { kind: 'number'; value: number } | { kind: 'boolean'; value: boolean } | { kind: 'error'; value: '#NULL!' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#NAME?' | '#NUM!' | '#N/A' } | { kind: 'formula'; source: string };
-export interface Cell { value: CellValue; styleId?: string; numberFormat?: string }
+export interface CellStyle extends TextStyle { fill?: Color; border?: {color:Color;width:number}; verticalAlignment?: 'top'|'center'|'bottom'; wrapText?: boolean }
+export interface SheetView { rightToLeft?:boolean; frozenRows?:number; frozenColumns?:number; showGridLines?:boolean }
+export interface Cell { value: CellValue; styleId?: string; numberFormat?: string; style?: CellStyle }
 export interface Sheet {
   id: string; name: string; cells: Record<string, Cell>;
   rows: Record<string, { height?: number; hidden?: boolean }>;
   columns: Record<string, { width?: number; hidden?: boolean }>;
   merges: { row: number; column: number; rowCount: number; columnCount: number }[];
+  view?: SheetView;
 }
 export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSystem: '1900' | '1904'; sheets: Sheet[] }
 
@@ -231,7 +234,8 @@ export function validateDocument(value: unknown): OfficeDocument {
     assert(model.dateSystem === '1900' || model.dateSystem === '1904', 'invalid', 'Invalid workbook date system');
     const names = new Set<string>();
     list(model.sheets, 1).forEach((candidate) => {
-      const sheet = object(candidate, ['id', 'name', 'cells', 'rows', 'columns', 'merges']); id(sheet.id); text(sheet.name, 31, false);
+      const sheet = object(candidate, ['id', 'name', 'cells', 'rows', 'columns', 'merges', 'view']); id(sheet.id); text(sheet.name, 31, false);
+      if(sheet.view!==undefined){const view=object(sheet.view,['rightToLeft','frozenRows','frozenColumns','showGridLines']);for(const field of ['rightToLeft','showGridLines'])if(view[field]!==undefined)bool(view[field]);if(view.frozenRows!==undefined)integer(view.frozenRows,0,1048575);if(view.frozenColumns!==undefined)integer(view.frozenColumns,0,16383);}
       assert(!/[\[\]:*?/\\\x00-\x1f]/.test(sheet.name) && !sheet.name.startsWith("'") && !sheet.name.endsWith("'"), 'invalid', 'Invalid sheet name');
       const name = sheet.name.toLowerCase(); assert(!names.has(name), 'invalid', 'Duplicate sheet name'); names.add(name);
       assert(isRecord(sheet.cells), 'invalid', 'Invalid sparse cell map');
@@ -282,7 +286,8 @@ export function validateDocument(value: unknown): OfficeDocument {
 }
 
 export function validateCell(value: unknown, styles: Record<string, unknown> = {}): asserts value is Cell {
-  const cell = object(value, ['value', 'styleId', 'numberFormat']); optionalId(cell.styleId, styles);
+  const cell = object(value, ['value', 'styleId', 'numberFormat', 'style']); optionalId(cell.styleId, styles);
+  if(cell.style!==undefined){assert(isRecord(cell.style),'invalid','Invalid cell style');const {fill,border,verticalAlignment,wrapText,...font}=cell.style;validateTextStyle(font);if(fill!==undefined)validateColor(fill);if(border!==undefined){const edge=object(border,['color','width']);validateColor(edge.color);integer(edge.width,1,12700*12);}if(verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(verticalAlignment)),'invalid','Invalid vertical cell alignment');if(wrapText!==undefined)bool(wrapText);}
   if (cell.numberFormat !== undefined) text(cell.numberFormat, 1024);
   const item = object(cell.value, ['kind', 'value', 'source']);
   if (item.kind === 'blank') assert(Object.keys(item).length === 1, 'invalid', 'Blank cell has a payload');

@@ -14,7 +14,7 @@ const ORIGIN='office-ex://app';
 const MAX_BYTES=32*1024*1024;
 const RESPONSE='office:docx-verify-result';
 const CSP="default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; frame-ancestors 'none'";
-export interface VerifyDocxJob{format?:'doc'|'docx';documentId:string;bytes:Uint8Array;sourceBytes?:Uint8Array}
+export interface VerifyDocxJob{format?:'doc'|'docx'|'xls'|'xlsx';documentId:string;bytes:Uint8Array;sourceBytes?:Uint8Array}
 export type DocxVerifier=(job:VerifyDocxJob)=>Promise<Uint8Array>;
 
 export async function createDocxVerifier(bundle:string,preload:string):Promise<DocxVerifier>{
@@ -64,7 +64,7 @@ export async function createDocxVerifier(bundle:string,preload:string):Promise<D
             finish(new OfficeError(errorCode,'DOCX semantic verification rejected the snapshot or source'));return;
           }
           const bytes=result.bytes;
-          if(!(bytes instanceof Uint8Array)||bytes.byteLength<4||bytes.byteLength>MAX_BYTES||(job.format==='doc'?![0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1].every((n,i)=>bytes[i]===n):bytes[0]!==0x50||bytes[1]!==0x4b||bytes[2]!==3||bytes[3]!==4)){
+          if(!(bytes instanceof Uint8Array)||bytes.byteLength<4||bytes.byteLength>MAX_BYTES||((job.format==='doc'||job.format==='xls')?![0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1].every((n,i)=>bytes[i]===n):bytes[0]!==0x50||bytes[1]!==0x4b||bytes[2]!==3||bytes[3]!==4)){
             finish(new OfficeError('invalid','Verifier returned invalid DOCX output'));return;
           }
           finish(undefined,bytes.slice());

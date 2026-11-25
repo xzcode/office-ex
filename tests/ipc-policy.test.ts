@@ -55,7 +55,8 @@ test('IPC preserves separate save-copy, close and recovery capability shapes', (
 test('IPC settings validation is atomic and rejects arrays masquerading as enum strings', () => {
   const original={theme:'dark',language:'en-US',clearRecent:true};
   assert.deepEqual(parseSettingsPatch(original), original);
-  for (const value of [{theme:['dark']},{language:['en']},{theme:'dark',language:'invalid'},{clearRecent:'true'},{path:'/tmp/settings'},{theme:null},{region:['de-DE']},{documentLanguage:'bad'},{language:'ar'}]) assert.throws(() => parseSettingsPatch(value), fails('invalid'));
+  assert.deepEqual(parseSettingsPatch({language:'ar'}),{language:'ar'});
+  for (const value of [{theme:['dark']},{language:['en']},{theme:'dark',language:'invalid'},{clearRecent:'true'},{path:'/tmp/settings'},{theme:null},{region:['de-DE']},{documentLanguage:'bad'}]) assert.throws(() => parseSettingsPatch(value), fails('invalid'));
   assert.deepEqual(original,{theme:'dark',language:'en-US',clearRecent:true});
 });
 test('OS-open argument selection ignores executable/app/switch/URL arguments and bounds queue size', () => {

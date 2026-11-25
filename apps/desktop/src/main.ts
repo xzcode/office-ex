@@ -146,7 +146,7 @@ function installMenu():void {
 /** Shared atomic commit path. DOCX output is created by a host-owned sandbox,
  * not trusted from the ordinary renderer. The existing OEX flow is unchanged.
  */
-async function saveEditable(format:'oex'|'docx'|'doc',candidate:unknown,owner:BrowserWindow){
+async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls',candidate:unknown,owner:BrowserWindow){
   const request=format!=='oex'?parseDocxSave(candidate):parseDraftSave(candidate);
   const tab=tabs.get(request.documentId);
   if(!tab)throw new OfficeError('invalid','Unknown document session');
@@ -180,7 +180,7 @@ async function saveEditable(format:'oex'|'docx'|'doc',candidate:unknown,owner:Br
     if(!token||request.saveAs){
       const name=request.title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,160)||'Untitled';
       const baseName=name.toLowerCase().endsWith('.'+format)?name.slice(0,-format.length-1):name;
-      const chosen=await dialog.showSaveDialog(owner,{defaultPath:baseName+'.'+format,filters:[{name:format==='docx'?t('docxDocument'):format==='doc'?t('docDocument'):t('draftLabel'),extensions:[format]}],properties:['showOverwriteConfirmation','createDirectory']});
+      const chosen=await dialog.showSaveDialog(owner,{defaultPath:baseName+'.'+format,filters:[{name:format==='docx'?t('docxDocument'):format==='doc'?t('docDocument'):format==='xlsx'?t('xlsxDocument'):format==='xls'?t('xlsDocument'):t('draftLabel'),extensions:[format]}],properties:['showOverwriteConfirmation','createDirectory']});
       assertOwner();
       if(chosen.canceled||!chosen.filePath)return null;
       if(extname(chosen.filePath).toLowerCase()!=='.'+format)throw new OfficeError('invalid','Save destination must retain the selected file format');
@@ -235,6 +235,8 @@ function installIpc():void {
   handle('office:save-draft',async(event,candidate)=>saveEditable('oex',candidate,trusted(event)));
   handle('office:save-docx',async(event,candidate)=>saveEditable('docx',candidate,trusted(event)));
   handle('office:save-doc',async(event,candidate)=>saveEditable('doc',candidate,trusted(event)));
+  handle('office:save-xlsx',async(event,candidate)=>saveEditable('xlsx',candidate,trusted(event)));
+  handle('office:save-xls',async(event,candidate)=>saveEditable('xls',candidate,trusted(event)));
   handle('office:save-copy',async(_event,candidate)=>{
     const request=parsePreservedCopy(candidate);
     if(!tabs.has(request.documentId))throw new OfficeError('unsafe','Unknown document session');
@@ -300,7 +302,7 @@ if(ownsProfile)app.whenReady().then(async()=>{
   nativeTheme.themeSource=settings.value().theme;
   const bundle=resolve(__dirname,'../ui');
   const resources=new Map<string,{data:Uint8Array;type:string}>();
-  for(const [name,type] of [['index.html','text/html; charset=utf-8'],['renderer.js','text/javascript; charset=utf-8'],['format-worker.js','text/javascript; charset=utf-8'],['styles.css','text/css; charset=utf-8']] as const)resources.set(`/${name}`,{data:new Uint8Array(await readFile(join(bundle,name))),type});
+  for(const [name,type] of [['index.html','text/html; charset=utf-8'],['renderer.js','text/javascript; charset=utf-8'],['format-worker.js','text/javascript; charset=utf-8'],['sheets-recalc-worker.js','text/javascript; charset=utf-8'],['styles.css','text/css; charset=utf-8']] as const)resources.set(`/${name}`,{data:new Uint8Array(await readFile(join(bundle,name))),type});
   protocol.handle('office-ex',request=>{
     const url=new URL(request.url);const resource=resources.get(url.pathname==='/'?'/index.html':url.pathname);
     if(!localOrigin(url)||!resource||request.method!=='GET'||url.search||url.hash)return new Response('',{status:404});

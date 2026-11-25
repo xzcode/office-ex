@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
-import { english, simplified, traditional, japanese } from './catalogs.js';
-import { korean, french, german } from './catalogs-a1.js';
-import { spanish, portuguese } from './catalogs-a2.js';
-import { russian, italian } from './catalogs-a3.js';
+import { recoveredCatalogs } from './recovered-catalogs.js';
+const english = recoveredCatalogs['en-US'];
 export { formatTemplate, formatPlural, formatSelect, pseudoLocalize } from './messages.js';
 import { formatTemplate } from './messages.js';
 export type MessageKey = keyof typeof english;
 export type Catalog = Readonly<Record<MessageKey,string>>;
-const catalogs = { 'en-US':english, 'zh-CN':simplified, 'zh-TW':traditional, 'ja-JP':japanese, 'ko-KR':korean, 'fr-FR':french, 'de-DE':german, 'es-ES':spanish, 'pt-BR':portuguese, 'ru-RU':russian, 'it-IT':italian } satisfies Record<string,Catalog>;
+const catalogs = recoveredCatalogs satisfies Record<string,Catalog>;
 export type UiLocale = keyof typeof catalogs;
 export type LanguagePreference = UiLocale | 'system';
 export const TARGET_LOCALES = [
@@ -51,7 +49,7 @@ export function isMessageKey(key:unknown):key is MessageKey{return typeof key===
 export function message(locale:UiLocale,key:MessageKey,args:Readonly<Record<string,string|number>>={}):string {
   if(!isMessageKey(key))throw new Error('Unknown message key');
   const value:string=isUiLocale(locale)?catalogs[locale][key]:english[key];
-  return formatTemplate(value,args);
+  return formatTemplate(localeDirection(locale)==='rtl'?value.replace(/\{[A-Za-z][A-Za-z0-9_]*\}/g,token=>'\u2068'+token+'\u2069'):value,args);
 }
 export function localeLabel(locale:string,ui?:UiLocale):string{
   const name=TARGET_LOCALES.find(x=>x[0]===locale)?.[1];
@@ -69,7 +67,7 @@ export function validateCatalogs():void{
 const diagnosticKeys:Readonly<Record<string,MessageKey>>={
   'format.semanticPending':'diagSemanticPending','format.macrosDisabled':'diagMacrosDisabled','format.signedReadOnly':'diagSignedReadOnly',
   'format.externalDisabled':'diagExternalDisabled','format.strictReadOnly':'diagStrictReadOnly','format.encryptedUnsupported':'diagEncryptedUnsupported',
-  'format.extensionMismatch':'diagExtensionMismatch','format.docxProfile':'docxNote','format.docProfile':'docNote'
+  'format.extensionMismatch':'diagExtensionMismatch','format.docxProfile':'docxNote','format.docProfile':'docNote','format.xlsxProfile':'xlsxNote','format.xlsProfile':'xlsNote'
 };
 export function diagnosticKey(key:string):MessageKey{return Object.hasOwn(diagnosticKeys,key)?diagnosticKeys[key]!:'diagUnknown';}
 const errorKeys:Readonly<Record<string,MessageKey>>={invalid:'errorInvalid',unsupported:'errorUnsupported',unsafe:'errorUnsafe',limit:'errorLimit',conflict:'errorConflict',cancelled:'cancelled',io:'errorIo',internal:'errorInternal'};

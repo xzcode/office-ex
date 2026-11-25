@@ -1,7 +1,7 @@
 import { OfficeError, asFailure, EMU_PER_CSS_PIXEL, type DocumentKind, type Result } from '@office-ex/contracts';
 import { DocumentSession, createDocument, validateDocument, isDocumentLanguageTag, type ImageResource, type DocumentCommand, type SaveTicket, type OfficeDocument } from '@office-ex/core';
 import { writerWorkspace, type WriterViewState } from './writer-workspace.js';
-import { setCells } from '@office-ex/sheets';
+import { sheetsWorkspace, releaseSheetCalculation, type SheetsViewState } from './sheets-workspace.js';
 import { insertShapes } from '@office-ex/slides';
 import { hitTest, shapeTransform, measureText } from '@office-ex/render';
 import type { Inspection } from '@office-ex/format-service';
@@ -9,8 +9,8 @@ import type { DesktopBridge, OpenFileResult, PublicSettings, RecoveryItem, MenuA
 import { availableLocales, TARGET_LOCALES, REGIONAL_LOCALES, resolveLocale, resolveRegion, localeDirection, localeLabel, isMessageKey, message as translate, diagnosticKey, errorKey, formatNumber, formatDate, type MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
 
-type WorkerType='inspect'|'serialize'|'recover'|'image'|'convert-doc'|'convert-docx';
-interface Tab {id:string;name:string;token?:string;session?:DocumentSession;inspection?:Inspection;busy:boolean;error?:{code:string;message:string};lastCheckpoint?:string;selectedShape?:string;writerState?:WriterViewState;format?:'docx'|'doc'|'oex'}
+type WorkerType='inspect'|'serialize'|'recover'|'image'|'convert-doc'|'convert-docx'|'convert-xls'|'convert-xlsx';
+interface Tab {id:string;name:string;token?:string;session?:DocumentSession;inspection?:Inspection;busy:boolean;error?:{code:string;message:string};lastCheckpoint?:string;selectedShape?:string;writerState?:WriterViewState;sheetsState?:SheetsViewState;format?:'docx'|'doc'|'xls'|'xlsx'|'oex'}
 const $=<T extends HTMLElement>(selector:string):T=>document.querySelector<T>(selector)!;
 const bridge:DesktopBridge=window.office;
 const tabs=new Map<string,Tab>();
@@ -33,8 +33,8 @@ function notify(key:MessageKey,error=false,detail?:string):void{notification={ke
 function run(work:()=>Promise<unknown>):void{void work().catch(errorMessage);}
 function isSaving(session:DocumentSession|undefined):boolean{return session?.saveState==='saving';}
 function current():Tab|undefined{return active?tabs.get(active):undefined;}
-function displayTitle(tab:Tab):string{return tab.format==='docx'||tab.format==='doc'?tab.name:tab.session?.snapshot().document.title??tab.name;}
-function formatLabel(tab:Tab):string{return t(tab.format==='docx'?'docxDocument':tab.format==='doc'?'docDocument':'draftLabel');}
+function displayTitle(tab:Tab):string{return tab.format==='docx'||tab.format==='doc'||tab.format==='xls'||tab.format==='xlsx'?tab.name:tab.session?.snapshot().document.title??tab.name;}
+function formatLabel(tab:Tab):string{return t(tab.format==='docx'?'docxDocument':tab.format==='doc'?'docDocument':tab.format==='xls'?'xlsDocument':tab.format==='xlsx'?'xlsxDocument':'draftLabel');}
 function cancelTask(id:string):void{const task=tasks.get(id);if(task){task.worker.terminate();clearTimeout(task.timer);tasks.delete(id);task.reject(new OfficeError('cancelled','Task cancelled'));}}
 function task<T>(id:string,type:WorkerType,payload:{bytes?:Uint8Array;filename?:string;documentId?:string;document?:unknown}):Promise<T>{
   cancelTask(id);
@@ -78,7 +78,7 @@ function chrome():void{
     const element=document.createElement('div');element.className='tab';element.setAttribute('role','tab');element.setAttribute('aria-selected',String(tab.id===active));element.tabIndex=0;
     const title=displayTitle(tab);
     element.append(text('span',`${tab.session?.dirty?'• ':''}${title}`,'tab-title'));
-    element.onclick=()=>{if(composing){notify('finishComposition');return;}active=tab.id;render();};element.onkeydown=e=>{if(composing){notify('finishComposition');return;}if(e.key==='Enter'||e.key===' '){e.preventDefault();active=tab.id;render();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const ids=[...tabs.keys()],i=ids.indexOf(tab.id);active=ids[(i+((e.key==='ArrowRight')===(localeDirection(uiLocale())==='ltr')?1:ids.length-1))%ids.length]!;render();const selected=document.querySelector<HTMLElement>('.tab[aria-selected=true]');selected?.focus();}};
+    element.onclick=()=>{if(composing){notify('finishComposition');return;}if(!flushInputs())return;releaseSheetCalculation();active=tab.id;render();};element.onkeydown=e=>{if(composing){notify('finishComposition');return;}if(e.key==='Enter'||e.key===' '){e.preventDefault();if(!flushInputs())return;releaseSheetCalculation();active=tab.id;render();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();if(!flushInputs())return;releaseSheetCalculation();const ids=[...tabs.keys()],i=ids.indexOf(tab.id);active=ids[(i+((e.key==='ArrowRight')===(localeDirection(uiLocale())==='ltr')?1:ids.length-1))%ids.length]!;render();const selected=document.querySelector<HTMLElement>('.tab[aria-selected=true]');selected?.focus();}};
     const close=button('×',()=>run(async()=>{await closeTab(tab.id);}),'tab-close');close.setAttribute('aria-label',`${t('close')} ${title}`);close.onclick=e=>{e.stopPropagation();run(async()=>{await closeTab(tab.id);});};element.append(close);list.append(element);
   }
   const tab=current(),session=tab?.session;
@@ -100,6 +100,7 @@ function home():void{
   const createDocx=button(t('docxNew'),()=>run(()=>newDraft('writer',undefined,'docx')),'solid');createDocx.id='new-docx';
   docxActions.append(createDocx,text('span',t('docxNote'),'muted'));content.append(docxActions);
   const docActions=document.createElement('div');docActions.className='docx-new-row';const createDoc=button(t('docNew'),()=>run(()=>newDraft('writer',undefined,'doc')),'solid');createDoc.id='new-doc';docActions.append(createDoc,text('span',t('docNote'),'muted'));content.append(docActions);
+  for(const format of ['xlsx','xls'] as const){const row=document.createElement('div');row.className='docx-new-row';const create=button(t(format==='xls'?'xlsNew':'xlsxNew'),()=>run(()=>newDraft('sheets',undefined,format)),'solid');create.id='new-'+format;row.append(create,text('span',t(format==='xls'?'xlsNote':'xlsxNote'),'muted'));content.append(row);}
   const drop=document.createElement('div');drop.className='drop-zone';const labels=document.createElement('div');labels.append(text('strong',t('dropTitle')),text('p',t('dropHint')));drop.append(text('span','⇧','drop-icon'),labels,button(t('choose'),()=>run(openDialog)));content.append(drop);
   const note=document.createElement('div');note.className='boundary-note';note.append(text('span','ⓘ'),text('span',t('boundary')));content.append(note);
   const formats=document.createElement('div');formats.className='section-heading';formats.append(text('h2',t('formats')),text('span',t('stage')));content.append(formats);
@@ -108,22 +109,20 @@ function home():void{
 function execute(tab:Tab,command:DocumentCommand,rerender=true):boolean{try{tab.session!.execute(command);message('');if(rerender)render();else chrome();run(syncTabs);return true;}catch(error){errorMessage(error);return false;}}
 function documentView(tab:Tab):void{
   const session=tab.session!,snapshot=session.snapshot(),model=snapshot.document,content=$('#content');content.replaceChildren();
-  const header=document.createElement('div');header.className='document-header';const title=document.createElement('input');title.id='draft-title';title.dir='auto';title.value=displayTitle(tab);title.maxLength=1024;title.readOnly=tab.format==='docx'||tab.format==='doc';title.setAttribute('aria-label',t('draftTitle'));
-  title.onchange=()=>{if(tab.format==='docx'||tab.format==='doc')return;execute(tab,{documentId:session.documentId,expectedRevision:session.revision,type:'document.rename',payload:{title:title.value}},false);};
+  const header=document.createElement('div');header.className='document-header';const title=document.createElement('input');title.id='draft-title';title.dir='auto';title.value=displayTitle(tab);title.maxLength=1024;title.readOnly=tab.format==='docx'||tab.format==='doc'||tab.format==='xls'||tab.format==='xlsx';title.setAttribute('aria-label',t('draftTitle'));
+  title.onchange=()=>{if(tab.format==='docx'||tab.format==='doc'||tab.format==='xls'||tab.format==='xlsx')return;execute(tab,{documentId:session.documentId,expectedRevision:session.revision,type:'document.rename',payload:{title:title.value}},false);};
   header.append(title,text('span',formatLabel(tab),'status-chip'));
-  if(model.kind==='writer'&&(tab.format==='doc'||tab.format==='docx')){const convert=button(t(tab.format==='doc'?'convertDocx':'convertDoc'),()=>run(()=>convertWriter(tab)));convert.id='convert-writer';header.append(convert);}content.append(header);
+  if(model.kind==='writer'&&(tab.format==='doc'||tab.format==='docx')){const convert=button(t(tab.format==='doc'?'convertDocx':'convertDoc'),()=>run(()=>convertWriter(tab)));convert.id='convert-writer';header.append(convert);}
+  if(model.kind==='sheets'&&(tab.format==='xls'||tab.format==='xlsx')){const convert=button(t(tab.format==='xls'?'convertXlsx':'convertXls'),()=>run(()=>convertSheets(tab)));convert.id='convert-sheets';header.append(convert);}content.append(header);
   const card=document.createElement('div');card.className='workspace-card';
   if(model.kind==='writer'){
     tab.writerState??={start:0,end:0,pageIndex:0};
     card.classList.add('writer-workspace-card');
     card.append(writerWorkspace({snapshot:()=>session.snapshot(),execute:command=>execute(tab,command,false),render,error:errorMessage,composing:()=>composing,setComposing:value=>{composing=value;},t,number,prepareImage:bytes=>task<ImageResource>(tab.id+'-image','image',{bytes}),isCurrent:()=>current()===tab},tab.writerState));
   }else if(model.kind==='sheets'){
-    card.append(text('label',t('cellsLabel')));const grid=document.createElement('div');grid.className='mini-grid';for(const h of ['', 'A','B','C'])grid.append(text('span',h));
-    const sheet=model.sheets[0]!;
-    for(let row=1;row<=3;row++){grid.append(text('span',String(row)));for(let column=1;column<=3;column++){
-      const value=sheet.cells[`${row}:${column}`]?.value;const input=document.createElement('input');input.dir='auto';input.setAttribute('aria-label',`${String.fromCharCode(64+column)}${row}`);input.value=value?.kind==='formula'?value.source:value&&'value'in value?String(value.value):'';
-      input.onchange=()=>{const source=input.value;const cell=source===''?null:{value:source.startsWith('=')?{kind:'formula' as const,source}:/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(source)&&Number.isFinite(Number(source))?{kind:'number' as const,value:Number(source)}:{kind:'string' as const,value:source}};execute(tab,setCells(session.snapshot(),sheet.id,[{row,column,cell}]),false);};grid.append(input);
-    }}card.append(grid,text('p',t('cellsNote'),'muted'));
+    tab.sheetsState??={row:1,column:1,anchorRow:1,anchorColumn:1,scrollTop:0,scrollLeft:0,inputMode:'canonical',cachedValues:tab.inspection?.sheetsCachedValues};
+    card.classList.add('sheets-workspace-card');
+    card.append(sheetsWorkspace({snapshot:()=>session.snapshot(),execute:command=>execute(tab,command,false),render,error:errorMessage,composing:()=>composing,setComposing:value=>{composing=value;},t,locale:regionLocale,isCurrent:()=>current()===tab,format:tab.format==='xls'||tab.format==='xlsx'?tab.format:'oex'},tab.sheetsState));
   }else{
     card.append(text('label',t('slideLabel')));const preview=document.createElement('div');preview.className='slide-preview';const canvas=document.createElement('canvas');canvas.width=960;canvas.height=540;canvas.setAttribute('aria-label',t('slideLabel'));canvas.setAttribute('role','img');preview.append(canvas);card.append(preview);
     const ctx=canvas.getContext('2d')!,scale=canvas.width/model.size.width,slide=model.slides[0]!;ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -131,7 +130,7 @@ function documentView(tab:Tab):void{
     canvas.onclick=event=>{const box=canvas.getBoundingClientRect();tab.selectedShape=hitTest(slide.shapes,{x:(event.clientX-box.left)/box.width*model.size.width,y:(event.clientY-box.top)/box.height*model.size.height});render();};
     card.append(text('p',t('shapeNote'),'muted'),button(t('addShape'),()=>{const s=session.snapshot();if(s.document.kind!=='slides')return;const list=s.document.slides[0]!;execute(tab,insertShapes(s,list.id,list.shapes.length,[{id:crypto.randomUUID(),type:'rect',geometry:{x:1_000_000+(list.shapes.length%5)*600_000,y:1_000_000+(list.shapes.length%5)*400_000,width:3_000_000,height:1_500_000,rotation:0},fill:{kind:'rgba',red:67,green:111,blue:202,alpha:255}}]));}));
   }
-  content.append(card,text('p',t(tab.format==='docx'?'docxNote':tab.format==='doc'?'docNote':'draftNote'),'boundary-note'));
+  content.append(card,text('p',t(tab.format==='docx'?'docxNote':tab.format==='doc'?'docNote':tab.format==='xls'?'xlsNote':tab.format==='xlsx'?'xlsxNote':'draftNote'),'boundary-note'));
   const details=document.createElement('div');details.className='info-row';details.append(text('span',`${t('revision')}: ${session.revision}`),text('span',`${t('history')}: ${number(session.historyUsage.items)} · ${number(Math.ceil(session.historyUsage.bytes/1024))} KB`));
   // A real browser font measurement verifies the native provider without claiming pagination fidelity.
   const measured=measureText(new CanvasFontMetrics(),'Office EX 中文',{fontFamily:'sans-serif',fontSize:152400});details.append(text('span',`${t('canvas')}: ${number(measured.metrics.advance/EMU_PER_CSS_PIXEL,{maximumFractionDigits:1,minimumFractionDigits:1})} px`));content.append(details);
@@ -148,7 +147,7 @@ function inspectionView(tab:Tab):void{
 }
 function render():void{if(composing)return;applyLanguage();recent();chrome();const tab=current();if(!tab){home();return;}if(tab.busy){const content=$('#content');const loading=document.createElement('div');loading.className='loading';loading.append(text('span','','spinner'),text('span',t('reading')),button(t('cancel'),()=>{cancelTask(tab.id);tab.busy=false;render();}));content.replaceChildren(loading);return;}if(tab.error){$('#content').replaceChildren(text('h1',tab.name),text('p',t(errorKey(tab.error.code)),'diagnostic error'));return;}if(tab.session)documentView(tab);else if(tab.inspection)inspectionView(tab);}
 async function refreshSettings():Promise<void>{const init=unwrap(await bridge.initialize());settings=init.settings;systemLocales=init.systemLocales;applyLanguage();recent();}
-async function newDraft(kind:DocumentKind,model?:OfficeDocument,format:'oex'|'docx'|'doc'='oex'):Promise<void>{if(composing){notify('finishComposition');return;}if(tabs.size>=32)throw new OfficeError('limit',t('limitTabs'));const id=crypto.randomUUID();const document=model?validateDocument({...model,documentId:id,title:`${model.title} (${t('restore')})`}):createDocument(kind,id,`${t('untitled')} ${t(kind)}`);if(format!=='oex'&&document.kind!=='writer')throw new OfficeError('invalid','DOCX requires a Writer document');if(!model&&document.kind==='writer'){const preference=settings.documentLanguage;const lang=preference==='system'?systemLocales.find(isDocumentLanguageTag)??'und':preference;document.defaultTextStyle.language=lang;if(format==='doc')document.defaultTextStyle.fontFamily='Arial';}
+async function newDraft(kind:DocumentKind,model?:OfficeDocument,format:'oex'|'docx'|'doc'|'xls'|'xlsx'='oex'):Promise<void>{if(composing){notify('finishComposition');return;}if(!flushInputs())return;releaseSheetCalculation();if(tabs.size>=32)throw new OfficeError('limit',t('limitTabs'));const id=crypto.randomUUID();const document=model?validateDocument({...model,documentId:id,title:`${model.title} (${t('restore')})`}):createDocument(kind,id,`${t('untitled')} ${t(kind)}`);if((format==='doc'||format==='docx')&&document.kind!=='writer'||(format==='xls'||format==='xlsx')&&document.kind!=='sheets')throw new OfficeError('invalid','Document kind does not match format');if(!model&&document.kind==='writer'){const preference=settings.documentLanguage;const lang=preference==='system'?systemLocales.find(isDocumentLanguageTag)??'und':preference;document.defaultTextStyle.language=lang;if(format==='doc')document.defaultTextStyle.fontFamily='Arial';}
   const tab:Tab={id,name:document.title,session:new DocumentSession(document),busy:false,format};tabs.set(id,tab);active=id;await syncTabs();message('');render();}
 async function convertWriter(tab:Tab):Promise<void>{
   if(composing||!tab.session||tab.busy||tab.session.saveState==='saving')return;
@@ -162,42 +161,52 @@ async function convertWriter(tab:Tab):Promise<void>{
   if(tab.session.revision!==source.revision||!tabs.has(tab.id))throw new OfficeError('conflict','Source changed during conversion');
   const next:Tab={id,name:model.title,session:new DocumentSession(model),busy:false,format:target};tabs.set(id,next);active=id;await syncTabs();render();
 }
+async function convertSheets(tab:Tab):Promise<void>{
+  if(composing||!tab.session||tab.busy||tab.session.saveState==='saving'||!flushInputs())return;
+  if(tabs.size>=32)throw new OfficeError('limit',t('limitTabs'));
+  const source=tab.session.snapshot(),target=tab.format==='xls'?'xlsx':'xls',id=crypto.randomUUID();
+  const model=validateDocument({...source.document,documentId:id,title:displayTitle(tab).replace(/\.xlsx?$/i,'')});
+  await task<boolean>(tab.id+'-convert',target==='xls'?'convert-xls':'convert-xlsx',{document:model,documentId:id});
+  if(tab.session.revision!==source.revision||!tabs.has(tab.id))throw new OfficeError('conflict','Source changed during conversion');
+  releaseSheetCalculation();tabs.set(id,{id,name:model.title,session:new DocumentSession(model),busy:false,format:target});active=id;await syncTabs();render();
+}
 async function openDialog():Promise<void>{if(composing){notify('finishComposition');return;}const file=unwrap(await bridge.openFile());if(file)await openFile(file);}
 async function openFile(file:OpenFileResult):Promise<void>{
-  if(composing){if(!file.duplicate&&!tabs.has(file.documentId))unwrap(await bridge.releaseDocument(file.documentId,false));notify('finishComposition');return;}
-  if(file.duplicate&&tabs.has(file.documentId)){active=file.documentId;render();return;}
+  if(composing||!flushInputs()){if(!file.duplicate&&!tabs.has(file.documentId))unwrap(await bridge.releaseDocument(file.documentId,false));notify('finishComposition');return;}
+  releaseSheetCalculation();if(file.duplicate&&tabs.has(file.documentId)){active=file.documentId;render();return;}
   if(tabs.size>=32){unwrap(await bridge.releaseDocument(file.documentId,false));throw new OfficeError('limit',t('limitTabs'));}
   const tab:Tab={id:file.documentId,name:file.name,token:file.token,busy:true};tabs.set(tab.id,tab);active=tab.id;await syncTabs();message('');render();
   try{const inspection=await task<Inspection>(tab.id,'inspect',{bytes:file.bytes,filename:file.name,documentId:file.documentId});if(!tabs.has(tab.id))return;tab.inspection=inspection;
     if(inspection.editableWriter){const model=validateDocument(inspection.editableWriter);if(model.kind!=='writer'||model.documentId!==tab.id)throw new OfficeError('invalid','Invalid DOCX model identity');tab.session=new DocumentSession(model,{saved:true});tab.format=inspection.editableWriterFormat??'docx';}
+    else if(inspection.editableSheets){const model=validateDocument(inspection.editableSheets);if(model.kind!=='sheets'||model.documentId!==tab.id)throw new OfficeError('invalid','Invalid spreadsheet model identity');tab.session=new DocumentSession(model,{saved:true});tab.format=inspection.editableSheetsFormat??'xlsx';}
     else if(inspection.draft){const model=validateDocument(inspection.draft);tab.session=new DocumentSession(model,{saved:true});tab.format='oex';}
   }catch(error){if(!tabs.has(tab.id))return;const f=asFailure(error);tab.error=f;}
   finally{tab.busy=false;if(tabs.has(tab.id)){await syncTabs();await refreshSettings();render();}}
 }
-function flushInputs():void{const focused=document.activeElement;if(focused instanceof HTMLInputElement&&(focused.id==='draft-title'||focused.closest('.mini-grid')))focused.dispatchEvent(new Event('change'));}
+function flushInputs():boolean{if(composing)return false;const focused=document.activeElement;if(focused instanceof HTMLInputElement&&focused.id==='draft-title')focused.dispatchEvent(new Event('change'));return current()?.sheetsState?.flush?.()??true;}
 async function save(tab:Tab|undefined,saveAs=false):Promise<boolean>{
-  if(!tab||tab.busy||composing||tab.session?.saveState==='saving')return false;flushInputs();await syncTabs();
+  if(!tab||tab.busy||composing||tab.session?.saveState==='saving')return false;if(!flushInputs())return false;await syncTabs();
   if(!tab.session){const result=unwrap(await bridge.saveCopy({documentId:tab.id,sourceToken:tab.token!}));if(!result)return false;notify(result.warnings?.length?'savedMaintenanceWarning':result.durability==='synced'?'savedNote':'partialDirectorySync');return true;}
   const session=tab.session;let ticket:SaveTicket|undefined;
   try{ticket=session.beginSave();chrome();const bytes=await task<Uint8Array>(`${tab.id}-save`,'serialize',{document:ticket.document});
     const request={documentId:tab.id,sourceToken:tab.token,bytes,revision:ticket.revision,contentId:ticket.contentId,saveAs,title:displayTitle(tab)};
-    const result=unwrap(await (tab.format==='docx'?bridge.saveDocx(request):tab.format==='doc'?bridge.saveDoc(request):bridge.saveDraft(request)));
+    const result=unwrap(await (tab.format==='docx'?bridge.saveDocx(request):tab.format==='doc'?bridge.saveDoc(request):tab.format==='xlsx'?bridge.saveXlsx(request):tab.format==='xls'?bridge.saveXls(request):bridge.saveDraft(request)));
     if(!result){session.cancelSave(ticket);return false;}tab.token=result.token;tab.name=result.name;session.completeSave(ticket);tab.lastCheckpoint=ticket.contentId;
-    if((tab.format==='docx'||tab.format==='doc')&&current()===tab){const title=$<HTMLInputElement>('#draft-title');if(title)title.value=tab.name;}
+    if((tab.format==='docx'||tab.format==='doc'||tab.format==='xls'||tab.format==='xlsx')&&current()===tab){const title=$<HTMLInputElement>('#draft-title');if(title)title.value=tab.name;}
     await syncTabs();await refreshSettings();chrome();notify(result.warnings?.length?'savedMaintenanceWarning':result.durability==='synced'?'savedNote':'partialDirectorySync');return true;
   }catch(error){if(ticket&&session.saveState==='saving')session.cancelSave(ticket);throw error;}finally{chrome();}
 }
-async function closeTab(id:string):Promise<boolean>{if(composing){notify('finishComposition');return false;}const tab=tabs.get(id);if(!tab)return true;if(tab.session?.saveState==='saving'){notify('working');return false;}flushInputs();await syncTabs();const decision=unwrap(await bridge.confirmClose(id));if(decision==='cancel')return false;if(decision==='save'&&!await save(tab))return false;
+async function closeTab(id:string):Promise<boolean>{if(composing){notify('finishComposition');return false;}const tab=tabs.get(id);if(!tab)return true;if(tab.session?.saveState==='saving'){notify('working');return false;}if(id===active&&!flushInputs())return false;await syncTabs();const decision=unwrap(await bridge.confirmClose(id));if(decision==='cancel')return false;if(decision==='save'&&!await save(tab))return false;
   if(tab.session?.dirty&&decision==='save')return false; // A new edit during save must still be reviewed.
-  cancelTask(id);cancelTask(`${id}-save`);cancelTask(`${id}-recovery`);cancelTask(`${id}-image`);unwrap(await bridge.releaseDocument(id,decision==='discard'));tab.session?.close();tabs.delete(id);if(active===id)active=[...tabs.keys()].at(-1)??null;await syncTabs();render();return true;}
+  releaseSheetCalculation(id);cancelTask(id);cancelTask(`${id}-save`);cancelTask(`${id}-recovery`);cancelTask(`${id}-image`);unwrap(await bridge.releaseDocument(id,decision==='discard'));tab.session?.close();tabs.delete(id);if(active===id)active=[...tabs.keys()].at(-1)??null;await syncTabs();render();return true;}
 async function closeWindow():Promise<void>{if(closing)return;closing=true;try{for(const id of [...tabs.keys()])if(!await closeTab(id))return;unwrap(await bridge.finishClose());}finally{closing=false;}}
 async function checkpoint(tab:Tab):Promise<void>{const session=tab.session;if(!session||!session.dirty||session.contentId===tab.lastCheckpoint||session.saveState==='saving'||tab.busy)return;const snapshot=session.snapshot(),savedMarker=session.lastSavedContentId;const bytes=await task<Uint8Array>(`${tab.id}-recovery`,'serialize',{document:snapshot.document});if(!tabs.has(tab.id)||!session.dirty||isSaving(session)||session.lastSavedContentId!==savedMarker)return;unwrap(await bridge.checkpoint({documentId:tab.id,contentId:snapshot.contentId,revision:snapshot.revision,bytes}));tab.lastCheckpoint=snapshot.contentId;}
 async function restore(entry:RecoveryItem):Promise<void>{const result=unwrap(await bridge.recover(entry.id));const model=await task<OfficeDocument>('recover','recover',{bytes:result.bytes});await newDraft(model.kind,model);notify('recovered');}
-async function action(value:MenuAction):Promise<void>{switch(value){case 'new-writer':await newDraft('writer');break;case 'new-sheets':await newDraft('sheets');break;case 'new-slides':await newDraft('slides');break;case 'open':await openDialog();break;case 'save':await save(current());break;case 'save-as':await save(current(),true);break;case 'close-tab':if(active)await closeTab(active);break;case 'undo':case 'redo':if(!composing&&current()?.session){flushInputs();const s=current()!.session!;if(s.saveState!=='saving'){if(value==='undo')s.undo();else s.redo();await syncTabs();render();}}break;case 'settings':if(composing){notify('finishComposition');break;}flushInputs();$<HTMLSelectElement>('#theme').value=settings.theme;$<HTMLSelectElement>('#language').value=settings.language;$<HTMLSelectElement>('#region').value=settings.region;$<HTMLSelectElement>('#document-language').value=settings.documentLanguage;$<HTMLDialogElement>('#settings-dialog').showModal();break;case 'close-window':await closeWindow();break;}}
-$('#home').onclick=()=>{if(composing){notify('finishComposition');return;}active=null;render();};$('#open').onclick=()=>run(openDialog);$('#new-menu').onclick=()=>{if(composing){notify('finishComposition');return;}active=null;render();$('.draft-card').focus();};$('#settings').onclick=()=>run(()=>action('settings'));$('#undo').onclick=()=>run(()=>action('undo'));$('#redo').onclick=()=>run(()=>action('redo'));$('#save').onclick=()=>run(()=>save(current()));$('#save-as').onclick=()=>run(()=>save(current(),true));
+async function action(value:MenuAction):Promise<void>{switch(value){case 'new-writer':await newDraft('writer');break;case 'new-sheets':await newDraft('sheets');break;case 'new-slides':await newDraft('slides');break;case 'open':await openDialog();break;case 'save':await save(current());break;case 'save-as':await save(current(),true);break;case 'close-tab':if(active)await closeTab(active);break;case 'undo':case 'redo':if(!composing&&current()?.session){if(!flushInputs())return;const s=current()!.session!;if(s.saveState!=='saving'){if(value==='undo')s.undo();else s.redo();await syncTabs();render();}}break;case 'settings':if(composing){notify('finishComposition');break;}if(!flushInputs())return;$<HTMLSelectElement>('#theme').value=settings.theme;$<HTMLSelectElement>('#language').value=settings.language;$<HTMLSelectElement>('#region').value=settings.region;$<HTMLSelectElement>('#document-language').value=settings.documentLanguage;$<HTMLDialogElement>('#settings-dialog').showModal();break;case 'close-window':await closeWindow();break;}}
+$('#home').onclick=()=>{if(composing){notify('finishComposition');return;}if(!flushInputs())return;releaseSheetCalculation();active=null;render();};$('#open').onclick=()=>run(openDialog);$('#new-menu').onclick=()=>{if(composing){notify('finishComposition');return;}if(!flushInputs())return;releaseSheetCalculation();active=null;render();$('.draft-card').focus();};$('#settings').onclick=()=>run(()=>action('settings'));$('#undo').onclick=()=>run(()=>action('undo'));$('#redo').onclick=()=>run(()=>action('redo'));$('#save').onclick=()=>run(()=>save(current()));$('#save-as').onclick=()=>run(()=>save(current(),true));
 $<HTMLSelectElement>('#theme').onchange=()=>run(async()=>{settings=unwrap(await bridge.updateSettings({theme:$<HTMLSelectElement>('#theme').value as PublicSettings['theme']}));applyTheme();});
-$<HTMLSelectElement>('#language').onchange=()=>run(async()=>{if(composing){$<HTMLSelectElement>('#language').value=settings.language;notify('finishComposition');return;}try{settings=unwrap(await bridge.updateSettings({language:$<HTMLSelectElement>('#language').value as PublicSettings['language']}));renderLocalized();}catch(error){$<HTMLSelectElement>('#language').value=settings.language;throw error;}});
-$<HTMLSelectElement>('#region').onchange=()=>run(async()=>{if(composing){$<HTMLSelectElement>('#region').value=settings.region;notify('finishComposition');return;}try{settings=unwrap(await bridge.updateSettings({region:$<HTMLSelectElement>('#region').value as PublicSettings['region']}));renderLocalized();}catch(error){$<HTMLSelectElement>('#region').value=settings.region;throw error;}});
+$<HTMLSelectElement>('#language').onchange=()=>run(async()=>{if(composing){$<HTMLSelectElement>('#language').value=settings.language;notify('finishComposition');return;}if(!flushInputs())return;try{settings=unwrap(await bridge.updateSettings({language:$<HTMLSelectElement>('#language').value as PublicSettings['language']}));renderLocalized();}catch(error){$<HTMLSelectElement>('#language').value=settings.language;throw error;}});
+$<HTMLSelectElement>('#region').onchange=()=>run(async()=>{if(composing){$<HTMLSelectElement>('#region').value=settings.region;notify('finishComposition');return;}if(!flushInputs())return;try{settings=unwrap(await bridge.updateSettings({region:$<HTMLSelectElement>('#region').value as PublicSettings['region']}));renderLocalized();}catch(error){$<HTMLSelectElement>('#region').value=settings.region;throw error;}});
 $<HTMLSelectElement>('#document-language').onchange=()=>run(async()=>{try{settings=unwrap(await bridge.updateSettings({documentLanguage:$<HTMLSelectElement>('#document-language').value as PublicSettings['documentLanguage']}));}catch(error){$<HTMLSelectElement>('#document-language').value=settings.documentLanguage;throw error;}});
 $('#clear-recent').onclick=()=>run(async()=>{settings=unwrap(await bridge.updateSettings({clearRecent:true}));recent();notify('clearDone');});
 matchMedia('(prefers-color-scheme:dark)').addEventListener('change',applyTheme);

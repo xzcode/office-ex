@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "2026-11-24",
-  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed. Spec v1.1 adds I18N-01–05 and QA-07 as planned cross-cutting P0 release requirements; historical M1 evidence is unchanged. M2-I18N initial implementation has four draft UI catalogs and shared settings/formatting; not yet verified, 22-locale release gate unchanged. A-batch second iteration implements 11 candidate UI catalogs, structured messages and pseudo fixtures; new CI and full 22-locale gates remain. M2 Writer first slice: paragraph transactions and narrow DOCX semantic adapter implemented; verification and later gates pending. M2 Writer first slice passed 121/121 regression and narrow DOCX independent interop on 7692c0c; remaining WRT, M2-L and release gates unchanged. M2 second slice adds bounded Writer layout and native paragraph controls with 11 localized catalogs; CI pending, full acceptance remains. M2 second slice automated core and interoperability checks passed on 84db801; native status separately tracked, full M2 acceptance remains. M2 Writer third slice connects narrow DOCX desktop editing and guarded native commits; actual CI status pending. Third slice verified automated and independent narrow-profile interoperability on c79feaf; native acceptance separately tracked. M2 third slice native CI 45428117703 all jobs passed; fourth slice extends named styles and toolbar, verification pending. M2 fourth slice core/style interop passed on 75cad7b; native acceptance separately tracked; full compatibility gates unchanged. M2 fourth slice native CI 45432375135 passed; fifth slice implements rectangular tables, row pagination and DOCX table profile; verification pending. M2 table slice initial core 145/145 and independent interop passed; final XML order correction passed substantive check/interop/license steps. Full native and release gates remain. M2 integrated image/page slice implemented, acceptance incomplete; do not mark M2 or legacy DOC verified. M2 image/page slice passed 152/152 core regression and independent DOCX image interop on 2ce8f45; native checks separately tracked. M2 exit audit remains incomplete; M2-L DOC required. No release. M2 seventh integrated slice adds cross-paragraph ranges and mixed inline pictures; acceptance remains incomplete. Seventh slice also adds next-page sections and document-language/direction metadata; full acceptance remains pending. Seventh slice passed 162/162 core tests and independent Python-edited controlled DOCX interop on 3e0a60f; full M2/I18N and M2-L remain mandatory. Eighth slice covers all remaining development areas with limited profiles; local 167/167, independent DOCX/DOC interoperability and build passed. M2/M2-L not fully verified. M3 recovery batch 2 restores formula evaluation and incremental recalculation; 21 focused local tests passed, typecheck and architecture passed. SHT-03/04 and I18N-03 remain not verified; no file-format, native or release acceptance is claimed.",
+  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed. Spec v1.1 adds I18N-01–05 and QA-07 as planned cross-cutting P0 release requirements; historical M1 evidence is unchanged. M2-I18N initial implementation has four draft UI catalogs and shared settings/formatting; not yet verified, 22-locale release gate unchanged. A-batch second iteration implements 11 candidate UI catalogs, structured messages and pseudo fixtures; new CI and full 22-locale gates remain. M2 Writer first slice: paragraph transactions and narrow DOCX semantic adapter implemented; verification and later gates pending. M2 Writer first slice passed 121/121 regression and narrow DOCX independent interop on 7692c0c; remaining WRT, M2-L and release gates unchanged. M2 second slice adds bounded Writer layout and native paragraph controls with 11 localized catalogs; CI pending, full acceptance remains. M2 second slice automated core and interoperability checks passed on 84db801; native status separately tracked, full M2 acceptance remains. M2 Writer third slice connects narrow DOCX desktop editing and guarded native commits; actual CI status pending. Third slice verified automated and independent narrow-profile interoperability on c79feaf; native acceptance separately tracked. M2 third slice native CI 45428117703 all jobs passed; fourth slice extends named styles and toolbar, verification pending. M2 fourth slice core/style interop passed on 75cad7b; native acceptance separately tracked; full compatibility gates unchanged. M2 fourth slice native CI 45432375135 passed; fifth slice implements rectangular tables, row pagination and DOCX table profile; verification pending. M2 table slice initial core 145/145 and independent interop passed; final XML order correction passed substantive check/interop/license steps. Full native and release gates remain. M2 integrated image/page slice implemented, acceptance incomplete; do not mark M2 or legacy DOC verified. M2 image/page slice passed 152/152 core regression and independent DOCX image interop on 2ce8f45; native checks separately tracked. M2 exit audit remains incomplete; M2-L DOC required. No release. M2 seventh integrated slice adds cross-paragraph ranges and mixed inline pictures; acceptance remains incomplete. Seventh slice also adds next-page sections and document-language/direction metadata; full acceptance remains pending. Seventh slice passed 162/162 core tests and independent Python-edited controlled DOCX interop on 3e0a60f; full M2/I18N and M2-L remain mandatory. Eighth slice covers all remaining development areas with limited profiles; local 167/167, independent DOCX/DOC interoperability and build passed. M2/M2-L not fully verified. M3 recovery batch 2 restores formula evaluation and incremental recalculation; 21 focused local tests passed, typecheck and architecture passed. SHT-03/04 and I18N-03 remain not verified; no file-format, native or release acceptance is claimed. M3 recovery batches 3–5 implemented as candidates; 198/198 node checks, independent XLSX/XLS readers, build, audit and 9 headless grid checks passed on Seoul. Continuous-scroll p95 50 ms misses <=33 ms goal. Real Office/native and broader profile gates remain open. No release.",
   "features": [
     {
       "id": "ARC-01",
@@ -1067,8 +1067,21 @@
       "milestone": "M3",
       "priority": "P0",
       "acceptance": "网格/样式/稀疏数据",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "tests/sheets-commands-recovery.test.ts",
+        "docs/verification/m3/browser-result.json",
+        "docs/M3-RECOVERY.md"
+      ],
+      "implementationPaths": [
+        "packages/core/src/model.ts",
+        "packages/sheets/src/commands.ts",
+        "packages/sheets/src/formatting.ts",
+        "packages/ui/src/sheets-workspace.ts"
+      ],
+      "remainingScope": [
+        "Virtual-grid candidate passes functional checks; continuous-scroll target and native validation pending."
+      ]
     },
     {
       "id": "SHT-03",
@@ -1079,6 +1092,7 @@
       "evidence": [
         "tests/sheets-formula-recovery.test.ts",
         "tests/sheets-calculation-recovery.test.ts",
+        "tests/sheets-format-recovery.test.ts",
         "docs/M3-RECOVERY.md"
       ],
       "implementationPaths": [
@@ -1086,7 +1100,7 @@
         "packages/sheets/src/calculation.ts"
       ],
       "remainingScope": [
-        "恢复版计算引擎覆盖十二个 P0 函数和受限公式语义；需后续补齐真实 Excel 等价性、格式互通和桌面验收。"
+        "Reference Excel evaluation, native acceptance and full profile remain open."
       ]
     },
     {
@@ -1097,13 +1111,17 @@
       "status": "implemented",
       "evidence": [
         "tests/sheets-calculation-recovery.test.ts",
+        "tests/sheets-commands-recovery.test.ts",
+        "docs/verification/m3/browser-result.json",
         "docs/M3-RECOVERY.md"
       ],
       "implementationPaths": [
-        "packages/sheets/src/calculation.ts"
+        "packages/sheets/src/calculation.ts",
+        "packages/sheets/src/commands.ts",
+        "packages/ui/src/sheets-recalc-worker.ts"
       ],
       "remainingScope": [
-        "依赖图、稀疏范围、增量重算及循环检测已完成针对性用例；仍需编辑命令的引用迁移、真实工作簿、压力及桌面集成验收。"
+        "Native and reference-Office acceptance remain open."
       ]
     },
     {
@@ -1111,16 +1129,38 @@
       "milestone": "M3",
       "priority": "P0",
       "acceptance": "XLSX 往返",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "tests/sheets-format-recovery.test.ts",
+        "tests/sheets_interop.py",
+        "docs/M3-RECOVERY.md"
+      ],
+      "implementationPaths": [
+        "packages/ooxml/src/sheets-xlsx.ts",
+        "packages/format-service/src/index.ts"
+      ],
+      "remainingScope": [
+        "Closed Transitional profile; wider source compatibility and native/Excel acceptance pending."
+      ]
     },
     {
       "id": "LEG-03",
       "milestone": "M3-L",
       "priority": "P0",
       "acceptance": "BIFF8 XLS 读写",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "tests/sheets-format-recovery.test.ts",
+        "tests/sheets_interop.py",
+        "docs/M3-RECOVERY.md"
+      ],
+      "implementationPaths": [
+        "packages/format-service/src/legacy-xls.ts",
+        "packages/format-service/src/index.ts"
+      ],
+      "remainingScope": [
+        "Closed BIFF8 profile; real Excel recalculation and wider source compatibility pending."
+      ]
     },
     {
       "id": "SLD-01",

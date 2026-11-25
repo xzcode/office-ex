@@ -13,7 +13,7 @@ const CONTENT_ID = /^[A-Za-z0-9_.:-]{1,256}$/;
 const RECOVERY_ID = /^[A-Za-z0-9_-]{1,128}\.[0-9]+\.[a-f0-9-]{36}\.oex-recovery$/;
 const ARITY: Readonly<Record<string, number>> = Object.freeze({
   'office:initialize': 0, 'office:open': 0, 'office:recent': 1, 'office:drop': 1,
-  'office:tabs': 1, 'office:save-draft': 1, 'office:save-docx': 1, 'office:save-doc': 1, 'office:save-copy': 1,
+  'office:tabs': 1, 'office:save-draft': 1, 'office:save-docx': 1, 'office:save-doc': 1, 'office:save-xlsx': 1, 'office:save-xls': 1, 'office:save-copy': 1,
   'office:confirm-close': 1, 'office:release': 2, 'office:finish-close': 0,
   'office:settings': 1, 'office:recover': 1, 'office:discard-recovery': 1,
   'office:checkpoint': 1,
