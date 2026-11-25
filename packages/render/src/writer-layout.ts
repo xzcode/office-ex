@@ -40,7 +40,7 @@ function glyphsFor(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>,
   const paragraphStyle=p.styleId??model.defaultParagraphStyleId;
   const para=resolveTextStyle(model.defaultTextStyle,model.styles,paragraphStyle?[paragraphStyle]:[],p.style??{});
   for(const d of para.diagnostics)warnings.add(d.code);
-  const style=para.style;const pieces:{text:string;style:DeepReadonly<TextStyle>;image?:ImageRun}[]=[];
+  const style=para.style;assert(style.paragraphDirection!=='rtl','unsupported','RTL paragraph needs a bidi layout adapter');const pieces:{text:string;style:DeepReadonly<TextStyle>;image?:ImageRun}[]=[];
   for(const run of p.runs){
     check();
     if(run.type==='image'){
@@ -48,7 +48,7 @@ function glyphsFor(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>,
     }else if(run.type==='text'){
       const resolved=resolveTextStyle(style,model.styles,run.styleId?[run.styleId]:[],run.style??{});
       for(const d of resolved.diagnostics)warnings.add(d.code);
-      pieces.push({text:run.text,style:resolved.style});
+      assert(resolved.style.runDirection!=='rtl','unsupported','RTL run needs a bidi layout adapter');pieces.push({text:run.text,style:resolved.style});
     }else pieces.push({text:run.type==='tab'?'\t':'\n',style});
   }
   const whole=pieces.map(x=>x.text).join('');

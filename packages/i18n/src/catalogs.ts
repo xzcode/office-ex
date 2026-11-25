@@ -90,7 +90,7 @@ export const english = {
   "eyebrow": "OFFICE EX / YOUR LOCAL WORKSPACE",
   "region": "Regional formats",
   "documentLanguage": "New document language (preference)",
-  "documentLanguageNote": "Document-language metadata will be connected in the editors. Existing documents are unchanged.",
+  "documentLanguageNote": "New Writer documents use this text language. Existing files are unchanged; other editors will adopt it later.",
   "regionSample": "Regional format preview",
   "history": "History",
   "canvas": "Canvas",
@@ -204,7 +204,14 @@ export const english = {
   "writerInlineImageNote": "The object marker represents an inline image. Use its picture controls to resize or remove it.",
   "writerContinuous": "Edit continuous text",
   "writerExitContinuous": "Back to paragraph editor",
-  "writerContinuousNote": "Select, copy, cut, paste or format across adjacent text paragraphs. Tables, page breaks, sections and image paragraphs are selection boundaries. New pasted lines become paragraphs."
+  "writerContinuousNote": "Select, copy, cut, paste or format across adjacent text paragraphs. Tables, page breaks, sections and image paragraphs are selection boundaries. New pasted lines become paragraphs.",
+  "writerSection": "Section",
+  "writerSectionNumber": "Section {number}",
+  "writerSectionBreak": "Next-page section break",
+  "writerTextLanguage": "Text language (BCP 47)",
+  "writerParagraphDirection": "Paragraph direction",
+  "writerLtr": "Left to right",
+  "writerRtl": "Right to left"
 } as const;
 export const simplified = {
   "open": "打开文件",
@@ -296,7 +303,7 @@ export const simplified = {
   "eyebrow": "OFFICE EX / 本地工作空间",
   "region": "地区格式",
   "documentLanguage": "新建文档语言（偏好）",
-  "documentLanguageNote": "文档语言属性将在编辑器阶段接入，现有文档不变。",
+  "documentLanguageNote": "新建 Writer 文档使用此文字语言。现有文件保持不变；其他编辑器将在后续阶段接入。",
   "regionSample": "地区格式预览",
   "history": "历史",
   "canvas": "画布",
@@ -410,7 +417,14 @@ export const simplified = {
   "writerInlineImageNote": "对象标记代表行内图片。请通过图片控件缩放或删除。",
   "writerContinuous": "连续文字编辑",
   "writerExitContinuous": "返回段落编辑",
-  "writerContinuousNote": "可跨相邻文字段落选取、复制、剪切、粘贴和设置格式。表格、分页符、分节及图片段落是选区边界。新粘贴的换行成为新段落。"
+  "writerContinuousNote": "可跨相邻文字段落选取、复制、剪切、粘贴和设置格式。表格、分页符、分节及图片段落是选区边界。新粘贴的换行成为新段落。",
+  "writerSection": "分节",
+  "writerSectionNumber": "第 {number} 节",
+  "writerSectionBreak": "下一页分节符",
+  "writerTextLanguage": "文字语言（BCP 47）",
+  "writerParagraphDirection": "段落方向",
+  "writerLtr": "从左到右",
+  "writerRtl": "从右到左"
 } as const;
 export const traditional = {
   "open": "開啟檔案",
@@ -502,7 +516,7 @@ export const traditional = {
   "eyebrow": "OFFICE EX / 本機工作空間",
   "region": "地區格式",
   "documentLanguage": "新增文件語言（偏好）",
-  "documentLanguageNote": "文件語言屬性將於編輯器階段接入，現有文件不變。",
+  "documentLanguageNote": "新增 Writer 文件使用此文字語言。現有檔案保持不變；其他編輯器將於後續階段接入。",
   "regionSample": "地區格式預覽",
   "history": "歷程記錄",
   "canvas": "畫布",
@@ -616,7 +630,14 @@ export const traditional = {
   "writerInlineImageNote": "物件標記代表行內圖片。請透過圖片控制項縮放或刪除。",
   "writerContinuous": "連續文字編輯",
   "writerExitContinuous": "返回段落編輯",
-  "writerContinuousNote": "可跨相鄰文字段落選取、複製、剪下、貼上和設定格式。表格、分頁符、分節與圖片段落是選取邊界。新貼上的換行成為新段落。"
+  "writerContinuousNote": "可跨相鄰文字段落選取、複製、剪下、貼上和設定格式。表格、分頁符、分節與圖片段落是選取邊界。新貼上的換行成為新段落。",
+  "writerSection": "分節",
+  "writerSectionNumber": "第 {number} 節",
+  "writerSectionBreak": "下一頁分節符",
+  "writerTextLanguage": "文字語言（BCP 47）",
+  "writerParagraphDirection": "段落方向",
+  "writerLtr": "從左到右",
+  "writerRtl": "從右到左"
 } as const;
 export const japanese = {
   "open": "ファイルを開く",
@@ -708,7 +729,7 @@ export const japanese = {
   "eyebrow": "OFFICE EX / ローカルワークスペース",
   "region": "地域形式",
   "documentLanguage": "新規文書の言語（設定）",
-  "documentLanguageNote": "文書の言語属性はエディター段階で対応します。既存文書は変更されません。",
+  "documentLanguageNote": "新規 Writer 文書にこの言語が適用されます。既存のファイルは変更されず、他のエディターは後で対応します。",
   "regionSample": "地域形式のプレビュー",
   "history": "履歴",
   "canvas": "キャンバス",
@@ -822,5 +843,12 @@ export const japanese = {
   "writerInlineImageNote": "オブジェクト記号は行内画像を表します。画像の操作欄でサイズ変更や削除を行います。",
   "writerContinuous": "連続テキスト編集",
   "writerExitContinuous": "段落編集に戻る",
-  "writerContinuousNote": "隣接する段落をまたいで選択、コピー、切り取り、貼り付け、書式設定ができます。表、改ページ、セクション、画像段落は選択範囲の境界です。貼り付けた改行は新しい段落になります。"
+  "writerContinuousNote": "隣接する段落をまたいで選択、コピー、切り取り、貼り付け、書式設定ができます。表、改ページ、セクション、画像段落は選択範囲の境界です。貼り付けた改行は新しい段落になります。",
+  "writerSection": "セクション",
+  "writerSectionNumber": "セクション {number}",
+  "writerSectionBreak": "次のページからセクションを開始",
+  "writerTextLanguage": "テキストの言語 (BCP 47)",
+  "writerParagraphDirection": "段落の方向",
+  "writerLtr": "左から右",
+  "writerRtl": "右から左"
 } as const;

@@ -96,7 +96,7 @@ test('WRT-02/WRT-04 mixed text and cell pictures share line boxes, caret hit tes
   assert.equal(projectParagraph(blocks[0]!),'before '+OBJECT_REPLACEMENT+'after');
   const cell=blocks[1]!.rows[0]!.cells[0]!.blocks[0]!;if(cell.type!=='paragraph')throw Error();
   assert.equal(projectParagraph(cell),'cell '+OBJECT_REPLACEMENT+'text');
-  assert.deepEqual(opened.document.resources,doc(s).resources);assert.deepEqual(saveWriterDocx(opened,opened.document),bytes);
+  assert.deepEqual({...opened.document.resources},{...doc(s).resources});assert.deepEqual(saveWriterDocx(opened,opened.document),bytes);
 });
 test('WRT-04 undoing an insertion after save retains original package media without blocking a later save',()=>{
   const s=new DocumentSession(createDocument('writer','undo-media'),{saved:true});

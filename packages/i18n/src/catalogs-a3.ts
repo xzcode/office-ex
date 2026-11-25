@@ -90,7 +90,7 @@ export const russian = {
   "eyebrow": "OFFICE EX / ЛОКАЛЬНОЕ РАБОЧЕЕ ПРОСТРАНСТВО",
   "region": "Региональные форматы",
   "documentLanguage": "Язык новых документов (предпочтение)",
-  "documentLanguageNote": "Метаданные языка будут добавлены в редакторах. Существующие документы не изменятся.",
+  "documentLanguageNote": "Новые документы Writer используют этот язык. Существующие файлы не изменяются; поддержка в других редакторах появится позже.",
   "regionSample": "Предпросмотр региональных форматов",
   "history": "История",
   "canvas": "Холст",
@@ -204,7 +204,14 @@ export const russian = {
   "writerInlineImageNote": "Маркер объекта обозначает встроенное изображение. Изменяйте размер и удаляйте его с помощью элементов управления изображением.",
   "writerContinuous": "Редактировать непрерывный текст",
   "writerExitContinuous": "Вернуться к редактору абзацев",
-  "writerContinuousNote": "Выделяйте, копируйте, вырезайте, вставляйте и форматируйте соседние текстовые абзацы. Таблицы, разрывы страниц, разделы и абзацы с изображениями ограничивают выделение. Вставленные новые строки становятся абзацами."
+  "writerContinuousNote": "Выделяйте, копируйте, вырезайте, вставляйте и форматируйте соседние текстовые абзацы. Таблицы, разрывы страниц, разделы и абзацы с изображениями ограничивают выделение. Вставленные новые строки становятся абзацами.",
+  "writerSection": "Раздел",
+  "writerSectionNumber": "Раздел {number}",
+  "writerSectionBreak": "Разрыв раздела со следующей страницы",
+  "writerTextLanguage": "Язык текста (BCP 47)",
+  "writerParagraphDirection": "Направление абзаца",
+  "writerLtr": "Слева направо",
+  "writerRtl": "Справа налево"
 } as const;
 export const italian = {
   "open": "Apri file",
@@ -296,7 +303,7 @@ export const italian = {
   "eyebrow": "OFFICE EX / AREA DI LAVORO LOCALE",
   "region": "Formati regionali",
   "documentLanguage": "Lingua dei nuovi documenti (preferenza)",
-  "documentLanguageNote": "I metadati della lingua saranno integrati negli editor. I documenti esistenti non cambiano.",
+  "documentLanguageNote": "I nuovi documenti Writer utilizzano questa lingua. I file esistenti non cambiano; gli altri editor la adotteranno in seguito.",
   "regionSample": "Anteprima del formato regionale",
   "history": "Cronologia",
   "canvas": "Area di disegno",
@@ -410,5 +417,12 @@ export const italian = {
   "writerInlineImageNote": "Il simbolo rappresenta un'immagine in linea. Usa i controlli dell'immagine per ridimensionarla o rimuoverla.",
   "writerContinuous": "Modifica testo continuo",
   "writerExitContinuous": "Torna all'editor dei paragrafi",
-  "writerContinuousNote": "Seleziona, copia, taglia, incolla o formatta paragrafi di testo adiacenti. Tabelle, interruzioni di pagina, sezioni e paragrafi con immagini delimitano la selezione. Le nuove righe incollate diventano paragrafi."
+  "writerContinuousNote": "Seleziona, copia, taglia, incolla o formatta paragrafi di testo adiacenti. Tabelle, interruzioni di pagina, sezioni e paragrafi con immagini delimitano la selezione. Le nuove righe incollate diventano paragrafi.",
+  "writerSection": "Sezione",
+  "writerSectionNumber": "Sezione {number}",
+  "writerSectionBreak": "Interruzione di sezione alla pagina successiva",
+  "writerTextLanguage": "Lingua del testo (BCP 47)",
+  "writerParagraphDirection": "Direzione del paragrafo",
+  "writerLtr": "Da sinistra a destra",
+  "writerRtl": "Da destra a sinistra"
 } as const;

@@ -340,17 +340,24 @@ try{
   await (await chooserPromise).setFiles({name:'inline.png',mimeType:'image/png',buffer:PNG});
   await page.waitForSelector('.writer-image-card img',{timeout:30000});
   await inputEquals('#draft-text','First \uFFFC中文','Inline object projection');
+  // Set explicit document text metadata and create an independent next-page section.
+  await page.locator('#draft-text').evaluate(el=>{el.focus();el.setSelectionRange(7,9);el.dispatchEvent(new Event('select'));});
+  await page.locator('#writer-text-language').fill('zh-TW');await page.locator('#writer-text-language').press('Tab');
+  await page.locator('#writer-section-break').click();
+  await page.waitForFunction(()=>document.querySelector('#writer-section')?.options.length===2);
+  await page.locator('#writer-paper').selectOption('letter');await page.locator('#writer-orientation').selectOption('landscape');await page.locator('#writer-apply-page').click();
   await dialogSave(continuousPath);await page.locator('#save').click();
   await waitFor(async()=>{try{return (await readFile(continuousPath)).length>100;}catch{return false;}},'mixed DOCX save',30000);
   await page.waitForFunction(()=>!document.querySelector('#save').disabled&&document.querySelector('#document-status').textContent.includes('已保存'));
   const mixed=openWriterDocx(await readFile(continuousPath),'continuous-reader','Continuous').document;
+  assert.equal(mixed.sections.length,2);assert.ok(mixed.sections[0].page.width<mixed.sections[0].page.height&&mixed.sections[1].page.width>mixed.sections[1].page.height);
   const first=mixed.sections[0].blocks[0];assert.equal(first.runs.filter(r=>r.type==='image').length,1);
   assert.equal(first.runs.filter(r=>r.type==='text').map(r=>r.text).join(''),'First 中文');
-  assert.ok(first.runs.some(r=>r.type==='text'&&r.text==='中文'&&r.style.bold));
+  assert.ok(first.runs.some(r=>r.type==='text'&&r.text==='中文'&&r.style.bold&&r.style.language==='zh-TW'));
   await screenshot('writer-inline-range');
   const continuousCount=await page.locator('.tab').count();await page.locator('.tab[aria-selected=true] .tab-close').click();
   await page.waitForFunction(n=>document.querySelectorAll('.tab').length===n-1,continuousCount);
-  check('Native continuous cross-paragraph selection, formatting, deletion, undo and inline image DOCX save');
+  check('Native continuous selection, undo, inline image, section geometry and text language DOCX save');
 
   await page.locator('.tab').first().click();assert.equal(await page.locator('#draft-text').inputValue(),'Edit made while saving');
   // Bad save destination keeps the document dirty, usable and the old file unchanged.

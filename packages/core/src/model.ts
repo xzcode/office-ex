@@ -4,7 +4,7 @@ import { OfficeError, assert, assertCellAddress, assertId, assertUnicode, isReco
 export type Color = { kind: 'rgba'; red: number; green: number; blue: number; alpha: number } | { kind: 'theme'; name: string; tint?: number };
 export interface TextStyle {
   fontFamily?: string; fontSize?: number; bold?: boolean; italic?: boolean; underline?: boolean;
-  color?: Color; alignment?: 'start' | 'center' | 'end' | 'justify';
+  color?: Color; language?:string; eastAsiaLanguage?:string; bidiLanguage?:string; runDirection?:'ltr'|'rtl'; paragraphDirection?:'ltr'|'rtl'; alignment?: 'start' | 'center' | 'end' | 'justify';
   indent?: number; spaceBefore?: number; spaceAfter?: number; lineHeight?: number;
 }
 export interface NamedStyle { id: string; name: string; basedOn?: string; kind?: 'paragraph' | 'character'; toggles?: readonly ('bold' | 'italic')[]; properties: TextStyle }
@@ -19,7 +19,7 @@ export interface Paragraph { id: string; type: 'paragraph'; styleId?: string; st
 export interface TableCell { id: string; blocks: WriterBlock[] }
 export interface Table { id: string; type: 'table'; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[]; cellPadding?: {top:number;right:number;bottom:number;left:number}; border?: {width:number;color:Color} }
 export type WriterBlock = Paragraph | Table | { id: string; type: 'page-break' };
-export interface WriterSection { id: string; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
+export interface WriterSection { id: string; pageExtras?: {headerDistance?:number;footerDistance?:number;columnSpace?:number}; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
 export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string }
 
 export type CellValue = { kind: 'blank' } | { kind: 'string'; value: string } | { kind: 'number'; value: number } | { kind: 'boolean'; value: boolean } | { kind: 'error'; value: '#NULL!' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#NAME?' | '#NUM!' | '#N/A' } | { kind: 'formula'; source: string };
@@ -106,12 +106,18 @@ export function validateColor(value: unknown): asserts value is Color {
   }
 }
 
+export function isDocumentLanguageTag(value:unknown):value is string{
+  if(typeof value!=='string'||!value.length||value.length>128)return false;
+  try{return Intl.getCanonicalLocales(value).length===1;}catch{return false;}
+}
 export function validateTextStyle(value: unknown): asserts value is TextStyle {
-  const style = object(value, ['fontFamily', 'fontSize', 'bold', 'italic', 'underline', 'color', 'alignment', 'indent', 'spaceBefore', 'spaceAfter', 'lineHeight']);
+  const style = object(value, ['fontFamily', 'fontSize', 'bold', 'italic', 'underline', 'color', 'alignment', 'indent', 'spaceBefore', 'spaceAfter', 'lineHeight','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection']);
   if (style.fontFamily !== undefined) { text(style.fontFamily, 512, false); assert(!/[\x00-\x1f\x7f]/.test(style.fontFamily), 'invalid', 'Invalid font family'); }
   if (style.fontSize !== undefined) integer(style.fontSize, 1, 12_700 * 1638);
   for (const key of ['bold', 'italic', 'underline']) if (style[key] !== undefined) bool(style[key]);
   if (style.color !== undefined) validateColor(style.color);
+  for(const key of ['language','eastAsiaLanguage','bidiLanguage'])if(style[key]!==undefined)assert(isDocumentLanguageTag(style[key]),'invalid','Invalid document language tag');
+  for(const key of ['runDirection','paragraphDirection'])if(style[key]!==undefined)assert(style[key]==='ltr'||style[key]==='rtl','invalid','Invalid document direction');
   if (style.alignment !== undefined) assert(['start', 'center', 'end', 'justify'].includes(String(style.alignment)), 'invalid', 'Invalid text alignment');
   if (style.indent !== undefined) integer(style.indent);
   for (const key of ['spaceBefore', 'spaceAfter', 'lineHeight']) if (style[key] !== undefined) integer(style[key], 0);
@@ -206,8 +212,9 @@ export function validateDocument(value: unknown): OfficeDocument {
   if (model.kind === 'writer') {
     optionalId(model.defaultParagraphStyleId,styles);
     if(model.defaultParagraphStyleId!==undefined){const ref=styles[String(model.defaultParagraphStyleId)];assert(isRecord(ref)&&ref.kind==='paragraph','invalid','Default paragraph style must be a paragraph style');}
-    list(model.sections, 1).forEach((candidate) => {
-      const section = object(candidate, ['id', 'page', 'blocks']); id(section.id);
+    const sections=list(model.sections,1);assert(sections.length<=128,'limit','Writer section budget exceeded');sections.forEach((candidate) => {
+      const section = object(candidate, ['id', 'page', 'blocks', 'pageExtras']); id(section.id);
+      if(section.pageExtras!==undefined){const extra=object(section.pageExtras,['headerDistance','footerDistance','columnSpace']);for(const n of Object.values(extra))integer(n,0,31680*635);}
       const page = object(section.page, ['width', 'height', 'margins']); integer(page.width, 1); integer(page.height, 1);
       const margins = object(page.margins, ['top', 'right', 'bottom', 'left']);
       integer(margins.top, 0); integer(margins.right, 0); integer(margins.bottom, 0); integer(margins.left, 0);

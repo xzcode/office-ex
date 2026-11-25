@@ -23,7 +23,6 @@ export interface DocxStyleProfile{
   styles:Record<string,NamedStyle>;
   defaults:TextStyle;
   defaultParagraph?:string;
-  pageOffsets:{header?:number;footer?:number};
   tableDefaultsSafe:boolean;
 }
 type RunReader=(el:Element,reference?:((id:string)=>void),theme?:ThemeProfile,named?:boolean,toggles?:('bold'|'italic')[])=>TextStyle;
@@ -168,7 +167,7 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,
   if(defaultCharacter){
     const style=styles[defaultCharacter];allowed(style&&!style.basedOn&&!style.toggles?.length&&!Object.keys(style.properties).length,'Default character style must be empty');
   }
-  return {styles,defaults,...(defaultParagraph?{defaultParagraph}:{}),pageOffsets:{},tableDefaultsSafe:![...entries.values()].some(e=>e.kind==='table'&&e.isDefault)};
+  return {styles,defaults,...(defaultParagraph?{defaultParagraph}:{}),tableDefaultsSafe:![...entries.values()].some(e=>e.kind==='table'&&e.isDefault)};
 }
 function relationPath(main:string):string{
   const i=main.lastIndexOf('/');return main.slice(0,i+1)+'_rels/'+main.slice(i+1)+'.rels';
@@ -211,6 +210,6 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
   allowed(pkg.parts.size===expected.size&&[...pkg.parts.keys()].every(k=>expected.has(k)),'Additional package parts require a later adapter');
   if(!stylePath&&!themePath&&!hasMetadata)return {part:main};
   const theme=themePath?readTheme(pkg.parts.get(themePath)!,options):undefined;
-  const profile=stylePath?readStyles(pkg.parts.get(stylePath)!,options,readRun,readParagraph,theme):{styles:{},defaults:{},pageOffsets:{},tableDefaultsSafe:true};
+  const profile=stylePath?readStyles(pkg.parts.get(stylePath)!,options,readRun,readParagraph,theme):{styles:{},defaults:{},tableDefaultsSafe:true};
   return {part:main,profile};
 }

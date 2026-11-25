@@ -90,7 +90,7 @@ export const korean = {
   "eyebrow": "OFFICE EX / 로컬 작업 공간",
   "region": "지역 형식",
   "documentLanguage": "새 문서 언어 (기본 설정)",
-  "documentLanguageNote": "문서 언어 메타데이터는 편집기 개발 단계에서 연결합니다. 기존 문서는 변경되지 않습니다.",
+  "documentLanguageNote": "새 Writer 문서에 이 텍스트 언어가 적용됩니다. 기존 파일은 변경되지 않으며 다른 편집기는 나중에 지원합니다.",
   "regionSample": "지역 형식 미리보기",
   "history": "기록",
   "canvas": "캔버스",
@@ -204,7 +204,14 @@ export const korean = {
   "writerInlineImageNote": "개체 표시는 인라인 이미지입니다. 이미지 컨트롤에서 크기를 조정하거나 삭제하세요.",
   "writerContinuous": "연속 텍스트 편집",
   "writerExitContinuous": "문단 편집으로 돌아가기",
-  "writerContinuousNote": "인접 텍스트 문단을 선택, 복사, 잘라내기, 붙여넣기 및 서식 지정할 수 있습니다. 표, 페이지 나누기, 구역 및 이미지 문단은 선택 경계입니다. 붙여넣은 줄바꿈은 새 문단이 됩니다."
+  "writerContinuousNote": "인접 텍스트 문단을 선택, 복사, 잘라내기, 붙여넣기 및 서식 지정할 수 있습니다. 표, 페이지 나누기, 구역 및 이미지 문단은 선택 경계입니다. 붙여넣은 줄바꿈은 새 문단이 됩니다.",
+  "writerSection": "구역",
+  "writerSectionNumber": "구역 {number}",
+  "writerSectionBreak": "다음 페이지 구역 나누기",
+  "writerTextLanguage": "텍스트 언어 (BCP 47)",
+  "writerParagraphDirection": "문단 방향",
+  "writerLtr": "왼쪽에서 오른쪽으로",
+  "writerRtl": "오른쪽에서 왼쪽으로"
 } as const;
 export const french = {
   "open": "Ouvrir un fichier",
@@ -296,7 +303,7 @@ export const french = {
   "eyebrow": "OFFICE EX / ESPACE LOCAL",
   "region": "Formats régionaux",
   "documentLanguage": "Langue des nouveaux documents (préférence)",
-  "documentLanguageNote": "Les métadonnées de langue seront prises en charge dans les éditeurs. Les documents existants restent inchangés.",
+  "documentLanguageNote": "Les nouveaux documents Writer utilisent cette langue. Les fichiers existants restent inchangés ; les autres éditeurs suivront.",
   "regionSample": "Aperçu du format régional",
   "history": "Historique",
   "canvas": "Canevas",
@@ -410,7 +417,14 @@ export const french = {
   "writerInlineImageNote": "Le repère d'objet représente une image intégrée. Utilisez ses commandes pour la redimensionner ou la supprimer.",
   "writerContinuous": "Éditer le texte continu",
   "writerExitContinuous": "Revenir à l'éditeur de paragraphes",
-  "writerContinuousNote": "Sélectionnez, copiez, coupez, collez ou mettez en forme plusieurs paragraphes de texte adjacents. Les tableaux, sauts de page, sections et paragraphes avec images délimitent la sélection. Les nouvelles lignes collées deviennent des paragraphes."
+  "writerContinuousNote": "Sélectionnez, copiez, coupez, collez ou mettez en forme plusieurs paragraphes de texte adjacents. Les tableaux, sauts de page, sections et paragraphes avec images délimitent la sélection. Les nouvelles lignes collées deviennent des paragraphes.",
+  "writerSection": "Section",
+  "writerSectionNumber": "Section {number}",
+  "writerSectionBreak": "Saut de section sur la page suivante",
+  "writerTextLanguage": "Langue du texte (BCP 47)",
+  "writerParagraphDirection": "Direction du paragraphe",
+  "writerLtr": "De gauche à droite",
+  "writerRtl": "De droite à gauche"
 } as const;
 export const german = {
   "open": "Datei öffnen",
@@ -502,7 +516,7 @@ export const german = {
   "eyebrow": "OFFICE EX / LOKALER ARBEITSBEREICH",
   "region": "Regionale Formate",
   "documentLanguage": "Sprache neuer Dokumente (Voreinstellung)",
-  "documentLanguageNote": "Sprachmetadaten werden in den Editoren eingebunden. Vorhandene Dokumente bleiben unverändert.",
+  "documentLanguageNote": "Neue Writer-Dokumente verwenden diese Textsprache. Vorhandene Dateien bleiben unverändert; andere Editoren folgen später.",
   "regionSample": "Vorschau regionaler Formate",
   "history": "Verlauf",
   "canvas": "Zeichenfläche",
@@ -616,5 +630,12 @@ export const german = {
   "writerInlineImageNote": "Die Objektmarke steht für ein Inline-Bild. Verwenden Sie die Bildsteuerung zum Verkleinern, Vergrößern oder Entfernen.",
   "writerContinuous": "Zusammenhängenden Text bearbeiten",
   "writerExitContinuous": "Zurück zum Absatzeditor",
-  "writerContinuousNote": "Markieren, kopieren, schneiden, fügen oder formatieren Sie benachbarte Textabsätze. Tabellen, Seitenumbrüche, Abschnitte und Bildabsätze begrenzen die Auswahl. Eingefügte neue Zeilen werden Absätze."
+  "writerContinuousNote": "Markieren, kopieren, schneiden, fügen oder formatieren Sie benachbarte Textabsätze. Tabellen, Seitenumbrüche, Abschnitte und Bildabsätze begrenzen die Auswahl. Eingefügte neue Zeilen werden Absätze.",
+  "writerSection": "Abschnitt",
+  "writerSectionNumber": "Abschnitt {number}",
+  "writerSectionBreak": "Abschnittsumbruch (nächste Seite)",
+  "writerTextLanguage": "Textsprache (BCP 47)",
+  "writerParagraphDirection": "Absatzrichtung",
+  "writerLtr": "Links nach rechts",
+  "writerRtl": "Rechts nach links"
 } as const;

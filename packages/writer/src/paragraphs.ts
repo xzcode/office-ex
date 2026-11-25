@@ -104,7 +104,7 @@ export function replaceParagraphRange(snapshot:DocumentSnapshot,paragraphId:stri
   const right=sliceRuns(p.runs,end,p.text.length,used,allocate);
   return runPatch(snapshot,p,nonEmpty([...left,...(replacement?[inserted(template,replacement,allocate)]:[]),...right],template,allocate));
 }
-const CHARACTER_KEYS=['fontFamily','fontSize','bold','italic','underline','color'];
+const CHARACTER_KEYS=['fontFamily','fontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection'];
 /** Split affected runs at grapheme-safe range endpoints and apply direct character style. */
 export function formatParagraphRange(snapshot:DocumentSnapshot,paragraphId:string,start:number,end:number,style:TextStyle,operationId:string):DocumentCommand{
   const p=locate(snapshot,paragraphId);assertParagraphRange(p.paragraph,start,end);assertPlainData(style);validateTextStyle(style);
@@ -170,6 +170,10 @@ export function setParagraphMetrics(snapshot:DocumentSnapshot,paragraphId:string
   const style={...p.paragraph.style,...cloneData(metrics)};
   if(style.lineHeight===0)delete style.lineHeight;
   return patchCommand(snapshot,'WRT-03',[{op:'set',path:[...p.parent,p.block,'style'],value:style}]);
+}
+export function setParagraphDirection(snapshot:DocumentSnapshot,paragraphId:string,direction:'ltr'|'rtl'):DocumentCommand{
+  const p=locate(snapshot,paragraphId);validateTextStyle({paragraphDirection:direction});
+  return patchCommand(snapshot,'WRT-03',[{op:'set',path:[...p.parent,p.block,'style'],value:{...p.paragraph.style,paragraphDirection:direction}}]);
 }
 export function setParagraphAlignment(snapshot:DocumentSnapshot,paragraphId:string,alignment:NonNullable<TextStyle['alignment']>):DocumentCommand{
   const p=locate(snapshot,paragraphId);validateTextStyle({alignment});

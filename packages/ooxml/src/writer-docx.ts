@@ -5,7 +5,7 @@
  */
 import type { Element, Document } from '@xmldom/xmldom';
 import { OfficeError, assert, EMU_PER_TWIP } from '@office-ex/contracts';
-import { createDocument, validateDocument, freezeData, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type Inline, type TextStyle, type WriterSection, type NamedStyle, type Table } from '@office-ex/core';
+import { createDocument, validateDocument, freezeData, isDocumentLanguageTag, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type Inline, type TextStyle, type WriterSection, type NamedStyle, type Table } from '@office-ex/core';
 import { openOpc, writeOpc, type OpcPackage } from './opc.js';
 import { parseXml } from './xml.js';
 import { writeZip } from './zip.js';
@@ -19,8 +19,8 @@ const XMLNS='http://www.w3.org/2000/xmlns/';
 const ROOT_REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument';
 const MAIN_TYPE='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml';
 const DECL='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const CHAR_KEYS=['fontFamily','fontSize','bold','italic','underline','color'];
-const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight'];
+const CHAR_KEYS=['fontFamily','fontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection'];
+const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight','paragraphDirection'];
 const MAX_BLOCKS=10000;
 const MAX_RUNS=50000;
 const MAX_TEXT=4*1024*1024;
@@ -59,6 +59,8 @@ export function readRunStyle(el:Element,reference?:(id:string)=>void,theme?:Them
   for(const child of elements(el)){
     valid(child.namespaceURI===W&&child.localName!==null&&!seen.has(child.localName),'Duplicate or foreign run property');seen.add(child.localName);
     switch(child.localName){
+      case 'lang':{attrs(child,['w:val','w:eastAsia','w:bidi']);empty(child);let count=0;for(const [key,property] of [['val','language'],['eastAsia','eastAsiaLanguage'],['bidi','bidiLanguage']] as const){const lang=prop(child,key);if(lang!==undefined){valid(isDocumentLanguageTag(lang),'Unsupported document language tag');style[property]=lang;count++;}}valid(count>0,'Empty language property');break;}
+      case 'rtl':{valid(!named,'Named RTL toggle is outside this profile');style.runDirection=toggled(child)?'rtl':'ltr';break;}
       case 'rStyle':{valid(reference,'Unexpected character style reference');attrs(child,['w:val']);empty(child);const id=prop(child,'val');valid(id,'Missing character style reference');reference(id);break;}
       case 'b':{const value=toggled(child);if(named){if(value)toggles?.push('bold');}else style.bold=value;break;}
       case 'i':{const value=toggled(child);if(named){if(value)toggles?.push('italic');}else style.italic=value;break;}
@@ -71,11 +73,13 @@ export function readRunStyle(el:Element,reference?:(id:string)=>void,theme?:Them
   }
   return style;
 }
-export function readParagraphStyle(el:Element,reference?:(id:string)=>void):TextStyle{
+export function readParagraphStyle(el:Element,reference?:(id:string)=>void,sectionEnd?:Element):TextStyle{
   requireElement(el,'pPr');attrs(el);const style:TextStyle={},seen=new Set<string>();
   for(const child of elements(el)){
     valid(child.namespaceURI===W&&child.localName!==null&&!seen.has(child.localName),'Duplicate or foreign paragraph property');seen.add(child.localName);
     switch(child.localName){
+      case 'bidi':style.paragraphDirection=toggled(child)?'rtl':'ltr';break;
+      case 'sectPr':{valid(child===sectionEnd,'Unexpected section properties inside paragraph');break;}
       case 'pStyle':{valid(reference,'Unexpected paragraph style reference');attrs(child,['w:val']);empty(child);const id=prop(child,'val');valid(id,'Missing paragraph style reference');reference(id);break;}
       case 'jc':{attrs(child,['w:val']);empty(child);const v=prop(child,'val');valid(v==='left'||v==='center'||v==='right'||v==='both','Unsupported alignment');style.alignment=v==='left'?'start':v==='right'?'end':v==='both'?'justify':v;break;}
       case 'ind':attrs(child,['w:left']);empty(child);style.indent=numberProp(child,'left',-31680,31680)*EMU_PER_TWIP;break;
@@ -93,15 +97,26 @@ export function readParagraphStyle(el:Element,reference?:(id:string)=>void):Text
   }
   return style;
 }
-function readPage(el:Element,profile?:DocxStyleProfile):WriterSection['page']{
-  requireElement(el,'sectPr');attrs(el);
-  const items=elements(el);valid(items.length===2&&isW(items[0]!,'pgSz')&&isW(items[1]!,'pgMar'),'Explicit single-section page size and margins required');
-  const size=items[0]!,margins=items[1]!;
+function readPage(el:Element):Pick<WriterSection,'page'|'pageExtras'>{
+  requireElement(el,'sectPr');attrs(el);const items=elements(el);let i=0;
+  if(items[i]&&isW(items[i]!,'type')){const type=items[i++]!;attrs(type,['w:val']);empty(type);valid(prop(type,'val')==='nextPage','Only next-page sections are supported');}
+  const size=items[i++]!,margins=items[i++]!;
+  valid(size&&margins&&isW(size,'pgSz')&&isW(margins,'pgMar'),'Explicit section page size and margins required');
   attrs(size,['w:w','w:h','w:orient']);empty(size);attrs(margins,['w:top','w:right','w:bottom','w:left','w:header','w:footer','w:gutter']);empty(margins);
   const width=numberProp(size,'w',1,31680),height=numberProp(size,'h',1,31680),orientation=prop(size,'orient');
   valid(orientation===undefined||orientation===(width>height?'landscape':'portrait'),'Inconsistent page orientation');
-  for(const n of ['header','footer','gutter'] as const){const v=prop(margins,n);if(profile&&n!=='gutter'&&v!==undefined){const amount=numberProp(margins,n,0,31680);profile.pageOffsets[n]=amount;}else valid(v===undefined||v==='0','Unsupported header/footer/gutter offset');}
-  return {width:width*EMU_PER_TWIP,height:height*EMU_PER_TWIP,margins:{top:numberProp(margins,'top',0,31680)*EMU_PER_TWIP,right:numberProp(margins,'right',0,31680)*EMU_PER_TWIP,bottom:numberProp(margins,'bottom',0,31680)*EMU_PER_TWIP,left:numberProp(margins,'left',0,31680)*EMU_PER_TWIP}};
+  valid(prop(margins,'gutter')===undefined||prop(margins,'gutter')==='0','Unsupported gutter');
+  const extras:NonNullable<WriterSection['pageExtras']>={};
+  for(const [name,key] of [['header','headerDistance'],['footer','footerDistance']] as const){
+    if(prop(margins,name)!==undefined){const amount=numberProp(margins,name,0,31680)*EMU_PER_TWIP;if(amount)extras[key]=amount;}
+  }
+  if(items[i]&&isW(items[i]!,'cols')){
+    const cols=items[i++]!;attrs(cols,['w:num','w:space','w:equalWidth','w:sep']);empty(cols);
+    valid((prop(cols,'num')===undefined||prop(cols,'num')==='1')&&(prop(cols,'equalWidth')===undefined||['1','true','on'].includes(prop(cols,'equalWidth')!))&&(prop(cols,'sep')===undefined||['0','false','off'].includes(prop(cols,'sep')!)),'Only a single column is supported');
+    if(prop(cols,'space')!==undefined)extras.columnSpace=numberProp(cols,'space',0,31680)*EMU_PER_TWIP;
+  }
+  valid(i===items.length,'Unsupported section properties');
+  return {page:{width:width*EMU_PER_TWIP,height:height*EMU_PER_TWIP,margins:{top:numberProp(margins,'top',0,31680)*EMU_PER_TWIP,right:numberProp(margins,'right',0,31680)*EMU_PER_TWIP,bottom:numberProp(margins,'bottom',0,31680)*EMU_PER_TWIP,left:numberProp(margins,'left',0,31680)*EMU_PER_TWIP}},...(Object.keys(extras).length?{pageExtras:extras}:{})};
 }
 function simpleText(el:Element):string{
   attrs(el,['xml:space']);let text='';
@@ -196,12 +211,13 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
   const contents=elements(root);valid(contents.length===1&&isW(contents[0]!,'body'),'Single body required');
   const body=contents[0]!;attrs(body);const children=elements(body);
   valid(children.length>=2&&children.length<=MAX_BLOCKS+1,'Missing paragraphs or block limit exceeded');
-  const page=readPage(children.at(-1)!,profile);const blocks:WriterBlock[]=[];let runCount=0,textCount=0;
+  const sections:WriterSection[]=[];let runCount=0,textCount=0;
+  let page:WriterSection['page'];
   let paragraphIndex=0,cellCount=0;
-  const readParagraph=(p:Element,inCell=false):WriterBlock=>{
+  const readParagraph=(p:Element,inCell=false,sectionEnd?:Element):WriterBlock=>{
     const bi=paragraphIndex++;valid(paragraphIndex<=MAX_BLOCKS,'Paragraph budget exceeded');requireElement(p,'p');attrs(p);const nodes=elements(p);
     let style:TextStyle|undefined,styleId=profile?.defaultParagraph;let i=0;
-    if(nodes[0]&&isW(nodes[0],'pPr')){style=readParagraphStyle(nodes[0],profile?id=>{styleId=requireStyleReference(profile,id,'paragraph');}:undefined);i++;}
+    if(nodes[0]&&isW(nodes[0],'pPr')){style=readParagraphStyle(nodes[0],profile?id=>{styleId=requireStyleReference(profile,id,'paragraph');}:undefined,sectionEnd);i++;}
     const runs:Inline[]=[];let pageBreak=false;
     for(;i<nodes.length;i++){
       const r=nodes[i]!;requireElement(r,'r');attrs(r);valid(++runCount<=MAX_RUNS,'Run limit exceeded');
@@ -220,7 +236,7 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
         else if(isW(child,'br')){
           attrs(child,['w:type']);empty(child);const type=prop(child,'type');
           if(type==='page'){
-            valid(!inCell&&!style&&!direct&&!runStyleId&&(!profile||!styleId||styleId===profile.defaultParagraph)&&nodes.length===1&&items.length===1,'Page break must occupy its own unformatted paragraph');pageBreak=true;
+            valid(!inCell&&!sectionEnd&&!style&&!direct&&!runStyleId&&(!profile||!styleId||styleId===profile.defaultParagraph)&&nodes.length===1&&items.length===1,'Page break must occupy its own unformatted paragraph');pageBreak=true;
           }else{valid(type===undefined||type==='textWrapping','Unsupported break type');text+='\n';}
         }else unsupported('Unsupported run content '+child.localName);
       }
@@ -230,15 +246,32 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
     if(pageBreak)return {id:'break-'+bi,type:'page-break'};
     return {id:'p-'+bi,type:'paragraph',runs:runs.length?runs:[{id:'r-'+bi+'-0',type:'text',text:''}],...(styleId?{styleId}:{}),...(style&&Object.keys(style).length?{style}:{})};
   };
-  for(let bi=0;bi<children.length-1;bi++){
-    const block=children[bi]!;
-    if(isW(block,'tbl')){
-      valid(!profile||profile.tableDefaultsSafe,'Default table style requires a later adapter');
-      blocks.push(readTable(block,'table-'+bi,page.width-page.margins.left-page.margins.right,
-        p=>readParagraph(p,true),n=>{cellCount+=n;valid(cellCount<=10000,'Document table-cell budget exceeded');}));
-    }else blocks.push(readParagraph(block));
+  // Section properties belong to the paragraph ending the preceding
+  // section. Resolve geometry before importing its paragraphs and tables.
+  const ends:{index:number;properties:Element;onParagraph:boolean}[]=[];
+  for(let i=0;i<children.length-1;i++){
+    const p=children[i]!;if(!isW(p,'p'))continue;
+    const pr=elements(p)[0];if(!pr||!isW(pr,'pPr'))continue;
+    const props=elements(pr),nested=props.filter(e=>isW(e,'sectPr'));
+    if(nested.length){valid(nested.length===1&&props.at(-1)===nested[0],'Section properties must end paragraph properties');ends.push({index:i,properties:nested[0]!,onParagraph:true});}
   }
-  const result=createDocument('writer',documentId,title);result.defaultTextStyle=profile?.defaults??{};result.styles=profile?.styles??{};result.resources=media.resources;if(profile?.defaultParagraph)result.defaultParagraphStyleId=profile.defaultParagraph;result.sections=[{id:'section-1',page,blocks}];
+  ends.push({index:children.length-2,properties:children.at(-1)!,onParagraph:false});
+  valid(ends.length<=128,'Section budget exceeded');
+  let start=0;
+  for(const end of ends){
+    valid(end.index>=start,'Empty section is not supported');
+    const geometry=readPage(end.properties);page=geometry.page;const blocks:WriterBlock[]=[];
+    for(let bi=start;bi<=end.index;bi++){
+      const block=children[bi]!;
+      if(isW(block,'tbl')){
+        valid(!profile||profile.tableDefaultsSafe,'Default table style requires a later adapter');
+        blocks.push(readTable(block,'table-'+bi,page.width-page.margins.left-page.margins.right,
+          p=>readParagraph(p,true),n=>{cellCount+=n;valid(cellCount<=10000,'Document table-cell budget exceeded');}));
+      }else blocks.push(readParagraph(block,false,end.onParagraph&&bi===end.index?end.properties:undefined));
+    }
+    sections.push({id:'section-'+(sections.length+1),...geometry,blocks});start=end.index+1;
+  }
+  const result=createDocument('writer',documentId,title);result.defaultTextStyle=profile?.defaults??{};result.styles=profile?.styles??{};result.resources=media.resources;if(profile?.defaultParagraph)result.defaultParagraphStyleId=profile.defaultParagraph;result.sections=sections;
   return validateDocument(result) as WriterDocument;
 }
 function escapeXml(value:string):string{
@@ -262,18 +295,21 @@ function writeRunStyle(style:DeepReadonly<TextStyle>,styleId?:string):string{
   }
   if(style.fontSize!==undefined){const n=Math.round(style.fontSize/6350);valid(n>=1&&n<=3276,'Font size outside DOCX limits');r+=tag('sz',{val:n});}
   if(style.underline!==undefined)r+=tag('u',{val:style.underline?'single':'none'});
+  if(style.runDirection!==undefined)r+=tag('rtl',{val:style.runDirection==='rtl'?1:0});
+  const langs:Record<string,string>={};for(const [key,property] of [['val','language'],['eastAsia','eastAsiaLanguage'],['bidi','bidiLanguage']] as const)if(style[property]!==undefined)langs[key]=style[property]!;
+  if(Object.keys(langs).length)r+=tag('lang',langs);
   return r?'<w:rPr>'+r+'</w:rPr>':'';
 }
-function writeParagraphStyle(style:DeepReadonly<TextStyle>,styleId?:string):string{
+function writeParagraphStyle(style:DeepReadonly<TextStyle>,styleId?:string,sectionEnd=''):string{
   valid(Object.keys(style).every(k=>PARA_KEYS.includes(k)),'Unsupported paragraph style');
-  let p=styleId?tag('pStyle',{val:styleId}):'';const spacing:Record<string,string|number>={};
+  let p=styleId?tag('pStyle',{val:styleId}):'';if(style.paragraphDirection!==undefined)p+=tag('bidi',{val:style.paragraphDirection==='rtl'?1:0});const spacing:Record<string,string|number>={};
   if(style.spaceBefore!==undefined)spacing.before=twip(style.spaceBefore,0,31680);
   if(style.spaceAfter!==undefined)spacing.after=twip(style.spaceAfter,0,31680);
   if(style.lineHeight!==undefined){spacing.line=twip(style.lineHeight,1,31680);spacing.lineRule='exact';}
   if(Object.keys(spacing).length)p+=tag('spacing',spacing);
   if(style.indent!==undefined)p+=tag('ind',{left:twip(style.indent,-31680,31680)});
   if(style.alignment!==undefined)p+=tag('jc',{val:({start:'left',center:'center',end:'right',justify:'both'})[style.alignment]});
-  return p?'<w:pPr>'+p+'</w:pPr>':'';
+  return p||sectionEnd?'<w:pPr>'+p+sectionEnd+'</w:pPr>':'';
 }
 function writeText(text:string):string{
   valid(!text.includes('\r'),'CR must be represented explicitly by a supported line break');
@@ -287,16 +323,17 @@ function canonicalData(value:unknown):string{
 }
 function mainXml(candidate:unknown,profile:DocxStyleProfile|undefined,media:MediaPlan):{model:WriterDocument;xml:string}{
   const checked=validateDocument(candidate);valid(checked.kind==='writer','Expected Writer model');
-  valid(checked.sections.length===1,'Only one section is supported');
+  valid(checked.sections.length<=128,'Section budget exceeded');
   if(profile){valid(checked.defaultParagraphStyleId===profile.defaultParagraph&&canonicalData(checked.styles)===canonicalData(profile.styles)&&canonicalData(checked.defaultTextStyle)===canonicalData(profile.defaults),'Source style definitions and defaults are immutable');}
   else{valid(!Object.keys(checked.styles).length,'New DOCX named style definitions are not supported');valid(Object.keys(checked.defaultTextStyle).every(k=>CHAR_KEYS.includes(k)),'Unsupported default text style');}
-  const section=checked.sections[0]!;valid(section.blocks.length<=MAX_BLOCKS,'Block budget exceeded');
+  valid(checked.sections.reduce((n,s)=>n+s.blocks.length,0)<=MAX_BLOCKS,'Block budget exceeded');
+  let section=checked.sections[0]!;
   let totalRuns=0,totalText=0,paragraphCount=0,cellCount=0,imageCount=0;let body='';
-  const writeParagraph=(block:DeepReadonly<Paragraph>,inCell=false):string=>{
+  const writeParagraph=(block:DeepReadonly<Paragraph>,inCell=false,sectionEnd=''):string=>{
     valid(++paragraphCount<=MAX_BLOCKS,'Paragraph budget exceeded');let body='';
     const paragraphStyle=block.styleId??profile?.defaultParagraph;
     if(paragraphStyle)requireStyleReference(profile,paragraphStyle,'paragraph');
-    body+='<w:p>'+writeParagraphStyle(block.style??{},paragraphStyle);
+    body+='<w:p>'+writeParagraphStyle(block.style??{},paragraphStyle,sectionEnd);
     for(const inline of block.runs.length?block.runs:[{id:'empty',type:'text' as const,text:''}]){
       valid(++totalRuns<=MAX_RUNS,'Run budget exceeded');
       if(inline.type==='image'){
@@ -309,14 +346,25 @@ function mainXml(candidate:unknown,profile:DocxStyleProfile|undefined,media:Medi
     }
     return body+'</w:p>';
   };
-  const maxWidth=section.page.width-section.page.margins.left-section.page.margins.right;
-  for(const block of section.blocks){
-    if(block.type==='page-break')body+='<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
-    else if(block.type==='table'){valid(!profile||profile.tableDefaultsSafe,'Default table style requires a later adapter');body+=writeTable(block,maxWidth,p=>writeParagraph(p,true),n=>{cellCount+=n;valid(cellCount<=10000,'Document table-cell budget exceeded');});}
-    else body+=writeParagraph(block);
+  const sectionXml=(s:DeepReadonly<WriterSection>):string=>{
+    const p=s.page,width=twip(p.width,1,31680),height=twip(p.height,1,31680),m=p.margins,extra=s.pageExtras;
+    return '<w:sectPr>'+tag('pgSz',{w:width,h:height,...(width>height?{orient:'landscape'}:{})})+
+      tag('pgMar',{top:twip(m.top,0,31680),right:twip(m.right,0,31680),bottom:twip(m.bottom,0,31680),left:twip(m.left,0,31680),header:twip(extra?.headerDistance??0,0,31680),footer:twip(extra?.footerDistance??0,0,31680),gutter:0})+
+      (extra?.columnSpace===undefined?'':tag('cols',{num:1,space:twip(extra.columnSpace,0,31680)}))+'</w:sectPr>';
+  };
+  for(let si=0;si<checked.sections.length;si++){
+    section=checked.sections[si]!;const final=si===checked.sections.length-1;
+    valid(final||section.blocks.at(-1)?.type==='paragraph','Nonfinal section must end in a paragraph');
+    const maxWidth=section.page.width-section.page.margins.left-section.page.margins.right;
+    const end=sectionXml(section);
+    for(let bi=0;bi<section.blocks.length;bi++){
+      const block=section.blocks[bi]!;
+      if(block.type==='page-break')body+='<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+      else if(block.type==='table'){valid(!profile||profile.tableDefaultsSafe,'Default table style requires a later adapter');body+=writeTable(block,maxWidth,p=>writeParagraph(p,true),n=>{cellCount+=n;valid(cellCount<=10000,'Document table-cell budget exceeded');});}
+      else body+=writeParagraph(block,false,!final&&bi===section.blocks.length-1?end:'');
+    }
+    if(final)body+=end;
   }
-  const page=section.page,width=twip(page.width,1,31680),height=twip(page.height,1,31680),m=page.margins;
-  body+='<w:sectPr>'+tag('pgSz',{w:width,h:height,...(width>height?{orient:'landscape'}:{})})+tag('pgMar',{top:twip(m.top,0,31680),right:twip(m.right,0,31680),bottom:twip(m.bottom,0,31680),left:twip(m.left,0,31680),header:profile?.pageOffsets.header??0,footer:profile?.pageOffsets.footer??0,gutter:0})+'</w:sectPr>';
   return {model:checked,xml:DECL+'<w:document xmlns:w="'+W+'"><w:body>'+body+'</w:body></w:document>'};
 }
 export interface WriterDocxSource{readonly document:DeepReadonly<WriterDocument>;readonly mainPart:string}

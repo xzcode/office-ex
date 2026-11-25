@@ -90,7 +90,7 @@ export const spanish = {
   "eyebrow": "OFFICE EX / ESPACIO LOCAL",
   "region": "Formatos regionales",
   "documentLanguage": "Idioma de documentos nuevos (preferencia)",
-  "documentLanguageNote": "Los editores incorporarán los metadatos de idioma. Los documentos existentes no cambian.",
+  "documentLanguageNote": "Los documentos nuevos de Writer usan este idioma. Los archivos existentes no cambian; los otros editores lo incorporarán más adelante.",
   "regionSample": "Vista previa del formato regional",
   "history": "Historial",
   "canvas": "Lienzo",
@@ -204,7 +204,14 @@ export const spanish = {
   "writerInlineImageNote": "La marca de objeto representa una imagen en línea. Usa sus controles para cambiar el tamaño o eliminarla.",
   "writerContinuous": "Editar texto continuo",
   "writerExitContinuous": "Volver al editor de párrafos",
-  "writerContinuousNote": "Selecciona, copia, corta, pega o da formato a párrafos de texto contiguos. Las tablas, saltos de página, secciones y párrafos con imágenes delimitan la selección. Las nuevas líneas pegadas se convierten en párrafos."
+  "writerContinuousNote": "Selecciona, copia, corta, pega o da formato a párrafos de texto contiguos. Las tablas, saltos de página, secciones y párrafos con imágenes delimitan la selección. Las nuevas líneas pegadas se convierten en párrafos.",
+  "writerSection": "Sección",
+  "writerSectionNumber": "Sección {number}",
+  "writerSectionBreak": "Salto de sección en la página siguiente",
+  "writerTextLanguage": "Idioma del texto (BCP 47)",
+  "writerParagraphDirection": "Dirección del párrafo",
+  "writerLtr": "De izquierda a derecha",
+  "writerRtl": "De derecha a izquierda"
 } as const;
 export const portuguese = {
   "open": "Abrir arquivo",
@@ -296,7 +303,7 @@ export const portuguese = {
   "eyebrow": "OFFICE EX / ESPAÇO LOCAL",
   "region": "Formatos regionais",
   "documentLanguage": "Idioma de novos documentos (preferência)",
-  "documentLanguageNote": "Os metadados de idioma serão integrados aos editores. Os documentos existentes não serão alterados.",
+  "documentLanguageNote": "Novos documentos Writer usam este idioma. Arquivos existentes não mudam; os outros editores terão suporte posteriormente.",
   "regionSample": "Prévia do formato regional",
   "history": "Histórico",
   "canvas": "Área de desenho",
@@ -410,5 +417,12 @@ export const portuguese = {
   "writerInlineImageNote": "O marcador de objeto representa uma imagem em linha. Use os controles da imagem para redimensioná-la ou removê-la.",
   "writerContinuous": "Editar texto contínuo",
   "writerExitContinuous": "Voltar ao editor de parágrafos",
-  "writerContinuousNote": "Selecione, copie, recorte, cole ou formate parágrafos de texto adjacentes. Tabelas, quebras de página, seções e parágrafos com imagens delimitam a seleção. Novas linhas coladas se tornam parágrafos."
+  "writerContinuousNote": "Selecione, copie, recorte, cole ou formate parágrafos de texto adjacentes. Tabelas, quebras de página, seções e parágrafos com imagens delimitam a seleção. Novas linhas coladas se tornam parágrafos.",
+  "writerSection": "Seção",
+  "writerSectionNumber": "Seção {number}",
+  "writerSectionBreak": "Quebra de seção na próxima página",
+  "writerTextLanguage": "Idioma do texto (BCP 47)",
+  "writerParagraphDirection": "Direção do parágrafo",
+  "writerLtr": "Da esquerda para a direita",
+  "writerRtl": "Da direita para a esquerda"
 } as const;

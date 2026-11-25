@@ -103,3 +103,7 @@ npm run smoke:desktop
 ### Writer 连续文字与行内图片开发预览
 
 新增连续相邻段落的原子范围编辑、纯文本剪贴板和图文混排（独立 DrawingML run，含单元格图片）。仍为受限 DOCX 与估算分页，非完整 M2 验收。详见 [Writer](docs/M2-WRITER.md)。
+
+### Writer 分节和文档语言
+
+限定下一页单栏分节及独立纸张参数；保留文字语言和直接书写方向标记。RTL/复杂文字精确布局、完整 Word 互操作与 DOC 仍在开发中。

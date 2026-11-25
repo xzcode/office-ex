@@ -56,7 +56,7 @@ test('WRT-04 refuses unsupported parts, elements and attributes; original bytes 
     (s:string)=>s.replace('<w:p>','<w:p w:rsidR="00112233">'),
     (s:string)=>s.replace('<w:p>','<w:p><!--preserve this-->'),
     (s:string)=>s.replace('<w:t xml:space="preserve">','<w:fldSimple w:instr="DATE"/><w:t xml:space="preserve">'),
-    (s:string)=>s.replace('<w:sz w:val="24"/>','<w:lang w:val="en-US"/><w:sz w:val="24"/>')
+    (s:string)=>s.replace('<w:sz w:val="24"/>','<w:lang w:val="en-US" w:unknown="1"/><w:sz w:val="24"/>')
   ]){
     const parts=new Map(opc.parts);parts.set(opc.mainPart!,enc.encode(mutate(dec.decode(parts.get(opc.mainPart!)!))));
     assert.throws(()=>openWriterDocx(writeZip(parts),'fixture','Title'),fails('unsupported'));

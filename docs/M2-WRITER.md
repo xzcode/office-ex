@@ -109,3 +109,9 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 - 跨段落范围按同一连续父容器解析（同节或同一 cell），支持反向选区、一次事务替换/多段粘贴、粗斜下划线和直接格式、普通文本提取，明确阻止跨表格/分页/分节边界。新增连续文字模式：原生 textarea 在相邻纯文字段落中选择、复制/剪切/粘贴、输入及格式化，保留已有软换行语义，新增换行拆段；Canvas 共享范围和 caret 预览，单段编辑模式仍存在。富文本/图片剪贴板与跨结构的全页 WYSIWYG 尚未实现。
 - 图片参与同一行盒的宽、高、baseline 和逻辑 caret，表格行高包含 cell 图片。固定表格缩列前检查图像宽度。DOCX 支持独立 drawing run 与 text run 混排及 cell 内嵌图片；同一 run 混合 drawing/text、浮动、复杂裁剪等仍只读。修复先插图/保存、再撤销插图时原包媒体保留导致保存失败：源媒体与当前资源做保留并集（不要求已撤销资源继续留在模型），不删除原始图关系。新增 5 个消息键，204/locale，11 个 locale，无新依赖。
 - 新增跨范围、图像原子位置、行盒/单元格布局、媒体 undo 保存与桌面连续编辑/图片操作验证。实际 CI 结果另记。尚非完整 M2：精确 bidi/复杂脚本 shaping、全页 WYSIWYG、增量分页、文档语言/分节属性、广泛普通 DOCX、多图/富格式剪贴板、实际 Office 布局验收及 M2-L DOC 仍待完成。
+
+### 第七批整合补充：分节、文档语言与独立编辑互通
+
+- 下一页分节事务允许同文档多个单栏 section，独立纸张、方向、页边距及已理解的页眉/页脚距离和单栏间距。非末节须以段落结束；DOCX 通过末段 pPr/sectPr 与最终 body/sectPr 映射。连续/奇偶页、多栏/页眉内容/未知节属性不进入可编辑 profile。页面设置可明确选择 section；原模型旧版本兼容。跨节范围仍不合并。
+- TextStyle 可选 language/eastAsiaLanguage/bidiLanguage 与 runDirection/paragraphDirection；保留 BCP47 标签（不按界面语言改源文件），DOCX w:lang、直接 w:rtl、w:bidi 安全往返。新 Writer 文档实际采用独立文档语言偏好；已有文档不因 UI/地区/偏好切换而变化。输入 dir 与明确段落方向一致；RTL 精确视觉布局仍不支持，拒绝预览，不冒充 shaping。字符命名样式 RTL toggle 未映射。11 locale 211 键。
+- 首轮 CI 45526894374 唯一失败是资源字典原型（null-prototype vs plain object）的严格相等断言，资源字段及字节内容一致；修正为比较相同语义的资源映射，保持每个摘要与 payload 的严格检查。新增多节、语言、独立 Python 读取和 Python 修改受控 DOCX 后由 Office EX 读入并保存的互通；不等同于任意 Word 原生复杂文件或 Microsoft Office GUI 实测。新版本需独立 CI。
