@@ -1,0 +1,120 @@
+# One-shot release authorization: publish the exact previously verified candidate.
+# The M5 development branch and default branch remain unchanged.
+name: Publish Office EX v0.1.0-dev.1
+on:
+  push:
+    branches: [release/office-ex-v0.1.0-dev.1]
+    paths: ['.github/workflows/publish-preview-0.1.0-dev.1.yml']
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: office-ex-preview-v0.1.0-dev.1
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'xzcode/office-ex' && github.ref == 'refs/heads/release/office-ex-v0.1.0-dev.1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE: 398f1a42cf7877fb0b2b436a435b113513d3040c
+      SOURCE_RUN: '45616663276'
+      VERSION: 0.1.0-dev.1
+      TAG: v0.1.0-dev.1
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 398f1a42cf7877fb0b2b436a435b113513d3040c
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '24.22.3'}
+      - name: Verify exact successful source run and expected artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE"
+          mkdir -p out/release-check
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > out/release-check/run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/jobs?per_page=100" > out/release-check/jobs.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/artifacts?per_page=100" > out/release-check/artifacts.json
+          python3 - <<'PY'
+          import os,json
+          from pathlib import Path
+          p=Path('out/release-check');read=lambda n:json.loads((p/n).read_text())
+          run=read('run.json')
+          assert run['head_sha']==os.environ['SOURCE'] and run['status']=='completed' and run['conclusion']=='success'
+          assert run['path']=='.github/workflows/m5.yml' and run['event']=='push'
+          jobs=read('jobs.json')['jobs']
+          required=['verify','package-preview (ubuntu-24.04, linux, x64)','package-preview (windows-2025, win32, x64)','package-preview (macos-15, darwin, arm64)']
+          for n in required:
+              matches=[j for j in jobs if j['name']==n]
+              assert len(matches)==1 and matches[0]['conclusion']=='success',n
+          expected={'office-ex-preview-darwin-arm64':15022662666,'office-ex-preview-win32-x64':15022606556,'office-ex-preview-linux-x64':15022183315}
+          artifacts=read('artifacts.json')['artifacts']
+          assert {a['name']:a['id'] for a in artifacts}==expected
+          assert all(not a['expired'] and a['workflow_run']['head_sha']==os.environ['SOURCE'] for a in artifacts)
+          print('Verified exact source, four successful jobs and three non-expired artifacts.')
+          PY
+      - name: Download and assemble already verified native packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name office-ex-preview-linux-x64 --name office-ex-preview-win32-x64 --name office-ex-preview-darwin-arm64 --dir out/release-input
+          node --input-type=module -e 'import {preparePreviewRelease} from "./scripts/prepare-preview-release.mjs"; console.log(JSON.stringify(await preparePreviewRelease("out/release-input","out/release-draft",process.env.VERSION,process.env.TAG,process.env.SOURCE,process.env.SOURCE_RUN),null,2))'
+          cd out/release-draft
+          sha256sum -c SHA256SUMS
+          cat >> RELEASE-NOTES.md <<'NOTES'
+
+          ## 中文说明
+
+          Office EX 首个开发预览版。Windows x64、macOS ARM64、Linux x64 安装包均通过原生构建、安装、启动及移除检查。支持限定范围的 DOC/DOCX、XLS/XLSX、PPT/PPTX 编辑和保存，以及离线 PDF 阅读、Writer/Slides PDF 输出。Windows 尚未签名，macOS 为 ad-hoc 签名且未公证；请保持系统安全保护开启。完整 Office 兼容性与旧格式、性能、语言等正式版验收仍未完成。
+          NOTES
+      - name: Create tag, upload draft assets, verify and publish prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Do not replace any pre-existing release or tag.
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > out/release-check/releases.json
+          gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$TAG" > out/release-check/tags.json
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          tag=os.environ['TAG']
+          assert not any(r['tag_name']==tag for page in json.loads(Path('out/release-check/releases.json').read_text()) for r in page),'Release already exists'
+          assert not any(r['ref']=='refs/tags/'+tag for r in json.loads(Path('out/release-check/tags.json').read_text())),'Tag already exists'
+          PY
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$SOURCE" > out/release-check/tag.json
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')" = "$SOURCE"
+          gh release create "$TAG" out/release-draft/Office-EX-* out/release-draft/SHA256SUMS out/release-draft/preview-release-evidence.json --repo "$GITHUB_REPOSITORY" --draft --prerelease --latest=false --verify-tag --title "Office EX $VERSION Development Preview" --notes-file out/release-draft/RELEASE-NOTES.md
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > out/release-check/draft.json
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          tag=os.environ['TAG']
+          matches=[r for page in json.loads(Path('out/release-check/draft.json').read_text()) for r in page if r['tag_name']==tag]
+          assert len(matches)==1 and matches[0]['draft'] and matches[0]['prerelease'],'Expected one unpublished prerelease draft'
+          r=matches[0]
+          root=Path('out/release-draft')
+          expected={p.name:p for p in root.iterdir() if p.is_file() and p.name!='RELEASE-NOTES.md'}
+          assets={a['name']:a for a in r['assets']}
+          assert len(expected)==20 and set(assets)==set(expected),'Release asset set incomplete'
+          for name,p in expected.items():
+              a=assets[name]
+              assert a['state']=='uploaded' and a['size']==p.stat().st_size,name
+              if a.get('digest'):
+                  h=hashlib.sha256()
+                  with p.open('rb') as f:
+                      for b in iter(lambda:f.read(1024*1024),b''):h.update(b)
+                  assert a['digest']=='sha256:'+h.hexdigest(),name
+          print('Verified all 20 uploaded assets before making release public.')
+          PY
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > out/release-check/published.json
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          r=json.loads(Path('out/release-check/published.json').read_text())
+          assert r['tag_name']==os.environ['TAG'] and not r['draft'] and r['prerelease'] and r['published_at'] and len(r['assets'])==20
+          print('PUBLISHED',r['html_url'],'assets',len(r['assets']))
+          PY
