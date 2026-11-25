@@ -76,6 +76,9 @@ jobs:
       - name: Native M4 Slides and PDF smoke (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a --server-args="-screen 0 1280x900x24" npm run smoke:m4
+      - name: Focused PDF cancellation regression (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a --server-args="-screen 0 1280x900x24" node scripts/smoke-pdf-cancel.mjs
       - name: Native Windows smoke
         if: runner.os == 'Windows'
         run: npm run smoke:desktop
@@ -86,4 +89,5 @@ jobs:
           path: |
             out/native
             out/m4-native
+            out/pdf-cancel
           if-no-files-found: warn

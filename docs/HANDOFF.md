@@ -122,3 +122,5 @@ Continue from branch m3-sheets-recovery-20261125 and docs/M3-RECOVERY.md. Candid
 ## 2026-11-25 — M4 source recovered and continued
 
 Continue on `m4-slides-pdf-20261125`, based on `8273c89d3e16d04cbcc9ab613b085040016e9460`. M4 candidate source recovered from the preserved Seoul archive; read `docs/M4-SLIDES-PDF.md`. Eight pinned OFL fonts restored via `npm run setup:fonts`; 236/236 local regressions, independent PPTX/PPT fixture checks, build and license audit passed. Native headless Electron and PDF export verified in part; M4/M4-L acceptance remains open. Do not merge or release before closing remaining compatibility/security/performance/multilingual/native gates.
+
+M4 continuation: 12 native functional checks passed before a final PDF.js stream exception assertion. Corrected rich-text run comparison and PDF stream cancellation Error reason; rebuilt and passed focused PDF cancellation 3/3 with zero exceptions. Full native rerun was blocked earlier by headless image insertion timeout; see `docs/M4-SLIDES-PDF.md` and `docs/verification/m4/pdf-cancel-headless.json`. Keep M4 acceptance open, then address full native repeatability, timing and reference Office.

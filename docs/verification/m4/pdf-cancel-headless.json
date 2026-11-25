@@ -1,0 +1,9 @@
+{
+  "scope": "Real sandboxed Electron PDF tab; rapid page changes, cancelled text reads and search",
+  "checks": [
+    "Repeated rapid navigation settles with live local text layer",
+    "Search and subsequent navigation remain functional",
+    "Tab close leaves no renderer stream exceptions"
+  ],
+  "errors": []
+}

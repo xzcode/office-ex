@@ -48,9 +48,13 @@ async function readText(page: PDFPageProxy, signal: AbortSignal | undefined): Pr
   // normalization resolves compatibility glyph forms (for example Arabic
   // presentation forms and CJK radicals) for selection/search only. The
   // original PDF bytes and every Office model string remain untouched.
+  checkSignal(signal);
   const stream = page.streamTextContent({ includeMarkedContent: true, disableNormalization: false });
   const reader = stream.getReader();
-  const abort = () => { void reader.cancel().catch(() => {}); };
+  // PDF.js MessageHandler requires an Error reason before marking its stream
+  // controller closed. An undefined reason rejects upstream cancellation after
+  // the browser has already closed the local stream, leaving in-flight chunks.
+  const abort = () => { void reader.cancel(new Error('PDF text read cancelled')).catch(() => {}); };
   signal?.addEventListener('abort', abort, { once: true });
   const content: TextContent = { items: [], styles: Object.create(null), lang: null };
   const builder = new PdfActualTextBuilder();
@@ -67,6 +71,7 @@ async function readText(page: PDFPageProxy, signal: AbortSignal | undefined): Pr
       Object.assign(content.styles, chunk.styles);
       if (chunk.lang) content.lang = chunk.lang;
     }
+    checkSignal(signal);
     content.items = builder.finish();
     for (const item of content.items) {
       if (!('str' in item)) continue;
@@ -74,7 +79,7 @@ async function readText(page: PDFPageProxy, signal: AbortSignal | undefined): Pr
       segments.push({ start: text.length, end: text.length + item.str.length }); text += item.str + (item.hasEOL ? '\n' : '');
     }
     return { text, segments, content };
-  } catch (error) { await reader.cancel().catch(() => {}); throw error; }
+  } catch (error) { await reader.cancel(error instanceof Error ? error : new Error('PDF text extraction failed')).catch(() => {}); throw error; }
   finally { signal?.removeEventListener('abort', abort); reader.releaseLock(); }
 }
 
