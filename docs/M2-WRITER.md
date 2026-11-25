@@ -115,3 +115,9 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 - 下一页分节事务允许同文档多个单栏 section，独立纸张、方向、页边距及已理解的页眉/页脚距离和单栏间距。非末节须以段落结束；DOCX 通过末段 pPr/sectPr 与最终 body/sectPr 映射。连续/奇偶页、多栏/页眉内容/未知节属性不进入可编辑 profile。页面设置可明确选择 section；原模型旧版本兼容。跨节范围仍不合并。
 - TextStyle 可选 language/eastAsiaLanguage/bidiLanguage 与 runDirection/paragraphDirection；保留 BCP47 标签（不按界面语言改源文件），DOCX w:lang、直接 w:rtl、w:bidi 安全往返。新 Writer 文档实际采用独立文档语言偏好；已有文档不因 UI/地区/偏好切换而变化。输入 dir 与明确段落方向一致；RTL 精确视觉布局仍不支持，拒绝预览，不冒充 shaping。字符命名样式 RTL toggle 未映射。11 locale 211 键。
 - 首轮 CI 45526894374 唯一失败是资源字典原型（null-prototype vs plain object）的严格相等断言，资源字段及字节内容一致；修正为比较相同语义的资源映射，保持每个摘要与 payload 的严格检查。新增多节、语言、独立 Python 读取和 Python 修改受控 DOCX 后由 Office EX 读入并保存的互通；不等同于任意 Word 原生复杂文件或 Microsoft Office GUI 实测。新版本需独立 CI。
+
+### 第七批最终验收记录
+
+受测源码 3e0a60f62d543d3f77cde6847f7fc0ee36f46f32，[CI 45527322279](https://github.com/xzcode/office-ex/actions/runs/45527322279) verify-writer 成功：13 workspace、50 源文件，162/162 自动化测试通过，0 失败、0 跳过，新增 10 项。首轮 45526894374 的资源字典原型断言问题已修正；最终使用严格的资源字段/内容比较。独立 python-docx 读取受控混合图片、单元格图片、分节纸张、语言标记的 DOCX，并修改该文件；Office EX 实际导入、编辑及原格式保存，独立读取器再次验证，所有非正文部件逐字节一致。原有 OOXML/CFB 互读及依赖许可检查通过。记录时任务状态：verify-writer: success; native-other (ubuntu-24.04): in_progress; native-macos: in_progress; native-other (windows-2025): in_progress。未结束的原生任务不得计作通过。
+
+当前仅具备有边界的连续文字模式、行内图像/表格、下一页单栏分节及文字语言标记。尚未达到完整 M2：全页富文本所见即所得（连续模式是纯文本原生输入）、跨结构/富格式剪贴板、复杂脚本/RTL shaping 及精确光标、增量重排、广泛 Word 兼容和参考 Office 视觉实测。M2-L DOC 仍未完成，保留原要求。未合并 master、未发布安装包，不降低 22 locale 与六格式 P0 门槛。

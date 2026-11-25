@@ -104,3 +104,5 @@ M2 集成第六批候选：增加图片原始字节/摘要、受限 PNG/JPEG 插
 第七批候选实现：跨相邻段落原子范围编辑、连续文字模式、混合 text/drawing run 与 cell 图片、原子逻辑位置、图像行盒、源媒体保存后撤销修复。204 键/locale。先核对新 CI；M2 退出标准仍按 04-writer/09-i18n，不宣称普通 Word 全兼容或完整 WYSIWYG。M2-L DOC 未达验收。
 
 第七批继续整合下一页分节、独立页面参数与 doc language/direction 元数据，11 locale 211 键，补独立 python-docx 修改后的导入/编辑/保存夹具。首轮原型比较失败已修正。真实双向排版、完整 WYSIWYG、增量重排、更多普通 Office 文件依赖和 M2-L DOC 仍为必需退出门槛。
+
+第七批最终受测 3e0a60f62d543d3f77cde6847f7fc0ee36f46f32；CI https://github.com/xzcode/office-ex/actions/runs/45527322279 基础 162/162、独立混合图片/分节/语言往返及 Python 修改后再导入互通均通过。记录时 verify-writer: success; native-other (ubuntu-24.04): in_progress; native-macos: in_progress; native-other (windows-2025): in_progress。继续时核对实际原生结果并优先修复；集中完成分页富文本编辑、复杂文字 shaping/RTL 和普通 Word 兼容，随后 M2-L DOC。M2 整体未 verified，未合并 master。详见 docs/M2-WRITER.md。
