@@ -42,3 +42,7 @@ The M1 dependency installation was checked with npm's advisory audit on **2026-1
 M1 bundles **no external font, icon collection, image, template or user document**. Canvas measurements use available system fonts; missing-font diagnostics are part of the rendering interface. No installed-font availability, typography fidelity or font redistribution permission is claimed by this dependency review.
 
 Python packages in [`tests/requirements.txt`](../tests/requirements.txt) are independent fixture/interop tools used only in tests. They are excluded from application bundles. CFB, shared models, command history, format recognition, save planning, file authority, geometry and document semantics remain original Office EX code. Native Office compatibility, historical Office application coverage and typography equivalence have separate later-stage acceptance gates.
+
+## M4 PDF dependency update
+
+PDF.js 6.5.438 is a pinned generic PDF parser/renderer (Apache-2.0), not an Office suite. The lock inventory records its direct and transitive dependencies and license notices. Eight unmodified OFL-1.1 Noto faces are verified against the reviewed manifest at `assets/fonts/manifest.json`; build-time setup is pinned, runtime remains offline. Historical M1 asset claims above describe M1 only.

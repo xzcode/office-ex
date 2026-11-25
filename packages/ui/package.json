@@ -16,6 +16,7 @@
     "@office-ex/slides": "0.1.0-dev.1",
     "@office-ex/render": "0.1.0-dev.1",
     "@office-ex/format-service": "0.1.0-dev.1",
-    "@office-ex/i18n": "0.1.0-dev.1"
+    "@office-ex/i18n": "0.1.0-dev.1",
+    "@office-ex/pdf": "0.1.0-dev.1"
   }
 }

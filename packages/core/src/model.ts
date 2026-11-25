@@ -37,9 +37,11 @@ export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSyste
 
 export interface Geometry { x: number; y: number; width: number; height: number; rotation: number }
 interface ShapeBase { id: string; geometry: Geometry; fill?: Color; stroke?: { color: Color; width: number } }
-export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[] }) | (ShapeBase & { type: 'rect' | 'ellipse' | 'line' }) | (ShapeBase & { type: 'image'; resourceId: string });
+export interface SlideTextFrame { wrap?: boolean; verticalAlignment?: 'top'|'center'|'bottom'; margins?: {top:number;right:number;bottom:number;left:number}; direction?: 'ltr'|'rtl'|'auto' }
+export interface SlideTheme { name:string; colors:Record<string,Extract<Color,{kind:'rgba'}>>; majorFont?:string; minorFont?:string }
+export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: 'rect' | 'ellipse' | 'line' }) | (ShapeBase & { type: 'image'; resourceId: string });
 export interface Slide { id: string; background: Color; shapes: Shape[] }
-export interface SlidesDocument extends DocumentBase { kind: 'slides'; size: { width: number; height: number }; slides: Slide[] }
+export interface SlidesDocument extends DocumentBase { kind: 'slides'; size: { width: number; height: number }; slides: Slide[]; theme?: SlideTheme }
 export type OfficeDocument = WriterDocument | SheetsDocument | SlidesDocument;
 export type Document = OfficeDocument;
 
@@ -144,7 +146,7 @@ export function validateDocument(value: unknown): OfficeDocument {
   assert(isRecord(value), 'invalid', 'Expected document');
   if (value.schemaVersion !== 1) throw new OfficeError('unsupported', 'Unsupported document schema version');
   const fields = ['schemaVersion', 'documentId', 'title', 'resources', 'styles', 'defaultTextStyle', 'kind'];
-  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections','defaultParagraphStyleId'] : value.kind === 'sheets' ? ['dateSystem', 'sheets'] : value.kind === 'slides' ? ['size', 'slides'] : [])]);
+  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections','defaultParagraphStyleId'] : value.kind === 'sheets' ? ['dateSystem', 'sheets'] : value.kind === 'slides' ? ['size', 'slides', 'theme'] : [])]);
   assertId(model.documentId); text(model.title, 1024, false);
   const ids = new Set<string>();
   const id = (candidate: unknown): void => { assertId(candidate); assert(!ids.has(candidate), 'invalid', 'Duplicate stable node identifier'); ids.add(candidate); };
@@ -270,15 +272,31 @@ export function validateDocument(value: unknown): OfficeDocument {
     });
   } else if (model.kind === 'slides') {
     const size = object(model.size, ['width', 'height']); integer(size.width, 1); integer(size.height, 1);
+    if (model.theme !== undefined) {
+      const theme = object(model.theme, ['name','colors','majorFont','minorFont']); text(theme.name,256,false);
+      assert(isRecord(theme.colors) && Object.keys(theme.colors).length<=64,'invalid','Invalid slide theme colors');
+      for(const [name,color] of Object.entries(theme.colors)){assert(/^[A-Za-z0-9_-]{1,128}$/.test(name),'invalid','Invalid theme color name');validateColor(color);assert(color.kind==='rgba','invalid','Theme colors cannot reference a theme');}
+      for(const key of ['majorFont','minorFont'])if(theme[key]!==undefined)validateTextStyle({fontFamily:theme[key]});
+    }
     list(model.slides).forEach((candidate) => {
       const slide = object(candidate, ['id', 'background', 'shapes']); id(slide.id); validateColor(slide.background);
       list(slide.shapes).forEach((candidate) => {
-        const shape = object(candidate, ['id', 'type', 'geometry', 'fill', 'stroke', 'runs', 'resourceId']); id(shape.id); validateGeometry(shape.geometry);
+        const shape = object(candidate, ['id', 'type', 'geometry', 'fill', 'stroke', 'runs', 'resourceId', 'textStyle', 'textFrame']); id(shape.id); validateGeometry(shape.geometry);
         if (shape.fill !== undefined) validateColor(shape.fill);
         if (shape.stroke !== undefined) { const stroke = object(shape.stroke, ['color', 'width']); validateColor(stroke.color); integer(stroke.width, 0); }
-        if (shape.type === 'text') { assert(!('resourceId' in shape), 'invalid', 'Unexpected text shape fields'); list(shape.runs).forEach((item) => run(item, true)); }
-        else if (shape.type === 'image') { assert(!('runs' in shape) && shape.resourceId !== undefined, 'invalid', 'Invalid image shape'); optionalId(shape.resourceId, resources); }
-        else assert(['rect', 'ellipse', 'line'].includes(String(shape.type)) && !('runs' in shape) && !('resourceId' in shape), 'invalid', 'Invalid shape type');
+        if (shape.type === 'text') {
+          assert(!('resourceId' in shape), 'invalid', 'Unexpected text shape fields'); list(shape.runs).forEach((item) => run(item, true));
+          if(shape.textStyle!==undefined)validateTextStyle(shape.textStyle);
+          if(shape.textFrame!==undefined){
+            const frame=object(shape.textFrame,['wrap','verticalAlignment','margins','direction']);
+            if(frame.wrap!==undefined)bool(frame.wrap);
+            if(frame.verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(frame.verticalAlignment)),'invalid','Invalid text frame alignment');
+            if(frame.direction!==undefined)assert(['ltr','rtl','auto'].includes(String(frame.direction)),'invalid','Invalid text frame direction');
+            if(frame.margins!==undefined){const margins=object(frame.margins,['top','right','bottom','left']);for(const key of ['top','right','bottom','left'])integer(margins[key],0);}
+          }
+        }
+        else if (shape.type === 'image') { assert(!('textStyle' in shape)&&!('textFrame' in shape)&&!('runs' in shape) && shape.resourceId !== undefined, 'invalid', 'Invalid image shape'); optionalId(shape.resourceId, resources); }
+        else assert(['rect', 'ellipse', 'line'].includes(String(shape.type)) && !('textStyle' in shape)&&!('textFrame' in shape)&& !('runs' in shape) && !('resourceId' in shape), 'invalid', 'Invalid shape type');
       });
     });
   } else throw new OfficeError('invalid', 'Invalid document kind');

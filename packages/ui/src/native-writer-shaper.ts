@@ -3,6 +3,7 @@
  * secondary office editor. The source of truth remains the Writer model.
  * The displayed paragraph is made by the exact same projection as measurement.
  */
+import { bundledFontFamily } from '@office-ex/pdf';
 import {assert,EMU_PER_CSS_PIXEL,OfficeError} from '@office-ex/contracts';
 import {paragraphBoundaries,inlineText,resolveTextStyle,type DeepReadonly,type Paragraph,type WriterDocument,type TextStyle,type Inline} from '@office-ex/core';
 import type {WriterParagraphShaper,NativeParagraphShape,WriterLine,WriterCaret,WriterImageBox,WriterVisualCluster} from '@office-ex/render';
@@ -12,7 +13,7 @@ const px=(value:number)=>value/PX+'px';
 const generic=/^(sans-serif|serif|monospace|system-ui)$/;
 function fontFamily(value:string|undefined):string{return !value?'sans-serif':generic.test(value)?value:JSON.stringify(value)+', sans-serif';}
 function styleText(el:HTMLElement,style:DeepReadonly<TextStyle>):void{
-  el.style.fontFamily=[...new Set([style.fontAscii??style.fontFamily,style.fontHighAnsi,style.fontEastAsia,style.fontComplex].filter((v):v is string=>!!v))].map(v=>generic.test(v)?v:JSON.stringify(v)).concat('sans-serif').join(', ');el.style.fontSize=px(style.fontSize??152400);
+  el.style.fontFamily=[...new Set([style.fontAscii??style.fontFamily,style.fontHighAnsi,style.fontEastAsia,style.fontComplex].filter((v):v is string=>!!v))].map(v=>bundledFontFamily(v,style.language)).concat(bundledFontFamily(undefined,style.language)).join(', ');el.style.fontSize=px(style.fontSize??152400);
   el.style.fontWeight=style.bold?'700':'400';el.style.fontStyle=style.italic?'italic':'normal';
   el.style.textDecoration=style.underline?'underline':'none';
   const c=style.color;el.style.color=c?.kind==='rgba'?'rgba('+[c.red,c.green,c.blue,c.alpha/255].join(',')+')':'#20242c';

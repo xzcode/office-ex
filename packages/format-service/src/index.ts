@@ -1,17 +1,19 @@
 /** Sandbox-side adapter composition. Structural inspection stays independent of semantic profiles. */
 import { OfficeError } from '@office-ex/contracts';
-import { validateDocument, type OfficeDocument, type WriterDocument, type SheetsDocument } from '@office-ex/core';
+import { validateDocument, type OfficeDocument, type WriterDocument, type SheetsDocument, type SlidesDocument } from '@office-ex/core';
 import { BoundedReader, sniffContainer, sortedDiagnostics, type Detection, type FormatId, type FormatDiagnostic, type CompatibilityReport } from '@office-ex/format-common';
-import { openOpc, openWriterDocx, writeWriterDocx, saveWriterDocx, openSheetsXlsx, writeSheetsXlsx, saveSheetsXlsx } from '@office-ex/ooxml';
+import { openOpc, openWriterDocx, writeWriterDocx, saveWriterDocx, openSheetsXlsx, writeSheetsXlsx, saveSheetsXlsx, openSlidesPptx, writeSlidesPptx, saveSlidesPptx } from '@office-ex/ooxml';
 import type { CalculatedValue } from '@office-ex/sheets';
 import { openLegacyXls, writeLegacyXls, saveLegacyXls } from './legacy-xls.js';
 export { openLegacyXls, writeLegacyXls, saveLegacyXls } from './legacy-xls.js';
+import { openLegacyPpt, writeLegacyPpt, saveLegacyPpt } from './legacy-ppt.js';
+export { openLegacyPpt, writeLegacyPpt, saveLegacyPpt } from './legacy-ppt.js';
 import { readCfb } from '@office-ex/cfb';
 import { inspectLegacyDocText, openLegacyDoc, writeLegacyDoc, saveLegacyDoc, type LegacyDocText } from './legacy-doc.js';
 export { inspectLegacyDocText, openLegacyDoc, writeLegacyDoc, saveLegacyDoc } from './legacy-doc.js';
 
 export interface ContainerEntry { name: string; size: number; sha256: string }
-export interface Inspection { detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument; editableWriterFormat?: 'doc'|'docx'; legacyDocText?: LegacyDocText; editableSheets?: SheetsDocument; editableSheetsFormat?: 'xls'|'xlsx'; sheetsCachedValues?: [string,CalculatedValue][] }
+export interface Inspection { detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument; editableWriterFormat?: 'doc'|'docx'; legacyDocText?: LegacyDocText; editableSheets?: SheetsDocument; editableSheetsFormat?: 'xls'|'xlsx'; sheetsCachedValues?: [string,CalculatedValue][]; editableSlides?: SlidesDocument; editableSlidesFormat?: 'ppt'|'pptx' }
 const MAX_INPUT = 100 * 1024 * 1024;
 const MAX_DRAFT = 32 * 1024 * 1024;
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -157,6 +159,14 @@ export async function inspectFile(bytes: Uint8Array, filename = '', signal?: Abo
 export async function inspectForEditor(bytes:Uint8Array,filename:string,documentId:string,signal?:AbortSignal):Promise<Inspection>{
   const inspection=await inspectFile(bytes,filename,signal);
   const format=inspection.detection.format;
+  if((format==='ppt'||format==='pptx')&&filename.toLowerCase().endsWith('.'+format)&&bytes.byteLength<=MAX_DRAFT&&!inspection.detection.encrypted){
+    try{
+      const source=format==='pptx'?openSlidesPptx(bytes,documentId,filename,{signal}):openLegacyPpt(bytes,documentId,filename,{signal});
+      const editableSlides=validateDocument(source.document) as SlidesDocument,featureId=format==='ppt'?'LEG-04':'SLD-03';
+      const diagnostics=sortedDiagnostics([...inspection.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),{code:format==='ppt'?'PPT_PROFILE_ACTIVE':'PPTX_PROFILE_ACTIVE',featureId,messageKey:format==='ppt'?'format.pptProfile':'format.pptxProfile',severity:'info',safeAction:'none'}]);
+      return {...inspection,editableSlides,editableSlidesFormat:format,detection:{...inspection.detection,diagnostics},report:{...inspection.report,readOnly:false,diagnostics,features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]}};
+    }catch(error){if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code))return inspection;throw error;}
+  }
   if((format==='xls'||format==='xlsx')&&filename.toLowerCase().endsWith('.'+format)&&bytes.byteLength<=MAX_DRAFT&&!inspection.detection.encrypted){
     try{
       const source=format==='xlsx'?openSheetsXlsx(bytes,documentId,filename,{signal}):openLegacyXls(bytes,documentId,filename);
@@ -221,5 +231,16 @@ export function prepareSheetsSave(format:'xls'|'xlsx',snapshotBytes:Uint8Array,d
   const output=format==='xlsx'?(sourceBytes===undefined?writeSheetsXlsx(model):saveSheetsXlsx(sourceBytes,model)):(sourceBytes===undefined?writeLegacyXls(model):saveLegacyXls(sourceBytes,model));
   if(output.byteLength>MAX_DRAFT)throw new OfficeError('limit','Spreadsheet output exceeds editable profile budget');
   if(format==='xlsx')openSheetsXlsx(output,documentId,model.title);else openLegacyXls(output,documentId,model.title);
+  return output;
+}
+
+/** Main-owned sandbox: matching immutable model + authorized original bytes. */
+export function prepareSlidesSave(format:'ppt'|'pptx',snapshotBytes:Uint8Array,documentId:string,sourceBytes?:Uint8Array):Uint8Array{
+  const model=parseDraft(snapshotBytes);
+  if(model.kind!=='slides'||model.documentId!==documentId)throw new OfficeError('invalid','Presentation save requires matching session identity');
+  if(sourceBytes!==undefined&&(!(sourceBytes instanceof Uint8Array)||!sourceBytes.byteLength||sourceBytes.byteLength>MAX_DRAFT))throw new OfficeError('limit','Presentation source exceeds editable profile budget');
+  const output=format==='pptx'?(sourceBytes===undefined?writeSlidesPptx(model):saveSlidesPptx(sourceBytes,model)):(sourceBytes===undefined?writeLegacyPpt(model):saveLegacyPpt(sourceBytes,model));
+  if(output.byteLength>MAX_DRAFT)throw new OfficeError('limit','Presentation output exceeds editable profile budget');
+  if(format==='pptx')openSlidesPptx(output,documentId,model.title);else openLegacyPpt(output,documentId,model.title);
   return output;
 }

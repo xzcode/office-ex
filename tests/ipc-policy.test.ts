@@ -6,11 +6,21 @@ import { OfficeError } from '@office-ex/contracts';
 import {
   TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId,
   parseDroppedPath, parseTabStates, parseDraftSave, parseDocxSave, parsePreservedCopy, parseCheckpoint,
-  parseRelease, parseSettingsPatch, parseRecoveryId, commandLineFiles,
+  parseRelease, parseSettingsPatch, parseRecoveryId, commandLineFiles, parsePrintRequest,
 } from '../apps/desktop/src/ipc-policy.js';
 const fails = (code: string) => (error: unknown): boolean => error instanceof OfficeError && error.code === code;
 const snapshot = { documentId: 'tab-1', contentId: 'document-1:content:42', revision: 42, bytes: new Uint8Array([1,2]) };
 const save = { ...snapshot, saveAs: false, title: '中文草稿 😀' };
+test('M4 print IPC keeps original PDF capabilities separate from serialized model input',()=>{
+  const pdf={kind:'pdf',documentId:'tab-1',revision:0,sourceToken:'source-1'};
+  assert.deepEqual(parsePrintRequest(pdf),pdf);
+  for(const bad of [{...pdf,bytes:new Uint8Array([1])},{...pdf,sourceToken:undefined},{...pdf,contentId:'tab-1:content:0'},{...pdf,path:'/tmp/private.pdf'},{...pdf,kind:'html'}])assert.throws(()=>parsePrintRequest(bad),fails('invalid'));
+  const model={kind:'document',documentId:'tab-1',revision:2,contentId:'tab-1:content:2',bytes:new Uint8Array([1,2])};
+  assert.deepEqual(parsePrintRequest(model),model);
+  assert.throws(()=>parsePrintRequest({...model,contentId:'other:content:2'}),fails('invalid'));
+  assert.throws(()=>parsePrintRequest({...model,bytes:new Uint8Array(new SharedArrayBuffer(2))}),fails('unsafe'));
+  for(const channel of ['office:save-ppt','office:save-pptx','office:export-pdf','office:print']){assert.doesNotThrow(()=>assertIpcArity(channel,[model]));assert.throws(()=>assertIpcArity(channel,[model,'extra']),fails('invalid'));}
+});
 test('SEC-01/FS-01: only the live main frame of the expected WebContents may invoke IPC', () => {
   const evidence = { windowAlive: true, expectedWebContents: true, mainFrame: true, frameOrigin: TRUSTED_APP_ORIGIN };
   assert.doesNotThrow(() => assertTrustedSender(evidence));

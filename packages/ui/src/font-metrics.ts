@@ -1,3 +1,4 @@
+import { bundledFontFamily } from '@office-ex/pdf';
 import { EMU_PER_CSS_PIXEL, graphemeBoundaries, OfficeError, assert } from '@office-ex/contracts';
 import type { FontMeasurement, FontMetrics, FontRequest } from '@office-ex/render';
 /** Chromium Canvas supplies both measure and draw. Full mixed-direction shaping is M2. */
@@ -13,20 +14,20 @@ export class CanvasFontMetrics implements FontMetrics {
     return `${request.italic ? 'italic ' : ''}${request.bold ? 'bold ' : ''}${request.size / EMU_PER_CSS_PIXEL}px ${family}`;
   }
   private resolvedFamily(request:FontRequest):string {
-    if (/^(sans-serif|serif|monospace|system-ui)$/.test(request.family)) return request.family;
+    if (/^(sans-serif|serif|monospace|system-ui)$/.test(request.family)) return request.family==='serif'?'Noto Serif':request.family==='monospace'?'Noto Sans Mono':'Noto Sans';
     // Font Loading API alone cannot prove a local family is installed. Compare two fallbacks.
     const quoted = JSON.stringify(request.family);
     const probe = 'mmmmmmWWWWiii漢字000';
     return ['serif','monospace'].some(fallback => {
       this.context.font = this.font(request,fallback); const reference = this.context.measureText(probe).width;
       this.context.font = this.font(request,`${quoted},${fallback}`); return this.context.measureText(probe).width !== reference;
-    }) ? request.family : 'sans-serif';
+    }) ? request.family : 'Noto Sans';
   }
   measure(text:string,request:FontRequest):FontMeasurement {
     assert(typeof request.family === 'string' && request.family.length > 0 && request.family.length <= 512 && !/[\x00-\x1f\x7f]/.test(request.family) && Number.isSafeInteger(request.size) && request.size > 0 && request.size <= 12_700 * 1638 && typeof request.bold === 'boolean' && typeof request.italic === 'boolean' && (request.direction === 'ltr' || request.direction === 'rtl'), 'invalid', 'Invalid font request');
     if (text.length > 16_384) throw new OfficeError('limit','Split long text into shaping runs');
     const actualFamily = this.resolvedFamily(request);
-    this.context.font = this.font(request,/^(sans-serif|serif|monospace|system-ui)$/.test(actualFamily) ? actualFamily : JSON.stringify(actualFamily));
+    this.context.font = this.font(request,bundledFontFamily(actualFamily));
     this.context.direction = request.direction;
     // All layout coordinates use the left edge and alphabetic baseline, even in RTL runs.
     this.context.textAlign = 'left';

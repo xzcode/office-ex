@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DesktopBridge, MenuAction, OpenFileResult } from '@office-ex/ui';
 const api: DesktopBridge = {
+  exportPdf: request => ipcRenderer.invoke('office:export-pdf',request),
+  print: request => ipcRenderer.invoke('office:print',request),
   initialize: () => ipcRenderer.invoke('office:initialize'),
   openFile: () => ipcRenderer.invoke('office:open'),
   openRecent: id => ipcRenderer.invoke('office:recent',id),
@@ -16,6 +18,8 @@ const api: DesktopBridge = {
   saveDoc: request => ipcRenderer.invoke('office:save-doc',request),
   saveXlsx: request => ipcRenderer.invoke('office:save-xlsx',request),
   saveXls: request => ipcRenderer.invoke('office:save-xls',request),
+  savePptx: request => ipcRenderer.invoke('office:save-pptx',request),
+  savePpt: request => ipcRenderer.invoke('office:save-ppt',request),
   saveCopy: request => ipcRenderer.invoke('office:save-copy',request),
   updateTabs: states => ipcRenderer.invoke('office:tabs',states),
   confirmClose: id => ipcRenderer.invoke('office:confirm-close',id),

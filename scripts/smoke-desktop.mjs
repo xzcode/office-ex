@@ -26,7 +26,7 @@ await writeFile(originalPath,original);
 const bytesHash=value=>createHash('sha256').update(value).digest('hex');
 const waitFor=async(predicate,label,timeout=15_000)=>{const end=Date.now()+timeout;while(Date.now()<end){if(await predicate())return;await new Promise(r=>setTimeout(r,200));}throw new Error(`Timed out: ${label}`);};
 const inputEquals=(selector,value,label)=>page.waitForFunction(({selector,value})=>document.querySelector(selector)?.value===value,{selector,value},{timeout:15_000}).catch(error=>{throw new Error(`${label}: ${error.message}`);});
-async function launch(){const env={...process.env,OFFICE_EX_PROFILE_DIR:profile};delete env.ELECTRON_RUN_AS_NODE;app=await electron.launch({args:[resolve('apps/desktop')],env,timeout:30_000});page=await app.firstWindow();await page.waitForSelector('body[data-ready=true]',{timeout:30_000});await waitFor(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0]?.isVisible()===true),'native window visible');}
+async function launch(){const env={...process.env,OFFICE_EX_PROFILE_DIR:profile};delete env.ELECTRON_RUN_AS_NODE;app=await electron.launch({chromiumSandbox:true,args:[...(process.env.OFFICE_EX_HEADLESS==='1'?['--headless','--ozone-platform=headless']:[]),resolve('apps/desktop')],env,timeout:30_000});page=await app.firstWindow();await page.waitForSelector('body[data-ready=true]',{timeout:30_000});await waitFor(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0]?.isVisible()===true),'native window visible');}
 async function screenshot(label){
   // A ready DOM can precede the first compositor surface on Xvfb. Require an
   // actual visible window and rendered frames; retry only that capture error.
@@ -127,12 +127,11 @@ try{
   await page.locator('.tab[aria-selected=true] .tab-close').click();
   await dialogOpen(xlsPath);await sheetValue('B1','20');await page.locator('.tab[aria-selected=true] .tab-close').click();
   check('Spreadsheet semantic worker + guarded native XLSX save + BIFF8 conversion + reopen');
-  await page.locator('#home').click();await page.locator('[data-kind=slides]').click();await page.getByRole('button',{name:'添加矩形',exact:true}).click();
-  const pixel=()=>page.locator('canvas').evaluate(canvas=>Array.from(canvas.getContext('2d').getImageData(197,138,1,1).data));
-  assert.deepEqual(await pixel(),[67,111,202,255]);await page.locator('#undo').click();await waitFor(async()=>JSON.stringify(await pixel())==='[255,255,255,255]','Canvas undo rendered');await page.locator('#redo').click();await waitFor(async()=>JSON.stringify(await pixel())==='[67,111,202,255]','Canvas redo rendered');
-  await page.locator('canvas').click({position:{x:140,y:100}});await screenshot('slides');
+  await page.locator('#home').click();await page.locator('[data-kind=slides]').click();await page.locator('#slide-insert-rect').click();
+  const shapes=page.locator('#slide-canvas [data-shape-id]');assert.equal(await shapes.count(),1);await page.locator('#undo').click();await waitFor(async()=>await shapes.count()===0,'Slide undo rendered');await page.locator('#redo').click();await waitFor(async()=>await shapes.count()===1,'Slide redo rendered');
+  await shapes.first().click();await screenshot('slides');
   await page.locator('.tab[aria-selected=true] .tab-close').click();await page.locator('.tab').first().click();
-  assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');check('Three independent draft tabs: typed cells/formula source, Canvas shape/undo, isolated histories');
+  assert.equal(await page.locator('#draft-text').inputValue(),'中文草稿 😀\nFirst saved revision');check('Three independent draft tabs: typed cells/formula source, scene shape/undo, isolated histories');
   // Save As holds a native-dialog promise while a later edit arrives in the renderer.
   await app.evaluate(({dialog},filePath)=>{dialog.showSaveDialog=()=>new Promise(resolve=>{globalThis.__officeSmokeRelease=()=>resolve({canceled:false,filePath});});},draftCopyPath);
   await page.locator('#save-as').click();await waitFor(async()=>app.evaluate(()=>typeof globalThis.__officeSmokeRelease==='function'),'save snapshot reached dialog');

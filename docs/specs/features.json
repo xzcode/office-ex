@@ -1167,40 +1167,97 @@
       "milestone": "M4",
       "priority": "P0",
       "acceptance": "幻灯片场景和编辑",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/M4-SLIDES-PDF.md",
+        "tests/slides-editor.test.ts"
+      ],
+      "implementationPaths": [
+        "packages/slides/src/index.ts",
+        "packages/render/src/slides-scene.ts",
+        "packages/ui/src/slides-workspace.ts",
+        "tests/slides-editor.test.ts"
+      ],
+      "remainingScope": [
+        "M4 candidate; actual source recovery and local regression evidence only. Reference Office, broader source profiles, native three-platform acceptance and relevant performance/printing checks remain required."
+      ]
     },
     {
       "id": "SLD-03",
       "milestone": "M4",
       "priority": "P0",
       "acceptance": "PPTX 往返",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/M4-SLIDES-PDF.md",
+        "tests/slides_interop.py"
+      ],
+      "implementationPaths": [
+        "packages/ooxml/src/slides-pptx.ts",
+        "tests/slides-format.test.ts",
+        "tests/slides_interop.py"
+      ],
+      "remainingScope": [
+        "M4 candidate; actual source recovery and local regression evidence only. Reference Office, broader source profiles, native three-platform acceptance and relevant performance/printing checks remain required."
+      ]
     },
     {
       "id": "LEG-04",
       "milestone": "M4-L",
       "priority": "P0",
       "acceptance": "PPT 97–2003 读写",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/M4-SLIDES-PDF.md",
+        "tests/slides_interop.py"
+      ],
+      "implementationPaths": [
+        "packages/format-service/src/legacy-ppt.ts",
+        "tests/slides-format.test.ts",
+        "tests/slides_interop.py"
+      ],
+      "remainingScope": [
+        "M4 candidate; actual source recovery and local regression evidence only. Reference Office, broader source profiles, native three-platform acceptance and relevant performance/printing checks remain required."
+      ]
     },
     {
       "id": "PDF-01",
       "milestone": "M4",
       "priority": "P0",
       "acceptance": "PDF 阅读",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/M4-SLIDES-PDF.md",
+        "tests/pdf-actual-text.test.ts"
+      ],
+      "implementationPaths": [
+        "packages/pdf/src/reader.ts",
+        "packages/ui/src/pdf-workspace.ts",
+        "tests/pdf-policy.test.ts",
+        "tests/pdf-actual-text.test.ts"
+      ],
+      "remainingScope": [
+        "M4 candidate; actual source recovery and local regression evidence only. Reference Office, broader source profiles, native three-platform acceptance and relevant performance/printing checks remain required."
+      ]
     },
     {
       "id": "PDF-02",
       "milestone": "M4",
       "priority": "P0",
       "acceptance": "PDF 输出",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/M4-SLIDES-PDF.md",
+        "scripts/smoke-m4-desktop.mjs"
+      ],
+      "implementationPaths": [
+        "packages/ui/src/pdf-output.ts",
+        "apps/desktop/src/pdf-printer.ts",
+        "scripts/smoke-m4-desktop.mjs"
+      ],
+      "remainingScope": [
+        "M4 candidate; actual source recovery and local regression evidence only. Reference Office, broader source profiles, native three-platform acceptance and relevant performance/printing checks remain required."
+      ]
     },
     {
       "id": "FMT-04",
@@ -1337,7 +1394,8 @@
         "docs/M2-WRITER.md",
         "https://github.com/xzcode/office-ex/actions/runs/45527322279",
         "tests/writer-m2-completion.test.ts",
-        "tests/writer_completion_interop.py"
+        "tests/writer_completion_interop.py",
+        "docs/M4-SLIDES-PDF.md"
       ],
       "spec": "docs/specs/09-i18n.md",
       "implementationPaths": [
@@ -1351,7 +1409,8 @@
       ],
       "remainingScope": [
         "Eighth integrated slice implements native page editing, browser shaping, incremental section/paragraph caches, rich clipboard, ordinary-template DOCX and closed DOC read/write. Local 167/167 and independent interop/build/license passed. New native CI separately tracked.",
-        "Full Word-equivalent layout, all scripts/fonts/IME and structural selections, broad historical DOC semantics, full reference Office and M2-L acceptance remain mandatory."
+        "Full Word-equivalent layout, all scripts/fonts/IME and structural selections, broad historical DOC semantics, full reference Office and M2-L acceptance remain mandatory.",
+        "M4 candidate: 22 key-complete locale catalogs, native Slides and PDF Unicode projection, eight pinned OFL fonts. Native real IME, bidi reading order, CJK font review and human terminology gates remain open."
       ],
       "m2RangeSectionAcceptance": {
         "status": "verified",

@@ -8,3 +8,9 @@ node_modules/
 dist/
 out/
 release/
+
+# Pinned OFL assets are restored at build setup; binaries are not tracked.
+/assets/fonts/*.ttf
+/assets/fonts/*.otf
+/.runtime/
+/m4-source.tar.gz

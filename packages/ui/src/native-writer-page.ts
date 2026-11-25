@@ -3,6 +3,7 @@
  * The small native textarea is only an IME/clipboard input bridge at the
  * actual caret; neither DOM mutations nor the rendered page are source data.
  */
+import {bundledFontFamily} from '@office-ex/pdf';
 import {assert,OfficeError,EMU_PER_CSS_PIXEL,EMU_PER_POINT} from '@office-ex/contracts';
 import {paragraphBoundaries,inlineText,resolveTextStyle,type DeepReadonly,type WriterDocument,type Paragraph,type TextStyle,type DocumentSnapshot} from '@office-ex/core';
 import {locateParagraph,resolveWriterRange,replaceWriterRange,replaceParagraphRange,formatWriterRange,setParagraphAlignment,copyWriterFragment,pasteWriterFragment,WRITER_CLIPBOARD_TYPE,type WriterRange,type WriterPoint} from '@office-ex/writer';
@@ -70,7 +71,7 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState):HTMLElem
     }
     if(caret?.pageIndex===state.pageIndex){
       const style=caretStyle();at(input,caret.x,caret.y,Math.max(1,style.fontSize??152400),caret.height);
-      input.style.fontFamily=style.fontFamily?JSON.stringify(style.fontFamily)+', sans-serif':'sans-serif';input.style.fontSize=css(style.fontSize??152400);input.style.color=color(style);input.dir=style.paragraphDirection??'auto';
+      input.style.fontFamily=bundledFontFamily(style.fontFamily,style.language);input.style.fontSize=css(style.fontSize??152400);input.style.color=color(style);input.dir=style.paragraphDirection??'auto';
       input.hidden=false;
     }else input.hidden=true;
     if(!composition){

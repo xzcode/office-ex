@@ -36,6 +36,7 @@ M2-I18N 已编写 A 批 11 套候选界面资源：简体中文、繁体中文�
 
 ```sh
 npm ci --ignore-scripts
+npm run setup:fonts
 npm run setup:desktop
 npm run start
 ```

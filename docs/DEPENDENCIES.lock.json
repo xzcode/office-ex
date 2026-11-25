@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "reviewedOn": "2026-11-24",
-  "lockSha256": "6072145bed062014d3728a1627c3f8b9d8490475ee13f47a4986298883e8d87a",
+  "reviewedOn": "2026-11-25",
+  "lockSha256": "6213600b45887370f21df4b83b17085c88aee4821d5eac5659d0b48f0c75ab39",
   "policy": "docs/DEPENDENCIES.md",
   "packages": [
     {
@@ -576,6 +576,308 @@
       "origin": "https://github.com/evanw/esbuild",
       "tarball": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.28.2.tgz",
       "integrity": "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": null,
+      "cpu": null,
+      "origin": "https://github.com/Brooooooklyn/canvas",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas/-/canvas-1.2.0.tgz",
+      "integrity": "sha512-6LpJr0U9BH/Iz5/z2EherYStmsjyRwmCp8wwYg0QfEnib/ip19fyJd1Y1OFbn8DbyIQKCCpSqgY1trXkIbLdEg==",
+      "dependencies": [
+        {
+          "name": "@napi-rs/canvas-android-arm64",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-android-arm64",
+          "version": "1.2.0"
+        },
+        {
+          "name": "@napi-rs/canvas-darwin-arm64",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-darwin-arm64",
+          "version": "1.2.0"
+        },
+        {
+          "name": "@napi-rs/canvas-darwin-x64",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-darwin-x64",
+          "version": "1.2.0"
+        },
+        {
+          "name": "@napi-rs/canvas-linux-arm-gnueabihf",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-linux-arm-gnueabihf",
+          "version": "1.2.0"
+        },
+        {
+          "name": "@napi-rs/canvas-linux-arm64-gnu",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-linux-arm64-gnu",
+          "version": "1.2.0"
+        },
+        {
+          "name": "@napi-rs/canvas-linux-arm64-musl",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-linux-arm64-musl",
+          "version": "1.2.0"
+        },
+        {
+          "name": "@napi-rs/canvas-linux-riscv64-gnu",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-linux-riscv64-gnu",
+          "version": "1.2.0"
+        },
+        {
+          "name": "@napi-rs/canvas-linux-x64-gnu",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-linux-x64-gnu",
+          "version": "1.2.0"
+        },
+        {
+          "name": "@napi-rs/canvas-linux-x64-musl",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-linux-x64-musl",
+          "version": "1.2.0"
+        },
+        {
+          "name": "@napi-rs/canvas-win32-arm64-msvc",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-win32-arm64-msvc",
+          "version": "1.2.0"
+        },
+        {
+          "name": "@napi-rs/canvas-win32-x64-msvc",
+          "requested": "1.2.0",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas-win32-x64-msvc",
+          "version": "1.2.0"
+        }
+      ]
+    },
+    {
+      "name": "@napi-rs/canvas-android-arm64",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-android-arm64",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "android"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "origin": "https://registry.npmjs.org/@napi-rs/canvas-android-arm64/-/canvas-android-arm64-1.2.0.tgz",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-android-arm64/-/canvas-android-arm64-1.2.0.tgz",
+      "integrity": "sha512-Ya2Db4BrwM5WnQtdmA2iOw5O2yZ9vcd5fuX9GjlkQ3k87iWzDUxnijVz11IJrF8c+xBxUHzEgENXmA1yPdnZ2g==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas-darwin-arm64",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-darwin-arm64",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "darwin"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "origin": "https://registry.npmjs.org/@napi-rs/canvas-darwin-arm64/-/canvas-darwin-arm64-1.2.0.tgz",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-darwin-arm64/-/canvas-darwin-arm64-1.2.0.tgz",
+      "integrity": "sha512-7Rq4h2J4Y+JKqxaH9Zf0PGOY3asTeAbcG51MkQNaUTB7ushbhuEgY54CWRww5WK8v8VYB8epv4bLF0GI8IPlxQ==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas-darwin-x64",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-darwin-x64",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "darwin"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "origin": "https://registry.npmjs.org/@napi-rs/canvas-darwin-x64/-/canvas-darwin-x64-1.2.0.tgz",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-darwin-x64/-/canvas-darwin-x64-1.2.0.tgz",
+      "integrity": "sha512-LHeqXtEFqO1DDnKRWSvy7C+kXQTciKvZzShVZd0aTnvVwWskpbj9hwWc8lwTpjm6GsgS7oEKCNARj8xLI1qcww==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas-linux-arm-gnueabihf",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-linux-arm-gnueabihf",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "arm"
+      ],
+      "origin": "https://registry.npmjs.org/@napi-rs/canvas-linux-arm-gnueabihf/-/canvas-linux-arm-gnueabihf-1.2.0.tgz",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-linux-arm-gnueabihf/-/canvas-linux-arm-gnueabihf-1.2.0.tgz",
+      "integrity": "sha512-er2hS9KLBWSFMyz6UCAAM5gYfFfCAkLXXdPnFJ8SL8clNa+hx5ooC5iREYKuaFxIfhsE86OHiiee3HjIuvtz5w==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas-linux-arm64-gnu",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-linux-arm64-gnu",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "origin": "https://registry.npmjs.org/@napi-rs/canvas-linux-arm64-gnu/-/canvas-linux-arm64-gnu-1.2.0.tgz",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-linux-arm64-gnu/-/canvas-linux-arm64-gnu-1.2.0.tgz",
+      "integrity": "sha512-wwfgI/DQOXjpQ+uLDV7R2Wh6O0lLvWRWz3mZND58csTH9fTn6+H2bfWBIu37Bcg8cjJLPE5BKjqK/a7WOYeqxA==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas-linux-arm64-musl",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-linux-arm64-musl",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "origin": "https://registry.npmjs.org/@napi-rs/canvas-linux-arm64-musl/-/canvas-linux-arm64-musl-1.2.0.tgz",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-linux-arm64-musl/-/canvas-linux-arm64-musl-1.2.0.tgz",
+      "integrity": "sha512-ftJFcPZIAer2xHMQ0BXfGTVqE2AB5tl3+dm913YunKnsG+lcS91pFKNaeM5yvp7kbTLPlMxkMpi+RKXOXEwljw==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas-linux-riscv64-gnu",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-linux-riscv64-gnu",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "riscv64"
+      ],
+      "origin": "https://registry.npmjs.org/@napi-rs/canvas-linux-riscv64-gnu/-/canvas-linux-riscv64-gnu-1.2.0.tgz",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-linux-riscv64-gnu/-/canvas-linux-riscv64-gnu-1.2.0.tgz",
+      "integrity": "sha512-NFfXv9E3IuzHi3RK3KhBbjO4bCdS8PvZkUzVvkTWBCLnVw4ndNNHUCK46/lcOMcnuKg8qxQsK5X7Uwp/SPGA0g==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas-linux-x64-gnu",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-linux-x64-gnu",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "origin": "https://github.com/Brooooooklyn/canvas",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-linux-x64-gnu/-/canvas-linux-x64-gnu-1.2.0.tgz",
+      "integrity": "sha512-+RsdhlUA8hRoktgA5JG1XR7skZ6PCVjNfodnqDnBV1eTX7dgVBYHK7O7yKdQGac/45B5t8ufgyceQEq3Rfk6JA==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas-linux-x64-musl",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-linux-x64-musl",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "origin": "https://registry.npmjs.org/@napi-rs/canvas-linux-x64-musl/-/canvas-linux-x64-musl-1.2.0.tgz",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-linux-x64-musl/-/canvas-linux-x64-musl-1.2.0.tgz",
+      "integrity": "sha512-G7O6pLdb+waaiRfCVKNRymqFNulfU4tfyRKvWmOWt7Vh/VltHLvU4+oWGMMKzWehMrxLnvmeLSNkWWpzMZAy+w==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas-win32-arm64-msvc",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-win32-arm64-msvc",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "win32"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "origin": "https://registry.npmjs.org/@napi-rs/canvas-win32-arm64-msvc/-/canvas-win32-arm64-msvc-1.2.0.tgz",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-win32-arm64-msvc/-/canvas-win32-arm64-msvc-1.2.0.tgz",
+      "integrity": "sha512-8xB9DHYScFsEukONZKfc45bTYJUAfEqL6daUxo3YqWrUC9YMfU6N2Zx3HCJTq0LwhnjjRXScZbasaaxviaA4uQ==",
+      "dependencies": []
+    },
+    {
+      "name": "@napi-rs/canvas-win32-x64-msvc",
+      "version": "1.2.0",
+      "path": "node_modules/@napi-rs/canvas-win32-x64-msvc",
+      "direct": false,
+      "usage": "optional-pdf-node-adapter-not-bundled",
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "win32"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "origin": "https://registry.npmjs.org/@napi-rs/canvas-win32-x64-msvc/-/canvas-win32-x64-msvc-1.2.0.tgz",
+      "tarball": "https://registry.npmjs.org/@napi-rs/canvas-win32-x64-msvc/-/canvas-win32-x64-msvc-1.2.0.tgz",
+      "integrity": "sha512-GJ0DLyiTvLw5xNtdUJ0ncRuuT4Yv9zNXnrrvfvKr1/M08mbvtFVLoKiwQAaWixEcTsCh0U94/nMxkJTLH7ZMfw==",
       "dependencies": []
     },
     {
@@ -1332,6 +1634,29 @@
       "dependencies": []
     },
     {
+      "name": "pdfjs-dist",
+      "version": "6.5.438",
+      "path": "node_modules/pdfjs-dist",
+      "direct": true,
+      "usage": "runtime-library",
+      "license": "Apache-2.0",
+      "optional": false,
+      "os": null,
+      "cpu": null,
+      "origin": "https://github.com/mozilla/pdf.js",
+      "tarball": "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.5.438.tgz",
+      "integrity": "sha512-vg8Pw1x+AFKy4AMDvhuWl5cOYV8d698UoEANoFFhc79hqXDnZQqnOXoxw3HG907WHOg1JYOvLhP756boddFxpA==",
+      "dependencies": [
+        {
+          "name": "@napi-rs/canvas",
+          "requested": "^1.0.13",
+          "optional": true,
+          "path": "node_modules/@napi-rs/canvas",
+          "version": "1.2.0"
+        }
+      ]
+    },
+    {
       "name": "playwright-core",
       "version": "1.65.1",
       "path": "node_modules/playwright-core",
@@ -1634,6 +1959,14 @@
       "byteLength": 1088
     },
     {
+      "name": "@napi-rs/canvas",
+      "version": "1.2.0",
+      "source": "node_modules/@napi-rs/canvas/LICENSE",
+      "file": "notices/napi-rs__canvas@1.2.0/LICENSE",
+      "sha256": "0b8e3b4f0042f33677406344854c1dcce3a2878eb3a3f6baee58c6f5752655ce",
+      "byteLength": 2705
+    },
+    {
       "name": "@types/node",
       "version": "24.19.2",
       "source": "node_modules/@types/node/LICENSE",
@@ -1720,6 +2053,46 @@
       "file": "notices/ms@2.1.3/license.md",
       "sha256": "1662fae9b5314d11cf51284e2dcd1f006a354f7343f08712a730fcff9a359801",
       "byteLength": 1079
+    },
+    {
+      "name": "pdfjs-dist",
+      "version": "6.5.438",
+      "source": "node_modules/pdfjs-dist/LICENSE",
+      "file": "notices/pdfjs-dist@6.5.438/LICENSE",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "byteLength": 10174
+    },
+    {
+      "name": "pdfjs-dist",
+      "version": "6.5.438",
+      "source": "node_modules/pdfjs-dist/cmaps/LICENSE",
+      "file": "notices/pdfjs-dist@6.5.438/cmaps/LICENSE",
+      "sha256": "aa92ab5a472974865a96fd4a4e9c13bb41bf6fe1b309cb6b8da48bc9e19839a2",
+      "byteLength": 2080
+    },
+    {
+      "name": "pdfjs-dist",
+      "version": "6.5.438",
+      "source": "node_modules/pdfjs-dist/standard_fonts/LICENSE_FOXIT",
+      "file": "notices/pdfjs-dist@6.5.438/standard_fonts/LICENSE_FOXIT",
+      "sha256": "b578cdd2345840ada550bd12519533812320d5f1d21cf4c1c7e1b1b0a31c98b7",
+      "byteLength": 1553
+    },
+    {
+      "name": "pdfjs-dist",
+      "version": "6.5.438",
+      "source": "node_modules/pdfjs-dist/standard_fonts/LICENSE_LIBERATION",
+      "file": "notices/pdfjs-dist@6.5.438/standard_fonts/LICENSE_LIBERATION",
+      "sha256": "d2c4d5b3e115a519cb58eb691aa64538397e2611f9ebe801392cf9667997e7dc",
+      "byteLength": 22154
+    },
+    {
+      "name": "pdfjs-dist",
+      "version": "6.5.438",
+      "source": "node_modules/pdfjs-dist/iccs/LICENSE",
+      "file": "notices/pdfjs-dist@6.5.438/iccs/LICENSE",
+      "sha256": "286e4fd7b447330b2c88e23890e3cd0a9d38cb398d4a59cb247f578ccbda3213",
+      "byteLength": 6553
     },
     {
       "name": "playwright-core",

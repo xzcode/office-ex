@@ -118,3 +118,7 @@ M3 recovery batch 2 (2026-11-25): restored typed formula evaluator, sparse range
 ## 2026-11-25 — M3 recovery batches 3–5
 
 Continue from branch m3-sheets-recovery-20261125 and docs/M3-RECOVERY.md. Candidate source for all five recovery batches is now present. Full node regression 198/198, build and dependency audit passed; independent spreadsheet readers and nine headless grid checks passed. The M3/M3-L acceptance gate remains OPEN: scroll p95 50 ms vs <=33 ms goal, narrow XLS/XLSX semantic profiles, real Excel equivalence and three-platform native smoke pending. Do not mark these as formally verified or release. Master/M2 history remains unchanged. Next product development milestone is M4 Slides; complete release-blocking M3 acceptance before claiming full compatibility or releasing.
+
+## 2026-11-25 — M4 source recovered and continued
+
+Continue on `m4-slides-pdf-20261125`, based on `8273c89d3e16d04cbcc9ab613b085040016e9460`. M4 candidate source recovered from the preserved Seoul archive; read `docs/M4-SLIDES-PDF.md`. Eight pinned OFL fonts restored via `npm run setup:fonts`; 236/236 local regressions, independent PPTX/PPT fixture checks, build and license audit passed. Native headless Electron and PDF export verified in part; M4/M4-L acceptance remains open. Do not merge or release before closing remaining compatibility/security/performance/multilingual/native gates.

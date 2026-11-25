@@ -7,13 +7,15 @@ import { resolve, join, basename, extname, isAbsolute } from 'node:path';
 import { asFailure, OfficeError, type Result } from '@office-ex/contracts';
 import type { TabState, MenuAction, OpenFileResult } from '@office-ex/ui';
 import { FileAuthority, MAX_FILE_BYTES } from './file-service.js';
-import { TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId as id, parseDroppedPath, parseTabStates, parseDraftSave, parseDocxSave, parsePreservedCopy, parseRelease, parseSettingsPatch, parseRecoveryId, parseCheckpoint, commandLineFiles } from './ipc-policy.js';
+import { TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId as id, parseDroppedPath, parseTabStates, parseDraftSave, parseDocxSave, parsePreservedCopy, parseRelease, parseSettingsPatch, parseRecoveryId, parseCheckpoint, parsePrintRequest, commandLineFiles } from './ipc-policy.js';
 import { RecoveryStore } from './recovery.js';
 import { SettingsStore } from './settings.js';
 import { createDocxVerifier, type DocxVerifier } from './docx-verifier.js';
+import { createPdfPrinter, type PdfPrinter } from './pdf-printer.js';
+import { loadLocalResources, findLocalResource } from './local-resources.js';
 
 const ORIGIN = TRUSTED_APP_ORIGIN;
-const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; worker-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; frame-ancestors 'none'";
+const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self' blob:; worker-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; frame-ancestors 'none'";
 protocol.registerSchemesAsPrivileged([{ scheme:'office-ex', privileges:{ standard:true, secure:true, supportFetchAPI:true, corsEnabled:true } }]);
 app.enableSandbox();
 for (const flag of ['disable-background-networking','disable-component-update','disable-domain-reliability','no-pings']) app.commandLine.appendSwitch(flag);
@@ -33,6 +35,7 @@ let settings:SettingsStore;
 let recovery:RecoveryStore;
 let backups:RecoveryStore;
 let verifyDocx:DocxVerifier;
+let printPdf:PdfPrinter;
 const authority = new FileAuthority();
 const tabs = new Map<string,TabState>();
 const originals = new Map<string,Uint8Array>();
@@ -132,6 +135,8 @@ function installMenu():void {
     {label:t('menuOpen'),accelerator:'CmdOrCtrl+O',click:()=>send('open')},
     {label:t('save'),accelerator:'CmdOrCtrl+S',click:()=>send('save')},
     {label:t('menuSaveAs'),accelerator:'CmdOrCtrl+Shift+S',click:()=>send('save-as')},
+    {label:t('pdfExport'),click:()=>send('export-pdf')},
+    {label:t('pdfPrint'),accelerator:'CmdOrCtrl+P',click:()=>send('print')},
     {label:t('menuCloseTab'),accelerator:'CmdOrCtrl+W',click:()=>send('close-tab')},
     {type:'separator'},{label:t('settings'),accelerator:'CmdOrCtrl+,',click:()=>send('settings')},
   ]});
@@ -146,7 +151,7 @@ function installMenu():void {
 /** Shared atomic commit path. DOCX output is created by a host-owned sandbox,
  * not trusted from the ordinary renderer. The existing OEX flow is unchanged.
  */
-async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls',candidate:unknown,owner:BrowserWindow){
+async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls'|'pptx'|'ppt',candidate:unknown,owner:BrowserWindow){
   const request=format!=='oex'?parseDocxSave(candidate):parseDraftSave(candidate);
   const tab=tabs.get(request.documentId);
   if(!tab)throw new OfficeError('invalid','Unknown document session');
@@ -180,7 +185,7 @@ async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls',candidate:unk
     if(!token||request.saveAs){
       const name=request.title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,160)||'Untitled';
       const baseName=name.toLowerCase().endsWith('.'+format)?name.slice(0,-format.length-1):name;
-      const chosen=await dialog.showSaveDialog(owner,{defaultPath:baseName+'.'+format,filters:[{name:format==='docx'?t('docxDocument'):format==='doc'?t('docDocument'):format==='xlsx'?t('xlsxDocument'):format==='xls'?t('xlsDocument'):t('draftLabel'),extensions:[format]}],properties:['showOverwriteConfirmation','createDirectory']});
+      const chosen=await dialog.showSaveDialog(owner,{defaultPath:baseName+'.'+format,filters:[{name:format==='docx'?t('docxDocument'):format==='doc'?t('docDocument'):format==='xlsx'?t('xlsxDocument'):format==='xls'?t('xlsDocument'):format==='pptx'?t('pptxDocument'):format==='ppt'?t('pptDocument'):t('draftLabel'),extensions:[format]}],properties:['showOverwriteConfirmation','createDirectory']});
       assertOwner();
       if(chosen.canceled||!chosen.filePath)return null;
       if(extname(chosen.filePath).toLowerCase()!=='.'+format)throw new OfficeError('invalid','Save destination must retain the selected file format');
@@ -218,7 +223,52 @@ async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls',candidate:unk
   }
 }
 
+async function exportPdf(candidate:unknown,owner:BrowserWindow){
+  const request=parseDocxSave(candidate),tab=tabs.get(request.documentId);
+  if(!tab||request.revision>tab.revision)throw new OfficeError('conflict','PDF snapshot is not registered');
+  if(runningSaves.has(request.documentId))throw new OfficeError('conflict','A document output task is already running');
+  if(request.sourceToken)authority.get(request.sourceToken,owner.id,request.documentId);
+  runningSaves.add(request.documentId);let target:string|undefined;
+  const assertOwner=()=>{if(window!==owner||owner.isDestroyed()||!tabs.has(request.documentId))throw new OfficeError('cancelled','Document window was closed');};
+  try{
+    const output=await printPdf({kind:'document',bytes:request.bytes,documentId:request.documentId,revision:request.revision,contentId:request.contentId},'export',owner);
+    assertOwner();
+    const name=request.title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/\.(?:oex|docx?|pptx?)$/i,'').slice(0,160)||'Untitled';
+    const chosen=await dialog.showSaveDialog(owner,{defaultPath:name+'.pdf',filters:[{name:t('pdfDocument'),extensions:['pdf']}],properties:['showOverwriteConfirmation','createDirectory']});
+    assertOwner();if(chosen.canceled||!chosen.filePath)return null;
+    if(extname(chosen.filePath).toLowerCase()!=='.pdf')throw new OfficeError('invalid','PDF destination must use the PDF extension');
+    let exists=false;try{await lstat(chosen.filePath);exists=true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+    if(exists){const confirm=await dialog.showMessageBox(owner,{type:'warning',buttons:[t('cancel'),t('replace')],defaultId:0,cancelId:0,message:t('replaceTarget'),detail:basename(chosen.filePath)});assertOwner();if(confirm.response!==1)return null;}
+    target=await authority.authorizeTarget(chosen.filePath,owner.id,request.documentId,exists,request.sourceToken);
+    const bytes=output.bytes!,expected=byteHash(bytes);
+    const result=await authority.commit(target,owner.id,request.documentId,bytes,{backup:async(previous,identity)=>{await backups.put(request.documentId,'backup:'+identity.sha256,request.revision,previous);},validate:async reread=>{if(byteHash(reread)!==expected)throw new OfficeError('invalid','PDF output verification failed');}});
+    return {name:result.name,durability:result.durability,pages:output.pages,warnings:output.warnings};
+  }finally{
+    if(target){try{authority.revokeToken(target,owner.id,request.documentId);}catch{/* closed session */}}
+    runningSaves.delete(request.documentId);
+  }
+}
+async function printDocument(candidate:unknown,owner:BrowserWindow){
+  const request=parsePrintRequest(candidate),tab=tabs.get(request.documentId);
+  if(!tab||request.revision>tab.revision)throw new OfficeError('conflict','Print snapshot is not registered');
+  if(runningSaves.has(request.documentId))throw new OfficeError('conflict','A document output task is already running');
+  if(request.sourceToken)authority.get(request.sourceToken,owner.id,request.documentId);
+  runningSaves.add(request.documentId);
+  try{
+    let bytes:Uint8Array;
+    if(request.kind==='pdf'){
+      const original=originals.get(request.sourceToken),grant=authority.get(request.sourceToken,owner.id,request.documentId);
+      if(!original||!grant.identity||byteHash(original)!==grant.identity.sha256)throw new OfficeError('conflict','Original PDF snapshot is unavailable');
+      bytes=original;
+    }else bytes=request.bytes;
+    const result=await printPdf({kind:request.kind,bytes,documentId:request.documentId,revision:request.revision,...(request.kind==='document'?{contentId:request.contentId}:{})},'print',owner);
+    return {pages:result.pages,warnings:result.warnings};
+  }finally{runningSaves.delete(request.documentId);}
+}
+
 function installIpc():void {
+  handle('office:export-pdf',async(event,candidate)=>exportPdf(candidate,trusted(event)));
+  handle('office:print',async(event,candidate)=>printDocument(candidate,trusted(event)));
   handle('office:initialize',async()=>{rendererReady=true;setTimeout(()=>{void drainPendingFiles();},0);return {settings:settings.publicValue(),recovery:await recovery.list(),platform:process.platform,systemLocales:systemLanguages()};});
   handle('office:open',async()=>{
     const result = await dialog.showOpenDialog(window!,{properties:['openFile'],filters:[{name:t('officeFiles'),extensions},{name:t('allFiles'),extensions:['*']}]});
@@ -237,6 +287,8 @@ function installIpc():void {
   handle('office:save-doc',async(event,candidate)=>saveEditable('doc',candidate,trusted(event)));
   handle('office:save-xlsx',async(event,candidate)=>saveEditable('xlsx',candidate,trusted(event)));
   handle('office:save-xls',async(event,candidate)=>saveEditable('xls',candidate,trusted(event)));
+  handle('office:save-pptx',async(event,candidate)=>saveEditable('pptx',candidate,trusted(event)));
+  handle('office:save-ppt',async(event,candidate)=>saveEditable('ppt',candidate,trusted(event)));
   handle('office:save-copy',async(_event,candidate)=>{
     const request=parsePreservedCopy(candidate);
     if(!tabs.has(request.documentId))throw new OfficeError('unsafe','Unknown document session');
@@ -301,8 +353,7 @@ if(ownsProfile)app.whenReady().then(async()=>{
   await recovery.cleanupStaging();await backups.cleanupStaging();
   nativeTheme.themeSource=settings.value().theme;
   const bundle=resolve(__dirname,'../ui');
-  const resources=new Map<string,{data:Uint8Array;type:string}>();
-  for(const [name,type] of [['index.html','text/html; charset=utf-8'],['renderer.js','text/javascript; charset=utf-8'],['format-worker.js','text/javascript; charset=utf-8'],['sheets-recalc-worker.js','text/javascript; charset=utf-8'],['styles.css','text/css; charset=utf-8']] as const)resources.set(`/${name}`,{data:new Uint8Array(await readFile(join(bundle,name))),type});
+  const resources=await loadLocalResources(bundle,['index.html','renderer.js','format-worker.js','sheets-recalc-worker.js','styles.css','pdf.worker.mjs','fonts.css']);
   protocol.handle('office-ex',request=>{
     const url=new URL(request.url);const resource=resources.get(url.pathname==='/'?'/index.html':url.pathname);
     if(!localOrigin(url)||!resource||request.method!=='GET'||url.search||url.hash)return new Response('',{status:404});
@@ -311,9 +362,10 @@ if(ownsProfile)app.whenReady().then(async()=>{
   session.defaultSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
   session.defaultSession.setPermissionCheckHandler(()=>false);
   session.defaultSession.webRequest.onBeforeRequest((details,callback)=>{
-    try{const url=new URL(details.url);callback({cancel:!localOrigin(url)||!resources.has(url.pathname==='/'?'/index.html':url.pathname)});}catch{callback({cancel:true});}
+    callback({cancel:!findLocalResource(resources,details.url)});
   });
   verifyDocx=await createDocxVerifier(bundle,join(__dirname,'docx-verifier-preload.cjs'));
+  printPdf=await createPdfPrinter(bundle,join(__dirname,'pdf-printer-preload.cjs'));
   installIpc();installMenu();
   const createWindow=async():Promise<void>=>{
     if(window&&!window.isDestroyed())return;

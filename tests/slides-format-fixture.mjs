@@ -1,0 +1,11 @@
+import {mkdir,writeFile} from 'node:fs/promises';
+import {slidesFormatFixture} from './slides-format-fixture.ts';
+import {writeSlidesPptx,openSlidesPptx} from '@office-ex/ooxml';
+import {writeLegacyPpt,openLegacyPpt,saveLegacyPpt} from '@office-ex/format-service';
+const dir=process.argv[2]??'out/slides-fixture';await mkdir(dir,{recursive:true});const d=slidesFormatFixture();
+const pptx=writeSlidesPptx(d),ppt=writeLegacyPpt(d);await writeFile(dir+'/scene.pptx',pptx);await writeFile(dir+'/scene.ppt',ppt);
+const modern=openSlidesPptx(pptx,d.documentId).document,legacy=openLegacyPpt(ppt,d.documentId).document;
+await writeFile(dir+'/pptx-to-ppt.ppt',writeLegacyPpt(modern));await writeFile(dir+'/ppt-to-pptx.pptx',writeSlidesPptx(legacy));
+legacy.slides[0].shapes[0].geometry.x+=914400;await writeFile(dir+'/edited.ppt',saveLegacyPpt(ppt,legacy));
+await writeFile(dir+'/expected.json',JSON.stringify({slides:3,size:d.size,images:Object.values(d.resources).map(r=>({mime:r.mimeType,sha256:r.sha256})),text:d.slides.map(s=>s.shapes.filter(x=>x.type==='text').map(s=>s.runs.map(r=>r.text).join('')).join(''))},null,2));
+console.log('Generated PPT/PPTX + bidirectional conversions and append-save fixture at '+dir);

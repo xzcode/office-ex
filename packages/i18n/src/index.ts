@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 import { recoveredCatalogs } from './recovered-catalogs.js';
-const english = recoveredCatalogs['en-US'];
+import { m4Catalogs } from './m4-catalogs.js';
+const english = { ...recoveredCatalogs['en-US'], ...m4Catalogs['en-US'] };
 export { formatTemplate, formatPlural, formatSelect, pseudoLocalize } from './messages.js';
 import { formatTemplate } from './messages.js';
 export type MessageKey = keyof typeof english;
 export type Catalog = Readonly<Record<MessageKey,string>>;
-const catalogs = recoveredCatalogs satisfies Record<string,Catalog>;
+const catalogs = Object.fromEntries(Object.entries(recoveredCatalogs).map(([locale,catalog])=>[locale,{
+  ...catalog,...m4Catalogs[locale as keyof typeof m4Catalogs],previewTag:catalog.previewTag.replace('M3','M4'),stage:'Writer · Sheets · Slides · PDF'
+}])) as Record<keyof typeof recoveredCatalogs,Catalog>;
 export type UiLocale = keyof typeof catalogs;
 export type LanguagePreference = UiLocale | 'system';
 export const TARGET_LOCALES = [

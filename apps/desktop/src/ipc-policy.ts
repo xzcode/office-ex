@@ -13,10 +13,10 @@ const CONTENT_ID = /^[A-Za-z0-9_.:-]{1,256}$/;
 const RECOVERY_ID = /^[A-Za-z0-9_-]{1,128}\.[0-9]+\.[a-f0-9-]{36}\.oex-recovery$/;
 const ARITY: Readonly<Record<string, number>> = Object.freeze({
   'office:initialize': 0, 'office:open': 0, 'office:recent': 1, 'office:drop': 1,
-  'office:tabs': 1, 'office:save-draft': 1, 'office:save-docx': 1, 'office:save-doc': 1, 'office:save-xlsx': 1, 'office:save-xls': 1, 'office:save-copy': 1,
+  'office:tabs': 1, 'office:save-draft': 1, 'office:save-docx': 1, 'office:save-doc': 1, 'office:save-xlsx': 1, 'office:save-xls': 1, 'office:save-pptx': 1, 'office:save-ppt': 1, 'office:save-copy': 1,
   'office:confirm-close': 1, 'office:release': 2, 'office:finish-close': 0,
   'office:settings': 1, 'office:recover': 1, 'office:discard-recovery': 1,
-  'office:checkpoint': 1,
+  'office:checkpoint': 1, 'office:export-pdf': 1, 'office:print': 1,
 });
 function invalid(message = 'Invalid IPC request'): never { throw new OfficeError('invalid', message); }
 
@@ -96,6 +96,22 @@ export function parseDocxSave(value:unknown):DraftSaveRequest {
   const request=parseDraftSave(value);
   if(!request.contentId.startsWith(request.documentId+':content:')||!/^\d+$/.test(request.contentId.slice(request.documentId.length+9)))invalid('DOCX snapshot identity does not match the document');
   return request;
+}
+export type PrintRequest = {kind:'document';documentId:string;revision:number;contentId:string;bytes:Uint8Array;sourceToken?:string} | {kind:'pdf';documentId:string;revision:number;sourceToken:string};
+/** PDF input is fetched from the main-owned source token. Document print input
+ * is only a bounded draft, independently parsed in the isolated output worker. */
+export function parsePrintRequest(value:unknown):PrintRequest {
+  const item=fields(value,['kind','documentId','revision','contentId','bytes','sourceToken']);
+  ipcId(item.documentId);revision(item.revision);
+  if(item.sourceToken!==undefined)ipcId(item.sourceToken);
+  if(item.kind==='pdf'){
+    if(item.sourceToken===undefined||item.contentId!==undefined||item.bytes!==undefined)invalid('PDF print requires an original file capability');
+    return {kind:'pdf',documentId:item.documentId,revision:item.revision,sourceToken:item.sourceToken};
+  }
+  if(item.kind!=='document')invalid('Invalid print kind');
+  bytes(item.bytes);contentId(item.contentId);
+  if(!item.contentId.startsWith(item.documentId+':content:')||!/^\d+$/.test(item.contentId.slice(item.documentId.length+9)))invalid('Print snapshot identity differs from document');
+  return {kind:'document',documentId:item.documentId,revision:item.revision,contentId:item.contentId,bytes:item.bytes,...(item.sourceToken===undefined?{}:{sourceToken:item.sourceToken})};
 }
 export function parsePreservedCopy(value: unknown): { documentId: string; sourceToken: string } {
   const item = fields(value, ['documentId', 'sourceToken']); ipcId(item.documentId); ipcId(item.sourceToken);

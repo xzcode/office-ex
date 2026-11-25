@@ -6,13 +6,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const INVENTORY = join(ROOT, 'docs/DEPENDENCIES.lock.json');
 const PERMISSIVE = new Set(['MIT', 'Apache-2.0', 'ISC', 'BSD-2-Clause', 'BSD-3-Clause']);
-const RUNTIME_LIBRARIES = new Set(['fflate', '@xmldom/xmldom']);
+const RUNTIME_LIBRARIES = new Set(['fflate', '@xmldom/xmldom', 'pdfjs-dist']);
 const FORBIDDEN_ENGINES = /(?:onlyoffice|libreoffice|collabora|univer|officegen|exceljs|pptxgenjs)/i;
 const SOURCE_OVERRIDES = {
   electron: 'https://github.com/electron/electron', fflate: 'https://github.com/101arrowz/fflate', '@xmldom/xmldom': 'https://github.com/xmldom/xmldom',
   typescript: 'https://github.com/microsoft/TypeScript', esbuild: 'https://github.com/evanw/esbuild', tsx: 'https://github.com/privatenumber/tsx',
   'playwright-core': 'https://github.com/microsoft/playwright', '@types/node': 'https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node',
-  fsevents: 'https://github.com/fsevents/fsevents',
+  fsevents: 'https://github.com/fsevents/fsevents', 'pdfjs-dist': 'https://github.com/mozilla/pdf.js', '@napi-rs/canvas':'https://github.com/Brooooooklyn/canvas',
 };
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const stable = (value) => `${JSON.stringify(value, null, 2)}\n`;
@@ -74,7 +74,8 @@ async function inspectLock() {
     if (FORBIDDEN_ENGINES.test(name)) fail(`Office engine/converter dependency is forbidden: ${name}`);
     const specialToolLicense = name === 'graceful-fs' && item.version === '4.2.12' && item.dev === true && item.license === 'BlueOak-1.0.0';
     if (!PERMISSIVE.has(item.license) && !specialToolLicense) fail(`License needs explicit review: ${name}@${item.version}: ${item.license ?? 'missing'}`);
-    if (!item.dev && !RUNTIME_LIBRARIES.has(name)) fail(`Unexpected production transitive dependency: ${name}`);
+    const pdfNodeOptional = (name === '@napi-rs/canvas' || /^@napi-rs\/canvas-(?:android|darwin|linux|win32)-/.test(name)) && item.version === '1.2.0' && item.optional === true && item.license === 'MIT';
+    if (!item.dev && !RUNTIME_LIBRARIES.has(name) && !pdfNodeOptional) fail(`Unexpected production transitive dependency: ${name}`);
     if (!item.integrity?.startsWith('sha512-') || !item.resolved?.startsWith('https://registry.npmjs.org/')) fail(`Missing pinned registry origin/integrity: ${name}`);
     const local = await maybeJson(join(ROOT, path, 'package.json'));
     if (!local && !item.optional) fail(`Required installed package is missing: ${name}`);
@@ -90,9 +91,10 @@ async function inspectLock() {
       if (!resolvedPath && !optional) fail(`Unresolved locked dependency: ${name} -> ${dependency}`);
       dependencies.push({ name: dependency, requested, optional, path: resolvedPath ?? null, version: resolvedPath ? lock.packages[resolvedPath].version ?? null : null });
     }
-    inventory.push({ name, version: item.version, path, direct: direct.has(name), usage: RUNTIME_LIBRARIES.has(name) ? 'runtime-library' : name === 'electron' ? 'runtime-host-package' : 'development-or-installation', license: item.license, optional: item.optional === true, os: item.os ?? null, cpu: item.cpu ?? null, origin: origin ?? item.resolved, tarball: item.resolved, integrity: item.integrity, dependencies });
+    inventory.push({ name, version: item.version, path, direct: direct.has(name), usage: pdfNodeOptional ? 'optional-pdf-node-adapter-not-bundled' : RUNTIME_LIBRARIES.has(name) ? 'runtime-library' : name === 'electron' ? 'runtime-host-package' : 'development-or-installation', license: item.license, optional: item.optional === true, os: item.os ?? null, cpu: item.cpu ?? null, origin: origin ?? item.resolved, tarball: item.resolved, integrity: item.integrity, dependencies });
     if (local) {
       const names = await topLevelNotices(join(ROOT, path));
+      if(name==='pdfjs-dist')for(const directory of ['cmaps','standard_fonts','iccs'])for(const filename of await topLevelNotices(join(ROOT,path,directory)))names.push(directory+'/'+filename);
       if ((direct.has(name) || RUNTIME_LIBRARIES.has(name)) && !names.some((file) => /^licen[cs]e/i.test(file))) fail(`Required license text missing: ${name}`);
       for (const filename of names) {
         const source = `${path}/${filename}`; const bytes = await readFile(join(ROOT, source));
@@ -109,7 +111,7 @@ async function inspectLock() {
 export async function auditDependencies({ write = false, stageDir } = {}) {
   const current = await inspectLock();
   if (write) {
-    const inventory = { schemaVersion: 1, reviewedOn: '2026-11-24', lockSha256: current.lockSha256, policy: 'docs/DEPENDENCIES.md', packages: current.packages, noticeFiles: current.notices.map(({ bytes, ...item }) => item) };
+    const inventory = { schemaVersion: 1, reviewedOn: '2026-11-25', lockSha256: current.lockSha256, policy: 'docs/DEPENDENCIES.md', packages: current.packages, noticeFiles: current.notices.map(({ bytes, ...item }) => item) };
     await writeFile(INVENTORY, stable(inventory));
     for (const notice of current.notices) { const target = join(ROOT, notice.file); await mkdir(dirname(target), { recursive: true }); await writeFile(target, notice.bytes); }
   } else {
@@ -126,6 +128,9 @@ export async function auditDependencies({ write = false, stageDir } = {}) {
       if (source && hash(source) !== notice.sha256) fail(`Installed notice differs from reviewed text: ${notice.source}`);
     }
   }
+  const fontManifest=JSON.parse(await readFile(join(ROOT,'assets/fonts/manifest.json'),'utf8'));
+  for(const font of fontManifest.files){if(!/^[A-Za-z0-9_.-]+$/.test(font.file)||font.license!=='OFL-1.1'||font.faces.some(face=>face.fsType!==0))fail('Unreviewed bundled font');const bytes=await readFile(join(ROOT,'assets/fonts',font.file));if(bytes.length!==font.bytes||hash(bytes)!==font.sha256)fail('Bundled font differs from reviewed original: '+font.file);}
+  for(const notice of fontManifest.notices){if(!/^[A-Za-z0-9_.-]+$/.test(notice.file))fail('Invalid font notice path');const bytes=await readFile(join(ROOT,'assets/fonts',notice.file));if(bytes.length!==notice.bytes||hash(bytes)!==notice.sha256)fail('Font license notice differs from reviewed original: '+notice.file);}
   let nativeDistribution;
   if (stageDir) {
     const destination = resolve(ROOT, stageDir); const local = relative(ROOT, destination);
@@ -146,6 +151,8 @@ export async function auditDependencies({ write = false, stageDir } = {}) {
       const target = join(destination, 'electron-distribution', filename); await mkdir(dirname(target), { recursive: true }); await copyFile(source, target);
       nativeDistribution.notices.push({ file: `electron-distribution/${filename}`, byteLength: bytes.length, sha256: hash(bytes) });
     }
+    const fontDestination=join(destination,'fonts');await mkdir(fontDestination,{recursive:true});
+    for(const file of ['manifest.json','NotoCore-COPYRIGHT.txt','NotoCJK-COPYRIGHT.txt'])await copyFile(join(ROOT,'assets/fonts',file),join(fontDestination,file));
     await copyFile(INVENTORY, join(destination, 'DEPENDENCIES.lock.json'));
     await writeFile(join(destination, 'electron-distribution.json'), stable(nativeDistribution));
   }
