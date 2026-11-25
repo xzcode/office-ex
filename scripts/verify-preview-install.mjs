@@ -71,6 +71,17 @@ try{
  }
  record('Native installer creates a fresh installation');
  await verifyFiles(installed);record('Installed application files match the source-correlated content manifest');
+ if(platform==='linux'){
+  const desktop=await readFile('/usr/share/applications/office-ex-preview.desktop','utf8');assert.match(desktop,/^Icon=office-ex-preview$/m);
+  for(const size of [16,24,32,48,64,128,256,512]){
+   const icon='/usr/share/icons/hicolor/'+size+'x'+size+'/apps/office-ex-preview.png';
+   assert.equal(await hash(icon),await hash(join(installed,'resources','app','dist','desktop','branding','office-ex-'+size+'.png')));
+  }
+ }else if(platform==='darwin'){
+  const plist=execFileSync('/usr/libexec/PlistBuddy',['-c','Print :CFBundleIconFile',join(installed,'Contents','Info.plist')],{encoding:'utf8'}).trim();assert.equal(plist,'office-ex.icns');
+  assert.equal(await hash(join(installed,'Contents','Resources','office-ex.icns')),await hash(join(installed,'Contents','Resources','app','dist','desktop','branding','office-ex.icns')));
+ }
+
  await mkdir(profile);const env={...process.env,OFFICE_EX_PROFILE_DIR:profile};delete env.ELECTRON_RUN_AS_NODE;
  const start=performance.now();
  app=await electron.launch({executablePath:join(installed,...manifest.executable.split('/')),chromiumSandbox:true,env,timeout:30000});
@@ -78,6 +89,7 @@ try{
  report.startupMs=performance.now()-start;
  const runtime=await app.evaluate(({app,BrowserWindow})=>{const prefs=BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();return {packaged:app.isPackaged,version:app.getVersion(),sandbox:prefs.sandbox,contextIsolation:prefs.contextIsolation,nodeIntegration:prefs.nodeIntegration,webSecurity:prefs.webSecurity,noSandbox:app.commandLine.hasSwitch('no-sandbox')||app.commandLine.hasSwitch('disable-setuid-sandbox')};});
  assert.deepEqual(runtime,{packaged:true,version:manifest.version,sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,noSandbox:false});report.runtime=runtime;
+ await page.waitForFunction(()=>{const icon=document.querySelector('.brand-icon');return icon?.complete&&icon.naturalWidth===128;});assert.equal(await page.locator('#product-version').textContent(),manifest.version);record('Installed product identity and icon assets verified');
  await page.locator('#new-xlsx').click();await page.waitForSelector('#sheets-scroll [role=gridcell]');record('Installed executable launches with sandbox and opens an editable native worksheet');
  await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1,checkboxChecked:false});});
  let timer;try{await Promise.race([app.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Installed application Quit timed out')),20000);})]);}finally{clearTimeout(timer);}app=undefined;record('Installed application exits normally');

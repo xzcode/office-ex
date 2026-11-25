@@ -24,11 +24,11 @@
     {
       "id": "native-installation",
       "status": "open",
-      "reason": "Three-platform preview lifecycle verified for d106214; rebuild and reverify the exact future release candidate.",
+      "reason": "Three-platform preview lifecycle verified for 877d72e; rebuild and reverify the exact future release candidate including native branding.",
       "lastVerified": {
-        "sourceRevision": "d106214ecc27b38470330270a9c97024854c94f8",
+        "sourceRevision": "877d72e97d20afcec4fac8507f6da4e5e40cf551",
         "evidence": [
-          "https://github.com/xzcode/office-ex/actions/runs/45611433927"
+          "https://github.com/xzcode/office-ex/actions/runs/45615295882"
         ],
         "scope": "Development preview installer lifecycle on disposable Windows x64, macOS ARM64 and Linux x64 runners"
       }

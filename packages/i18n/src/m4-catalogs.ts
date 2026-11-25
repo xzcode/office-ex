@@ -2,6 +2,10 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "productAbout": "About Office EX",
+    "productLicense": "License",
+    "productSource": "Source code",
+    "productNotices": "Third-party license notices are included in the installation package.",
     "writerListStart": "Start number",
     "writerListRestart": "Restart numbering",
     "writerCharacterSpacing": "Character spacing (pt)",
@@ -121,6 +125,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "productAbout": "关于 Office EX",
+    "productLicense": "许可证",
+    "productSource": "源代码",
+    "productNotices": "第三方许可证随安装包提供。",
     "writerListStart": "起始编号",
     "writerListRestart": "重新编号",
     "writerCharacterSpacing": "字符间距（磅）",
@@ -240,6 +248,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "productAbout": "關於 Office EX",
+    "productLicense": "授權條款",
+    "productSource": "原始碼",
+    "productNotices": "第三方授權聲明隨安裝套件提供。",
     "writerListStart": "起始編號",
     "writerListRestart": "重新編號",
     "writerCharacterSpacing": "字元間距（點）",
@@ -359,6 +371,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "productAbout": "Office EX について",
+    "productLicense": "ライセンス",
+    "productSource": "ソースコード",
+    "productNotices": "サードパーティのライセンスはインストールパッケージに含まれます。",
     "writerListStart": "開始番号",
     "writerListRestart": "番号を振り直す",
     "writerCharacterSpacing": "文字間隔 (pt)",
@@ -478,6 +494,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "productAbout": "Office EX 정보",
+    "productLicense": "라이선스",
+    "productSource": "소스 코드",
+    "productNotices": "타사 라이선스 고지는 설치 패키지에 포함됩니다.",
     "writerListStart": "시작 번호",
     "writerListRestart": "번호 다시 시작",
     "writerCharacterSpacing": "문자 간격 (pt)",
@@ -597,6 +617,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "productAbout": "À propos d’Office EX",
+    "productLicense": "Licence",
+    "productSource": "Code source",
+    "productNotices": "Les licences tierces sont incluses dans le paquet d’installation.",
     "writerListStart": "Numéro de départ",
     "writerListRestart": "Recommencer la numérotation",
     "writerCharacterSpacing": "Espacement des caractères (pt)",
@@ -716,6 +740,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "productAbout": "Über Office EX",
+    "productLicense": "Lizenz",
+    "productSource": "Quellcode",
+    "productNotices": "Drittanbieter-Lizenzhinweise sind im Installationspaket enthalten.",
     "writerListStart": "Startnummer",
     "writerListRestart": "Nummerierung neu starten",
     "writerCharacterSpacing": "Zeichenabstand (pt)",
@@ -835,6 +863,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "productAbout": "Acerca de Office EX",
+    "productLicense": "Licencia",
+    "productSource": "Código fuente",
+    "productNotices": "Los avisos de licencias de terceros se incluyen en el instalador.",
     "writerListStart": "Número inicial",
     "writerListRestart": "Reiniciar numeración",
     "writerCharacterSpacing": "Espaciado de caracteres (pt)",
@@ -954,6 +986,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "productAbout": "Sobre o Office EX",
+    "productLicense": "Licença",
+    "productSource": "Código-fonte",
+    "productNotices": "Os avisos de licenças de terceiros estão no pacote de instalação.",
     "writerListStart": "Número inicial",
     "writerListRestart": "Reiniciar numeração",
     "writerCharacterSpacing": "Espaçamento de caracteres (pt)",
@@ -1073,6 +1109,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "productAbout": "Informazioni su Office EX",
+    "productLicense": "Licenza",
+    "productSource": "Codice sorgente",
+    "productNotices": "Le licenze di terze parti sono incluse nel pacchetto di installazione.",
     "writerListStart": "Numero iniziale",
     "writerListRestart": "Riavvia numerazione",
     "writerCharacterSpacing": "Spaziatura caratteri (pt)",
@@ -1192,6 +1232,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "productAbout": "Об Office EX",
+    "productLicense": "Лицензия",
+    "productSource": "Исходный код",
+    "productNotices": "Уведомления о сторонних лицензиях включены в установочный пакет.",
     "writerListStart": "Начальный номер",
     "writerListRestart": "Начать нумерацию заново",
     "writerCharacterSpacing": "Межзнаковый интервал (пт)",
@@ -1311,6 +1355,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "productAbout": "حول Office EX",
+    "productLicense": "الترخيص",
+    "productSource": "الشيفرة المصدرية",
+    "productNotices": "تتضمن حزمة التثبيت إشعارات تراخيص الجهات الخارجية.",
     "writerListStart": "رقم البداية",
     "writerListRestart": "إعادة بدء الترقيم",
     "writerCharacterSpacing": "تباعد الأحرف (نقطة)",
@@ -1430,6 +1478,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "productAbout": "אודות Office EX",
+    "productLicense": "רישיון",
+    "productSource": "קוד מקור",
+    "productNotices": "הודעות הרישוי של צד שלישי כלולות בחבילת ההתקנה.",
     "writerListStart": "מספר התחלה",
     "writerListRestart": "התחל מספור מחדש",
     "writerCharacterSpacing": "ריווח תווים (נק׳)",
@@ -1549,6 +1601,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "productAbout": "Office EX के बारे में",
+    "productLicense": "लाइसेंस",
+    "productSource": "स्रोत कोड",
+    "productNotices": "तृतीय-पक्ष लाइसेंस सूचनाएँ स्थापना पैकेज में हैं।",
     "writerListStart": "प्रारंभ संख्या",
     "writerListRestart": "क्रमांकन फिर शुरू करें",
     "writerCharacterSpacing": "वर्ण अंतर (pt)",
@@ -1668,6 +1724,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "productAbout": "เกี่ยวกับ Office EX",
+    "productLicense": "สัญญาอนุญาต",
+    "productSource": "ซอร์สโค้ด",
+    "productNotices": "ประกาศสิทธิ์ใช้งานของบุคคลที่สามรวมอยู่ในแพ็กเกจติดตั้ง",
     "writerListStart": "หมายเลขเริ่มต้น",
     "writerListRestart": "เริ่มลำดับเลขใหม่",
     "writerCharacterSpacing": "ระยะห่างอักขระ (pt)",
@@ -1787,6 +1847,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "productAbout": "Giới thiệu Office EX",
+    "productLicense": "Giấy phép",
+    "productSource": "Mã nguồn",
+    "productNotices": "Thông báo giấy phép bên thứ ba có trong gói cài đặt.",
     "writerListStart": "Số bắt đầu",
     "writerListRestart": "Đánh số lại",
     "writerCharacterSpacing": "Khoảng cách ký tự (pt)",
@@ -1906,6 +1970,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "productAbout": "Tentang Office EX",
+    "productLicense": "Lisensi",
+    "productSource": "Kode sumber",
+    "productNotices": "Pemberitahuan lisensi pihak ketiga disertakan dalam paket instalasi.",
     "writerListStart": "Nomor awal",
     "writerListRestart": "Mulai ulang penomoran",
     "writerCharacterSpacing": "Spasi karakter (pt)",
@@ -2025,6 +2093,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "productAbout": "Perihal Office EX",
+    "productLicense": "Lesen",
+    "productSource": "Kod sumber",
+    "productNotices": "Notis lesen pihak ketiga disertakan dalam pakej pemasangan.",
     "writerListStart": "Nombor mula",
     "writerListRestart": "Mulakan semula penomboran",
     "writerCharacterSpacing": "Jarak aksara (pt)",
@@ -2144,6 +2216,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "productAbout": "Office EX hakkında",
+    "productLicense": "Lisans",
+    "productSource": "Kaynak kodu",
+    "productNotices": "Üçüncü taraf lisans bildirimleri kurulum paketine dahildir.",
     "writerListStart": "Başlangıç numarası",
     "writerListRestart": "Numaralandırmayı yeniden başlat",
     "writerCharacterSpacing": "Karakter aralığı (pt)",
@@ -2263,6 +2339,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "productAbout": "Over Office EX",
+    "productLicense": "Licentie",
+    "productSource": "Broncode",
+    "productNotices": "Licentievermeldingen van derden staan in het installatiepakket.",
     "writerListStart": "Startnummer",
     "writerListRestart": "Nummering herstarten",
     "writerCharacterSpacing": "Tekenafstand (pt)",
@@ -2382,6 +2462,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "productAbout": "O Office EX",
+    "productLicense": "Licencja",
+    "productSource": "Kod źródłowy",
+    "productNotices": "Informacje o licencjach innych firm są w pakiecie instalacyjnym.",
     "writerListStart": "Numer początkowy",
     "writerListRestart": "Rozpocznij numerację od nowa",
     "writerCharacterSpacing": "Odstęp znaków (pkt)",
@@ -2501,6 +2585,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "productAbout": "Про Office EX",
+    "productLicense": "Ліцензія",
+    "productSource": "Вихідний код",
+    "productNotices": "Повідомлення про сторонні ліцензії включено до пакета встановлення.",
     "writerListStart": "Початковий номер",
     "writerListRestart": "Почати нумерацію заново",
     "writerCharacterSpacing": "Міжсимвольний інтервал (пт)",

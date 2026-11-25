@@ -1,3 +1,4 @@
+import { buildBranding } from './build-branding.mjs';
 import { auditDependencies } from './dependency-inventory.mjs';
 import { preparePdfWorker } from '../packages/pdf/prepare-worker.mjs';
 import { build } from 'esbuild';
@@ -16,6 +17,8 @@ const results=await Promise.all([
   build({...common,entryPoints:['packages/ui/src/sheets-recalc-worker.ts'],outfile:'dist/ui/sheets-recalc-worker.js',platform:'browser',format:'esm',target:'chrome156',metafile:true}),
   build({...common,entryPoints:['packages/ui/src/format-worker.ts'],outfile:'dist/ui/format-worker.js',platform:'browser',format:'esm',target:'chrome156',metafile:true})
 ]);
+await buildBranding();
+await copyFile('dist/desktop/branding/office-ex-128.png','dist/ui/office-ex.png');
 await copyFile('packages/ui/index.html','dist/ui/index.html');await copyFile('packages/ui/verify-docx.html','dist/ui/verify-docx.html');await writeFile('dist/ui/styles.css',(await Promise.all(['packages/ui/styles.css','packages/ui/slides-workspace.css','packages/ui/src/pdf-workspace.css'].map(path=>readFile(path,'utf8')))).join('\n'));
 for(const name of ['pdf-print.html','pdf-print.css','fonts.css'])await copyFile('packages/ui/'+name,'dist/ui/'+name);
 await writeFile('dist/ui/pdf.worker.mjs',preparePdfWorker(await readFile('node_modules/pdfjs-dist/build/pdf.worker.mjs','utf8')));

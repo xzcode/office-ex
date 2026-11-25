@@ -65,6 +65,19 @@ try{
  report.runtime=await app.evaluate(({app,BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0],p=w.webContents.getLastWebPreferences();return {packaged:app.isPackaged,name:app.getName(),version:app.getVersion(),electron:process.versions.electron,chromium:process.versions.chrome,sandbox:p.sandbox,contextIsolation:p.contextIsolation,nodeIntegration:p.nodeIntegration,webSecurity:p.webSecurity,devToolsOpened:(w.webContents.openDevTools({mode:'detach'}),w.webContents.isDevToolsOpened()),noSandbox:app.commandLine.hasSwitch('no-sandbox')||app.commandLine.hasSwitch('disable-setuid-sandbox')};});
  assert.deepEqual(report.runtime,{...report.runtime,packaged:true,name:'Office EX',version:manifest.version,electron:manifest.electron,sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,devToolsOpened:false,noSandbox:false});
  assert.deepEqual(await page.evaluate(()=>[typeof window.require,typeof window.process]),['undefined','undefined']);record('Actual packaged executable launches with sandbox, restricted preload and disabled DevTools');
+ const brandingPath=join(appDir,'dist','desktop','branding','manifest.json'),branding=JSON.parse(await readFile(brandingPath,'utf8'));
+ assert.equal(manifest.branding.sha256,await hash(brandingPath));assert.ok(branding.files.some(f=>f.name==='office-ex.ico')&&branding.files.some(f=>f.name==='office-ex.icns'));
+ for(const item of branding.files)assert.equal(await hash(join(appDir,'dist','desktop','branding',item.name)),item.sha256,item.name);
+ await page.waitForFunction(()=>{const icon=document.querySelector('.brand-icon');return icon instanceof HTMLImageElement&&icon.complete&&icon.naturalWidth===128;});
+ assert.equal(await page.locator('#product-version').textContent(),manifest.version);
+ assert.equal(await page.locator('#footer-version').textContent(),'Office EX · '+manifest.version);
+ await page.locator('#about').click();await page.waitForSelector('#about-dialog[open]');
+ assert.equal(await page.locator('#about-version').textContent(),manifest.version);
+ await page.locator('#about-dialog button[value=close]').click();
+ assert.equal(await page.locator('.product-card').count(),3);assert.equal(await page.locator('.internal-drafts').evaluate(el=>el.open),false);
+ if(process.platform==='darwin')assert.equal(await hash(join(folder,'Contents','Resources','office-ex.icns')),await hash(join(appDir,'dist','desktop','branding','office-ex.icns')));
+ record('Product branding, native icon assets, real version, About and native-format home verified');
+
  await page.locator('#settings').click();await page.locator('#language').selectOption('en-US');await page.locator('#document-language').selectOption('en-US');await page.locator('#settings-dialog button[value=close]').click();
  for(const format of ['doc','docx','xls','xlsx','ppt','pptx']){
   console.log('CHECK '+format);const name='preview-check.'+format,path=join(work,name);await page.locator('#new-'+format).click();

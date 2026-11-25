@@ -5,7 +5,7 @@ import { join, extname } from 'node:path';
 import { OfficeError } from '@office-ex/contracts';
 export interface LocalResource { data: Uint8Array; type: string }
 export type LocalResources = ReadonlyMap<string, LocalResource>;
-const TYPES: Readonly<Record<string, string>> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.ttf': 'font/ttf', '.ttc': 'font/collection', '.otf': 'font/otf', '.woff': 'font/woff', '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.bcmap': 'application/octet-stream', '.pfb': 'application/octet-stream', '.icc': 'application/octet-stream' };
+const TYPES: Readonly<Record<string, string>> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.ttf': 'font/ttf', '.ttc': 'font/collection', '.otf': 'font/otf', '.woff': 'font/woff', '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.bcmap': 'application/octet-stream', '.pfb': 'application/octet-stream', '.icc': 'application/octet-stream', '.png':'image/png' };
 export async function loadLocalResources(bundle: string, entryFiles: readonly string[]): Promise<Map<string, LocalResource>> {
   const resources = new Map<string, LocalResource>(); let total = 0;
   async function add(relative: string): Promise<void> {

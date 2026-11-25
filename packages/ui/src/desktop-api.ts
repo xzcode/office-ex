@@ -9,7 +9,7 @@ export type MenuAction = 'new-writer'|'new-sheets'|'new-slides'|'open'|'save'|'s
 export interface DesktopBridge {
   exportPdf(request:{documentId:string;sourceToken?:string;bytes:Uint8Array;revision:number;contentId:string;saveAs:boolean;title:string}):Promise<Result<{name:string;durability:string;pages:number;warnings:string[]}|null>>;
   print(request:PrintRequest):Promise<Result<{pages:number;warnings:string[]}>>;
-  initialize(): Promise<Result<{settings:PublicSettings;recovery:{entries:RecoveryItem[];corrupt:number};platform:string;systemLocales:string[]}>>;
+  initialize(): Promise<Result<{settings:PublicSettings;recovery:{entries:RecoveryItem[];corrupt:number};platform:string;systemLocales:string[];appVersion:string}>>;
   openFile():Promise<Result<OpenFileResult|null>>;
   openRecent(id:string):Promise<Result<OpenFileResult>>;
   openDroppedFile(file:File):Promise<Result<OpenFileResult>>;

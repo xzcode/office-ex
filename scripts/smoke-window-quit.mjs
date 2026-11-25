@@ -12,7 +12,7 @@ try{
  const env={...process.env,OFFICE_EX_PROFILE_DIR:work};delete env.ELECTRON_RUN_AS_NODE;
  app=await electron.launch({chromiumSandbox:true,args:[...(process.env.OFFICE_EX_HEADLESS==='1'?['--headless','--ozone-platform=headless']:[]),resolve('apps/desktop')],env,timeout:30000});
  const page=await app.firstWindow();await page.waitForSelector('body[data-ready=true]');
- await page.locator('[data-kind=slides]').click();await page.locator('#slide-insert-rect').click();
+ await page.locator('.internal-drafts').evaluate(el=>el.open=true);await page.locator('[data-kind=slides]').click();await page.locator('#slide-insert-rect').click();
  await page.waitForSelector('.tab[aria-selected=true]');assert.match(await page.locator('.tab[aria-selected=true] .tab-title').textContent(),/^• /);
  await app.evaluate(({dialog,app})=>{globalThis.__quitDialogCount=0;dialog.showMessageBox=async()=>{globalThis.__quitDialogCount++;return {response:2,checkboxChecked:false};};app.quit();});
  const start=Date.now();while(await app.evaluate(()=>globalThis.__quitDialogCount)!==1){if(Date.now()-start>10000)throw new Error('Quit did not request dirty-document confirmation');await new Promise(r=>setTimeout(r,50));}

@@ -2,6 +2,7 @@ name: M5 development preview distribution
 on:
   push:
     branches: [m5-distribution-20261125]
+    tags: ['v*-dev.*']
     paths-ignore: ['docs/**', 'README.md']
   workflow_dispatch:
 permissions:
@@ -28,6 +29,10 @@ jobs:
       - run: npm run test:interop
       - run: npm run audit:licenses
       - run: npm run release:readiness
+      - name: Validate exact development preview tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node --input-type=module -e "import {readFileSync} from 'node:fs';import {validatePreviewTag} from './scripts/prepare-preview-release.mjs';validatePreviewTag(process.env.GITHUB_REF_NAME,JSON.parse(readFileSync('package.json','utf8')).version,process.env.GITHUB_SHA)"
+
   package-preview:
     needs: verify
     strategy:
@@ -105,3 +110,35 @@ jobs:
             out/m5-preview/*.verification.json
             out/m5-preview/*.installation.json
           if-no-files-found: ignore
+
+  assemble-draft-preview:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [verify, package-preview]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '24.22.3'}
+      - name: Fetch only this run's three passed native artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name office-ex-preview-linux-x64 --name office-ex-preview-win32-x64 --name office-ex-preview-darwin-arm64 --dir out/release-input
+      - name: Assemble exact source-correlated preview release
+        run: node scripts/prepare-preview-release.mjs out/release-input out/release-draft
+      - name: Create unpublished prerelease draft (never publish automatically)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$GITHUB_SHA"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "A release already exists for this tag; refusing to overwrite it."
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" out/release-draft/Office-EX-* out/release-draft/SHA256SUMS out/release-draft/preview-release-evidence.json --draft --prerelease --latest=false --verify-tag --target "$GITHUB_SHA" --title "Office EX ${GITHUB_REF_NAME#v} Development Preview" --notes-file out/release-draft/RELEASE-NOTES.md

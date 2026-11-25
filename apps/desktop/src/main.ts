@@ -1,5 +1,5 @@
 import { message as translate, resolveLocale, type MessageKey } from '@office-ex/i18n';
-import { app, BrowserWindow, Menu, dialog, ipcMain, protocol, session, nativeTheme } from 'electron';
+import { app, BrowserWindow, Menu, dialog, ipcMain, protocol, session, nativeTheme, nativeImage } from 'electron';
 import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron';
 import { readFile, lstat, mkdir } from 'node:fs/promises';
 import { randomUUID, createHash } from 'node:crypto';
@@ -22,6 +22,8 @@ for (const flag of ['disable-background-networking','disable-component-update','
 app.commandLine.appendSwitch('disable-features','MediaRouter,OptimizationHints,AutofillServerCommunication,InterestFeedContentSuggestions');
 if (process.env.OFFICE_EX_PROFILE_DIR && isAbsolute(process.env.OFFICE_EX_PROFILE_DIR)) app.setPath('userData',process.env.OFFICE_EX_PROFILE_DIR);
 app.setName('Office EX');
+if(process.platform==='win32')app.setAppUserModelId('com.officex.preview');
+if(process.platform==='linux')app.setDesktopName('office-ex-preview.desktop');
 const ownsProfile = app.requestSingleInstanceLock();
 if(!ownsProfile)app.quit();
 let window:BrowserWindow|null = null;
@@ -277,7 +279,7 @@ async function printDocument(candidate:unknown,owner:BrowserWindow){
 function installIpc():void {
   handle('office:export-pdf',async(event,candidate)=>exportPdf(candidate,trusted(event)));
   handle('office:print',async(event,candidate)=>printDocument(candidate,trusted(event)));
-  handle('office:initialize',async()=>{rendererReady=true;setTimeout(()=>{void drainPendingFiles();},0);return {settings:settings.publicValue(),recovery:await recovery.list(),platform:process.platform,systemLocales:systemLanguages()};});
+  handle('office:initialize',async()=>{rendererReady=true;setTimeout(()=>{void drainPendingFiles();},0);return {settings:settings.publicValue(),recovery:await recovery.list(),platform:process.platform,systemLocales:systemLanguages(),appVersion:app.getVersion()};});
   handle('office:open',async()=>{
     const result = await dialog.showOpenDialog(window!,{properties:['openFile'],filters:[{name:t('officeFiles'),extensions},{name:t('allFiles'),extensions:['*']}]});
     return result.canceled || !result.filePaths[0] ? null : openSelected(result.filePaths[0]);
@@ -364,7 +366,7 @@ if(ownsProfile)app.whenReady().then(async()=>{
   await recovery.cleanupStaging();await backups.cleanupStaging();
   nativeTheme.themeSource=settings.value().theme;
   const bundle=resolve(__dirname,'../ui');
-  const resources=await loadLocalResources(bundle,['index.html','renderer.js','format-worker.js','sheets-recalc-worker.js','styles.css','pdf.worker.mjs','fonts.css']);
+  const resources=await loadLocalResources(bundle,['index.html','renderer.js','format-worker.js','sheets-recalc-worker.js','styles.css','pdf.worker.mjs','fonts.css','office-ex.png']);
   protocol.handle('office-ex',request=>{
     const url=new URL(request.url);const resource=resources.get(url.pathname==='/'?'/index.html':url.pathname);
     if(!localOrigin(url)||!resource||request.method!=='GET'||url.search||url.hash)return new Response('',{status:404});
@@ -377,11 +379,15 @@ if(ownsProfile)app.whenReady().then(async()=>{
   });
   verifyDocx=await createDocxVerifier(bundle,join(__dirname,'docx-verifier-preload.cjs'));
   printPdf=await createPdfPrinter(bundle,join(__dirname,'pdf-printer-preload.cjs'));
+  const appIconPath=join(__dirname,'branding','office-ex-512.png'),appIcon=nativeImage.createFromPath(appIconPath);
+  if(appIcon.isEmpty())throw new OfficeError('invalid','Missing packaged Office EX icon');
+  if(process.platform==='darwin')app.dock?.setIcon(appIcon);
+  app.setAboutPanelOptions({applicationName:'Office EX',applicationVersion:app.getVersion(),version:app.getVersion(),copyright:'Office EX contributors · MIT',iconPath:appIconPath});
   installIpc();installMenu();
   const createWindow=async():Promise<void>=>{
     if(window&&!window.isDestroyed())return;
     allowClose=false;quitRequested=false;rendererReady=false;
-    window=new BrowserWindow({width:1280,height:840,minWidth:880,minHeight:600,show:false,title:'Office EX',backgroundColor:'#f7f8fa',webPreferences:{preload:join(__dirname,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false,nodeIntegrationInWorker:false,nodeIntegrationInSubFrames:false,webSecurity:true,webviewTag:false,spellcheck:false,devTools:!app.isPackaged}});
+    window=new BrowserWindow({width:1280,height:840,minWidth:880,minHeight:600,show:false,title:'Office EX',icon:appIcon,backgroundColor:'#f7f8fa',webPreferences:{preload:join(__dirname,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false,nodeIntegrationInWorker:false,nodeIntegrationInSubFrames:false,webSecurity:true,webviewTag:false,spellcheck:false,devTools:!app.isPackaged}});
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     window.webContents.on('will-navigate',event=>event.preventDefault());
     window.webContents.on('will-attach-webview',event=>event.preventDefault());

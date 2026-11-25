@@ -7,7 +7,7 @@ import { formatTemplate } from './messages.js';
 export type MessageKey = keyof typeof english;
 export type Catalog = Readonly<Record<MessageKey,string>>;
 const catalogs = Object.fromEntries(Object.entries(recoveredCatalogs).map(([locale,catalog])=>[locale,{
-  ...catalog,...m4Catalogs[locale as keyof typeof m4Catalogs],previewTag:catalog.previewTag.replace('M3','M4'),stage:'Writer · Sheets · Slides · PDF'
+  ...catalog,...m4Catalogs[locale as keyof typeof m4Catalogs],previewTag:catalog.previewTag.replace(/^M\d+\s*·\s*/,''),stage:'Writer · Sheets · Slides · PDF'
 }])) as Record<keyof typeof recoveredCatalogs,Catalog>;
 export type UiLocale = keyof typeof catalogs;
 export type LanguagePreference = UiLocale | 'system';

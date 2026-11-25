@@ -50,7 +50,7 @@ try{
   assert.deepEqual(denied,['rejected','rejected']);assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1);check('CSP rejects remote/local fetch; new windows denied');
   const invalid=await page.evaluate(()=>window.office.saveCopy({documentId:'fake',sourceToken:'fake'}));assert.equal(invalid.ok,false);assert.equal(invalid.error.code,'unsafe');
   const syntheticDrop=await page.evaluate(()=>window.office.openDroppedFile(new File(['data'],'forged.docx')));assert.equal(syntheticDrop.ok,false);check('Forged capability and synthetic dropped file rejected');
-  await page.locator('[data-kind=writer]').click();await page.locator('#draft-text').fill('中文草稿 😀\nFirst saved revision');
+  await page.locator('.internal-drafts').evaluate(el=>el.open=true);await page.locator('[data-kind=writer]').click();await page.locator('#draft-text').fill('中文草稿 😀\nFirst saved revision');
   await dialogSave(draftPath);await page.locator('#save').click();await waitFor(async()=>{try{return JSON.parse(await readFile(draftPath,'utf8')).document.sections[0].blocks[0].runs[0].text.includes('First saved');}catch{return false;}},'first draft save');
   await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));
   const firstDocument=JSON.parse(await readFile(draftPath,'utf8')).document;check('Draft → worker serialization → atomic save → re-read');
@@ -105,7 +105,7 @@ try{
   await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));
   check('Writer multi-paragraph controls, selected formatting, split/join, explicit page navigation and caret hit-test');
   // Each domain uses the same session and persistence contract in its own tab.
-  await page.locator('#home').click();await page.locator('[data-kind=sheets]').click();
+  await page.locator('#home').click();await page.locator('.internal-drafts').evaluate(el=>el.open=true);await page.locator('[data-kind=sheets]').click();
   // A real queued viewport repaint used to replace the address draft before Enter.
   await page.locator('#sheets-address').fill('B1');
   await page.evaluate(async()=>{document.querySelector('#sheets-scroll').dispatchEvent(new Event('scroll'));await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
@@ -170,7 +170,7 @@ try{
   await page.waitForFunction(()=>!document.querySelector('#save').disabled);await page.locator('.tab[aria-selected=true] .tab-close').click();
   check('Consecutive imported XLSX saves retain stable worksheet paths, metadata, print margins and formula caches after reorder');
 
-  await page.locator('#home').click();await page.locator('[data-kind=slides]').click();await page.locator('#slide-insert-rect').click();
+  await page.locator('#home').click();await page.locator('.internal-drafts').evaluate(el=>el.open=true);await page.locator('[data-kind=slides]').click();await page.locator('#slide-insert-rect').click();
   const shapes=page.locator('#slide-canvas [data-shape-id]');assert.equal(await shapes.count(),1);await page.locator('#undo').click();await waitFor(async()=>await shapes.count()===0,'Slide undo rendered');await page.locator('#redo').click();await waitFor(async()=>await shapes.count()===1,'Slide redo rendered');
   await shapes.first().click();await screenshot('slides');
   await page.locator('.tab[aria-selected=true] .tab-close').click();await page.locator('.tab').first().click();

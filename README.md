@@ -51,7 +51,7 @@ npm run verify:preview -- out/m5-preview/Office-EX-0.1.0-dev.1-linux-x64.manifes
 npm run release:readiness
 ```
 
-`npm run package:preview -- --installer` 在对应构建机上生成 Linux DEB、macOS DMG 或 Windows 安装器。分发仍处于预览验证阶段，不自动发布 GitHub Release。打包文件附 SHA256SUMS、内容清单及第三方许可证。不要绕过系统安全策略或关闭 Chromium sandbox。正式发布检查使用 `npm run release:readiness -- --require-formal`。
+`npm run package:preview -- --installer` 在对应构建机上生成 Linux DEB、macOS DMG 或 Windows 安装器。分发仍处于预览验证阶段。普通分支推送仅生成 CI 产物；维护者主动推送与源码版本一致的开发预览标签（如 `v0.1.0-dev.1`），且三平台安装、启动及移除校验全部通过后，工作流才组装未公开的 GitHub 预发布草稿。不会自动公开或标记 Latest。打包文件附 SHA256SUMS、内容清单及第三方许可证。不要绕过系统安全策略或关闭 Chromium sandbox。正式发布检查使用 `npm run release:readiness -- --require-formal`。
 
 ## 开发验证
 
