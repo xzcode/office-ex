@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDocument,resolveSlideThemeColor,DEFAULT_SLIDE_THEME_COLORS,makeImageResource,walkSlideShapes,type SlidesDocument,type Shape} from '@office-ex/core';
+import {createDocument,resolveSlideThemeColor,DEFAULT_SLIDE_THEME_COLORS,makeImageResource,walkSlideShapes,resolveSlideConnector,type SlidesDocument,type Shape} from '@office-ex/core';
 import {OfficeError} from '@office-ex/contracts';
 import {openOpc,writeZip,openSlidesPptx,writeSlidesPptx,saveSlidesPptx} from '@office-ex/ooxml';
 import {openLegacyPpt,writeLegacyPpt,saveLegacyPpt,prepareSlidesSave,serializeDraft,inspectForEditor} from '@office-ex/format-service';
@@ -194,4 +194,20 @@ test('PPTX nested groups, crop, flips, default presets, styled connectors and me
  for(const changed of [raw.replace(/(<p:cNvPr id=")3"/,(_,prefix)=>prefix+'2"'),raw.replace(/(<a:srcRect l=")10000"/,(_,prefix)=>prefix+'99999"'),raw.replace('<p:cNvCxnSpPr/>','<p:cNvCxnSpPr><a:stCxn id="2" idx="0"/></p:cNvCxnSpPr>')]){
    assert.notEqual(changed,raw);const modified=new Map(parts);modified.set(slide,new TextEncoder().encode(changed));const bytes=writeZip(modified);assert.throws(()=>openSlidesPptx(bytes,d.documentId),fail());assert.equal((await inspectForEditor(bytes,'protected.pptx','protected')).report.readOnly,true);
  }
+});
+
+test('PPTX attached straight connector references survive shape movement and native reordering',async()=>{
+ const d=createDocument('slides','connector-format'),g={x:914400,y:914400,width:914400,height:914400,rotation:0};
+ d.slides[0]!.shapes=[{id:'a',type:'rect',geometry:g},{id:'b',type:'rect',geometry:{...g,x:4572000}},{id:'line',type:'line',connector:true,geometry:{x:1828800,y:1371600,width:2743200,height:0,rotation:0},connections:{start:{shapeId:'a',site:3},end:{shapeId:'b',site:1}},stroke:{width:25400,color:{kind:'rgba',red:0,green:0,blue:0,alpha:255},tail:{type:'triangle'}}}];
+ const input=writeSlidesPptx(d),source=openSlidesPptx(input,d.documentId),shapes=source.document.slides[0]!.shapes;
+ const [a,b,line]=shapes;assert.ok(a&&b&&line?.type==='line');assert.equal(line.connections?.start.shapeId,a.id);assert.equal(line.connections?.end.shapeId,b.id);
+ b.geometry.y+=914400;source.document.slides[0]!.shapes=[line,b,a];
+ const saved=saveSlidesPptx(input,source.document),reopened=openSlidesPptx(saved,d.documentId).document,after=reopened.slides[0]!.shapes;
+ const current=after[0]!;assert.equal(current.type,'line');if(current.type!=='line')return;
+ assert.deepEqual(current.connections,{start:{shapeId:after[2]!.id,site:3},end:{shapeId:after[1]!.id,site:1}});
+ assert.equal(current.geometry.height,914400);
+ const opc=openOpc(saved),path='ppt/slides/slide1.xml',raw=new TextDecoder().decode(opc.parts.get(path)!);
+ assert.match(raw,/<a:stCxn id="4" idx="3"/);assert.match(raw,/<a:endCxn id="3" idx="1"/);
+ const bad=raw.replace(/(<a:stCxn id=")4"/,(_,prefix)=>prefix+'999"');const parts=new Map(opc.parts);parts.set(path,new TextEncoder().encode(bad));
+ assert.equal((await inspectForEditor(writeZip(parts),'bad.pptx','bad')).report.readOnly,true);
 });

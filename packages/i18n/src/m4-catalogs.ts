@@ -2,6 +2,11 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "slideEditGroup": "Edit group",
+    "slideExitGroup": "Exit group",
+    "slideConnectObjects": "Connect objects",
+    "slideDetachConnector": "Detach connector",
+    "slideObjectTree": "Objects",
     "slideRoundRect": "Rounded rectangle",
     "slideTriangle": "Triangle",
     "slideDiamond": "Diamond",
@@ -105,6 +110,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "slideEditGroup": "编辑组内对象",
+    "slideExitGroup": "退出组合编辑",
+    "slideConnectObjects": "连接对象",
+    "slideDetachConnector": "解除连接",
+    "slideObjectTree": "对象列表",
     "slideRoundRect": "圆角矩形",
     "slideTriangle": "三角形",
     "slideDiamond": "菱形",
@@ -208,6 +218,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "slideEditGroup": "編輯群組物件",
+    "slideExitGroup": "退出群組編輯",
+    "slideConnectObjects": "連接物件",
+    "slideDetachConnector": "解除連接",
+    "slideObjectTree": "物件清單",
     "slideRoundRect": "圓角矩形",
     "slideTriangle": "三角形",
     "slideDiamond": "菱形",
@@ -311,6 +326,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "slideEditGroup": "グループを編集",
+    "slideExitGroup": "グループ編集を終了",
+    "slideConnectObjects": "オブジェクトを接続",
+    "slideDetachConnector": "接続を解除",
+    "slideObjectTree": "オブジェクト",
     "slideRoundRect": "角丸四角形",
     "slideTriangle": "三角形",
     "slideDiamond": "ひし形",
@@ -414,6 +434,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "slideEditGroup": "그룹 편집",
+    "slideExitGroup": "그룹 편집 종료",
+    "slideConnectObjects": "개체 연결",
+    "slideDetachConnector": "연결 해제",
+    "slideObjectTree": "개체",
     "slideRoundRect": "둥근 사각형",
     "slideTriangle": "삼각형",
     "slideDiamond": "마름모",
@@ -517,6 +542,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "slideEditGroup": "Modifier le groupe",
+    "slideExitGroup": "Quitter le groupe",
+    "slideConnectObjects": "Relier les objets",
+    "slideDetachConnector": "Détacher le connecteur",
+    "slideObjectTree": "Objets",
     "slideRoundRect": "Rectangle arrondi",
     "slideTriangle": "Triangle",
     "slideDiamond": "Losange",
@@ -620,6 +650,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "slideEditGroup": "Gruppe bearbeiten",
+    "slideExitGroup": "Gruppe verlassen",
+    "slideConnectObjects": "Objekte verbinden",
+    "slideDetachConnector": "Verbindung lösen",
+    "slideObjectTree": "Objekte",
     "slideRoundRect": "Abgerundetes Rechteck",
     "slideTriangle": "Dreieck",
     "slideDiamond": "Raute",
@@ -723,6 +758,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "slideEditGroup": "Editar grupo",
+    "slideExitGroup": "Salir del grupo",
+    "slideConnectObjects": "Conectar objetos",
+    "slideDetachConnector": "Desconectar",
+    "slideObjectTree": "Objetos",
     "slideRoundRect": "Rectángulo redondeado",
     "slideTriangle": "Triángulo",
     "slideDiamond": "Rombo",
@@ -826,6 +866,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "slideEditGroup": "Editar grupo",
+    "slideExitGroup": "Sair do grupo",
+    "slideConnectObjects": "Conectar objetos",
+    "slideDetachConnector": "Desconectar",
+    "slideObjectTree": "Objetos",
     "slideRoundRect": "Retângulo arredondado",
     "slideTriangle": "Triângulo",
     "slideDiamond": "Losango",
@@ -929,6 +974,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "slideEditGroup": "Modifica gruppo",
+    "slideExitGroup": "Esci dal gruppo",
+    "slideConnectObjects": "Collega oggetti",
+    "slideDetachConnector": "Scollega connettore",
+    "slideObjectTree": "Oggetti",
     "slideRoundRect": "Rettangolo arrotondato",
     "slideTriangle": "Triangolo",
     "slideDiamond": "Rombo",
@@ -1032,6 +1082,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "slideEditGroup": "Редактировать группу",
+    "slideExitGroup": "Выйти из группы",
+    "slideConnectObjects": "Соединить объекты",
+    "slideDetachConnector": "Разъединить",
+    "slideObjectTree": "Объекты",
     "slideRoundRect": "Скруглённый прямоугольник",
     "slideTriangle": "Треугольник",
     "slideDiamond": "Ромб",
@@ -1135,6 +1190,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "slideEditGroup": "تحرير المجموعة",
+    "slideExitGroup": "الخروج من المجموعة",
+    "slideConnectObjects": "ربط العناصر",
+    "slideDetachConnector": "فصل الموصل",
+    "slideObjectTree": "العناصر",
     "slideRoundRect": "مستطيل مستدير",
     "slideTriangle": "مثلث",
     "slideDiamond": "معين",
@@ -1238,6 +1298,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "slideEditGroup": "עריכת קבוצה",
+    "slideExitGroup": "יציאה מקבוצה",
+    "slideConnectObjects": "חיבור אובייקטים",
+    "slideDetachConnector": "ניתוק מחבר",
+    "slideObjectTree": "אובייקטים",
     "slideRoundRect": "מלבן מעוגל",
     "slideTriangle": "משולש",
     "slideDiamond": "מעוין",
@@ -1341,6 +1406,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "slideEditGroup": "समूह संपादित करें",
+    "slideExitGroup": "समूह से बाहर निकलें",
+    "slideConnectObjects": "ऑब्जेक्ट जोड़ें",
+    "slideDetachConnector": "कनेक्टर अलग करें",
+    "slideObjectTree": "ऑब्जेक्ट",
     "slideRoundRect": "गोल कोनों वाला आयत",
     "slideTriangle": "त्रिभुज",
     "slideDiamond": "समचतुर्भुज",
@@ -1444,6 +1514,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "slideEditGroup": "แก้ไขกลุ่ม",
+    "slideExitGroup": "ออกจากกลุ่ม",
+    "slideConnectObjects": "เชื่อมวัตถุ",
+    "slideDetachConnector": "ยกเลิกการเชื่อม",
+    "slideObjectTree": "วัตถุ",
     "slideRoundRect": "สี่เหลี่ยมมุมมน",
     "slideTriangle": "สามเหลี่ยม",
     "slideDiamond": "สี่เหลี่ยมขนมเปียกปูน",
@@ -1547,6 +1622,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "slideEditGroup": "Sửa nhóm",
+    "slideExitGroup": "Thoát nhóm",
+    "slideConnectObjects": "Kết nối đối tượng",
+    "slideDetachConnector": "Ngắt kết nối",
+    "slideObjectTree": "Đối tượng",
     "slideRoundRect": "Hình chữ nhật bo góc",
     "slideTriangle": "Tam giác",
     "slideDiamond": "Hình thoi",
@@ -1650,6 +1730,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "slideEditGroup": "Edit grup",
+    "slideExitGroup": "Keluar dari grup",
+    "slideConnectObjects": "Hubungkan objek",
+    "slideDetachConnector": "Lepas konektor",
+    "slideObjectTree": "Objek",
     "slideRoundRect": "Persegi panjang membulat",
     "slideTriangle": "Segitiga",
     "slideDiamond": "Belah ketupat",
@@ -1753,6 +1838,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "slideEditGroup": "Edit kumpulan",
+    "slideExitGroup": "Keluar kumpulan",
+    "slideConnectObjects": "Sambung objek",
+    "slideDetachConnector": "Putus penyambung",
+    "slideObjectTree": "Objek",
     "slideRoundRect": "Segi empat bulat",
     "slideTriangle": "Segi tiga",
     "slideDiamond": "Bentuk berlian",
@@ -1856,6 +1946,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "slideEditGroup": "Grubu düzenle",
+    "slideExitGroup": "Gruptan çık",
+    "slideConnectObjects": "Nesneleri bağla",
+    "slideDetachConnector": "Bağlantıyı ayır",
+    "slideObjectTree": "Nesneler",
     "slideRoundRect": "Yuvarlatılmış dikdörtgen",
     "slideTriangle": "Üçgen",
     "slideDiamond": "Eşkenar dörtgen",
@@ -1959,6 +2054,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "slideEditGroup": "Groep bewerken",
+    "slideExitGroup": "Groep verlaten",
+    "slideConnectObjects": "Objecten verbinden",
+    "slideDetachConnector": "Verbinding losmaken",
+    "slideObjectTree": "Objecten",
     "slideRoundRect": "Afgeronde rechthoek",
     "slideTriangle": "Driehoek",
     "slideDiamond": "Ruit",
@@ -2062,6 +2162,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "slideEditGroup": "Edytuj grupę",
+    "slideExitGroup": "Opuść grupę",
+    "slideConnectObjects": "Połącz obiekty",
+    "slideDetachConnector": "Odłącz łącznik",
+    "slideObjectTree": "Obiekty",
     "slideRoundRect": "Zaokrąglony prostokąt",
     "slideTriangle": "Trójkąt",
     "slideDiamond": "Romb",
@@ -2165,6 +2270,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "slideEditGroup": "Редагувати групу",
+    "slideExitGroup": "Вийти з групи",
+    "slideConnectObjects": "З’єднати об’єкти",
+    "slideDetachConnector": "Від’єднати з’єднувач",
+    "slideObjectTree": "Об’єкти",
     "slideRoundRect": "Заокруглений прямокутник",
     "slideTriangle": "Трикутник",
     "slideDiamond": "Ромб",

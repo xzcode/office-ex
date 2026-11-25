@@ -24,6 +24,18 @@ export function shapeTransform(geometry: Geometry | DeepReadonly<Geometry>): Mat
   const cosine = Math.cos(radians); const sine = Math.sin(radians); const cx = geometry.width / 2; const cy = geometry.height / 2;
   return [cosine, sine, -sine, cosine, geometry.x + cx - cosine * cx + sine * cy, geometry.y + cy - sine * cx - cosine * cy];
 }
+/** Group child coordinate system including scaling, flips and rotation. */
+export function groupChildTransform(group:DeepReadonly<Extract<Shape,{type:'group'}>>):Matrix{
+ const g=group.geometry,c=group.childSpace,fx=group.flipH?-1:1,fy=group.flipV?-1:1,sx=fx*g.width/c.width,sy=fy*g.height/c.height;
+ return multiply(shapeTransform(g),[sx,0,0,sy,(group.flipH?g.width:0)-sx*c.x,(group.flipV?g.height:0)-sy*c.y]);
+}
+export function slideShapeParentTransform(shapes:readonly DeepReadonly<Shape>[],id:string,parent:Matrix=IDENTITY):Matrix|undefined{
+ for(const shape of shapes){
+  if(shape.id===id)return parent;
+  if(shape.type==='group'){const found=slideShapeParentTransform(shape.children,id,multiply(parent,groupChildTransform(shape)));if(found)return found;}
+ }
+ return undefined;
+}
 export interface Viewport { readonly zoom: number; readonly pan: Point; readonly origin: Point; readonly devicePixelRatio: number }
 export function viewportTransform(viewport: Viewport, devicePixels = false): Matrix {
   finite([viewport.zoom, viewport.devicePixelRatio, viewport.pan.x, viewport.pan.y, viewport.origin.x, viewport.origin.y]);

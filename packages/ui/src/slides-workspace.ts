@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, ROTATION_UNITS_PER_DEGREE, OfficeError } from '@office-ex/contracts';
-import { walkSlideShapes, type DocumentSnapshot, type DocumentCommand, type ImageResource, type Shape, type Geometry, type TextStyle, type SlideParagraphFormat, type Color, type DeepReadonly, type SlidePreset, type SlideCrop, type SlideStroke, type SlideDash } from '@office-ex/core';
-import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
-import { buildSlideScene, hitTest, shapeTransform, inverse, transform, type SlideScene, type Point } from '@office-ex/render';
+import { walkSlideShapes, isConnectorTarget, resolveSlideConnector, previewModelPatch, type PatchOperation, type DocumentSnapshot, type DocumentCommand, type ImageResource, type Shape, type Geometry, type TextStyle, type SlideParagraphFormat, type Color, type DeepReadonly, type SlidePreset, type SlideCrop, type SlideStroke, type SlideDash } from '@office-ex/core';
+import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes, connectSlideShapes, setSlideConnections, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
+import { buildSlideScene, walkSlideScene, hitTest, shapeTransform, inverse, transform, multiply, IDENTITY, groupChildTransform, slideShapeParentTransform, type Matrix, type SlideScene, type Point } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import { createSlideSceneElement, slideCssColor, overflowingSlideText, measureSlideTextFit, updateSlideShapeGeometry } from './slides-scene-dom.js';
 
-export interface SlidesViewState {slideId?:string;selectedIds:string[];zoom:number;lockAspect?:boolean;flush?:()=>boolean;dispose?:()=>void}
+export interface SlidesViewState {slideId?:string;groupId?:string;selectedIds:string[];zoom:number;lockAspect?:boolean;flush?:()=>boolean;dispose?:()=>void}
 export interface SlidesHost {
   snapshot():DocumentSnapshot;execute(command:DocumentCommand):boolean;render():void;error(error:unknown):void;
   composing():boolean;setComposing(value:boolean):void;t(key:MessageKey,args?:Readonly<Record<string,string|number>>):string;number(value:number):string;
@@ -29,7 +29,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   const help=element('p',t('slideHelp'),'muted slides-help'),overflow=element('p','','slides-overflow'),position=element('span','');status.append(position,overflow,help);overflow.hidden=true;
   let scene:SlideScene,sceneElement:HTMLDivElement,gesture:Gesture|undefined,disposed=false,zoom=1,textTimer:ReturnType<typeof setTimeout>|undefined,textDirty=false,editingId:string|undefined,observer:ResizeObserver|undefined,thumbObserver:IntersectionObserver|undefined,presentationDialog:HTMLDialogElement|undefined,closePresentation:(()=>void)|undefined;
   const editControls:(HTMLButtonElement|HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement)[]=[];const selectionControls:(HTMLButtonElement|HTMLInputElement|HTMLSelectElement)[]=[];
-  const snap=()=>host.snapshot(),doc=()=>presentation(snap()),selected=()=>state.selectedIds.map(shapeId=>locateShape(snap(),state.slideId!,shapeId).shape);
+  const snap=()=>host.snapshot(),doc=()=>presentation(snap()),selected=()=>scopeShapes().filter(shape=>state.selectedIds.includes(shape.id));
   function safe(fn:()=>void):void{try{fn();}catch(error){host.error(error);}}
   function button(key:MessageKey,fn:()=>void,target:HTMLElement=toolbar,identifier?:string,needsSelection=false,mutates=true):HTMLButtonElement {
     const b=element('button',t(key));b.type='button';if(identifier)b.id=identifier;b.onpointerdown=event=>{if(event.pointerType==='mouse')event.preventDefault();};b.onclick=()=>safe(()=>{if(flush())fn();});target.append(b);if(mutates)editControls.push(b);if(needsSelection)selectionControls.push(b);return b;
@@ -38,7 +38,32 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   function input(key:MessageKey,type:string,value:string,fn:(value:string)=>void,needsSelection=true):HTMLInputElement {
     const control=element('input');control.type=type;control.value=value;field(key,control);control.onchange=()=>safe(()=>{if(flush())fn(control.value);});if(needsSelection)selectionControls.push(control);return control;
   }
-  function apply(command:DocumentCommand,repaint=true):boolean {if(host.readOnly||disposed)return false;const ok=host.execute(command);if(ok&&repaint)refresh();return ok;}
+  function fitCommand(command:DocumentCommand):DocumentCommand{
+    if(host.legacyPresentation||command.type!=='model.patch'||!state.slideId)return command;
+    const ops=command.payload.operations.filter(op=>op.op==='set'&&['runs','geometry','textStyle','textFrame'].includes(String(op.path.at(-1))));
+    if(!ops.length)return command;
+    const snapshot=snap(),slide=locateSlide(snapshot,state.slideId),affected=[...walkSlideShapes(slide.slide.shapes)].filter(shape=>{
+      if(shape.type!=='text'||shape.textFrame?.autofit?.mode!=='normal')return false;
+      const path=locateShape(snapshot,slide.slide.id,shape.id).path;
+      return ops.some(op=>op.path.length===path.length+1&&path.every((v,i)=>op.path[i]===v));
+    });
+    if(!affected.length)return command;
+    if(affected.length>32)throw new OfficeError('limit','Too many fitted text boxes in one edit');
+    const candidate=previewModelPatch(snapshot,command),projected=new Map([...walkSlideScene(buildSlideScene(candidate,slide.slide.id).shapes)].map(shape=>[shape.id,shape])),extra:PatchOperation[]=[];
+    for(const old of affected){
+      if(old.type!=='text')continue;
+      const location=locateShape(candidate,slide.slide.id,old.id),model=location.shape,shape=projected.get(old.id);
+      if(model.type!=='text'||model.textFrame?.autofit?.mode!=='normal'||shape?.type!=='text')continue;
+      const newFit=model.textFrame.autofit;
+      // Explicit Fit/Reset already carries its selected scale.
+      if(JSON.stringify(old.textFrame?.autofit)!==JSON.stringify(newFit)&&ops.every(op=>op.path.at(-1)==='textFrame'))continue;
+      if(JSON.stringify(old)===JSON.stringify(model))continue;
+      const fontScale=measureSlideTextFit(shape)||10000;
+      if(fontScale!==newFit.fontScale)extra.push({op:'set',path:[...location.path,'textFrame'],value:{...model.textFrame,autofit:{...newFit,fontScale}}});
+    }
+    return extra.length?{...command,payload:{...command.payload,operations:[...command.payload.operations,...extra]}}:command;
+  }
+  function apply(command:DocumentCommand,repaint=true):boolean {if(host.readOnly||disposed)return false;const ok=host.execute(fitCommand(command));if(ok&&repaint)refresh();return ok;}
   function cancelGesture():void {if(!gesture)return;const previous=gesture;gesture=undefined;if(previous.frame!==undefined)cancelAnimationFrame(previous.frame);if(stage.hasPointerCapture(previous.pointerId))stage.releasePointerCapture(previous.pointerId);paintGeometry();}
   function flush():boolean {if(disposed)return true;if(host.composing())return false;if(gesture)cancelGesture();if(textTimer!==undefined){clearTimeout(textTimer);textTimer=undefined;}return commitText();}
   state.flush=flush;
@@ -47,17 +72,36 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     if(!textDirty||!editingId)return true;if(host.readOnly||host.composing())return false;
     try{const shape=locateShape(snap(),state.slideId!,editingId).shape;if(shape.type!=='text')return false;const before=shapeText(shape);if(before===textEditor.value){textDirty=false;return true;}const difference=slideTextEditDiff(before,textEditor.value);const ok=apply(replaceShapeText(snap(),state.slideId!,editingId,difference.start,difference.end,difference.text,id),false);if(ok){textDirty=false;refreshScene();refreshThumbnails();}return ok;}catch(error){host.error(error);return false;}
   }
-  function changeSlide(slideId:string):void {if(!flush())return;state.slideId=slideId;state.selectedIds=[];editingId=undefined;refresh();stage.focus({preventScroll:true});}
-  function choose(ids:string[]):void {if(!flush())return;state.selectedIds=ids;syncInspector();paintGeometry();}
+  function changeSlide(slideId:string):void {if(!flush())return;state.slideId=slideId;state.groupId=undefined;state.selectedIds=[];editingId=undefined;refresh();stage.focus({preventScroll:true});}
+  function activeGroup():Extract<ShapeSnapshot,{type:'group'}>|undefined{
+    if(!state.groupId||!state.slideId)return undefined;
+    const group=[...walkSlideShapes(locateSlide(snap(),state.slideId).slide.shapes)].find(s=>s.id===state.groupId);
+    if(group?.type==='group')return group;state.groupId=undefined;return undefined;
+  }
+  function scopeShapes():readonly ShapeSnapshot[]{return activeGroup()?.children??locateSlide(snap(),state.slideId!).slide.shapes;}
+  function scopeMatrix():Matrix{
+    const group=activeGroup();if(!group)return IDENTITY;
+    return multiply(slideShapeParentTransform(locateSlide(snap(),state.slideId!).slide.shapes,group.id)??IDENTITY,groupChildTransform(group));
+  }
+  function choose(ids:string[]):void{
+    if(!flush())return;
+    if(ids.length){const locations=ids.map(shapeId=>locateShape(snap(),state.slideId!,shapeId));if(!locations.every(l=>l.siblings===locations[0]!.siblings))return;state.groupId=locations[0]!.parent?.id;}
+    state.selectedIds=ids;syncInspector();paintGeometry();
+  }
+  function enterGroup(group:Extract<ShapeSnapshot,{type:'group'}>):void{if(!flush())return;state.groupId=group.id;state.selectedIds=[];syncInspector();paintGeometry();stage.focus({preventScroll:true});}
+  function leaveGroup():void{const group=activeGroup();if(group)choose([group.id]);}
+  function duplicateSelection():void{const count=scopeShapes().length;if(apply(duplicateShapes(snap(),state.slideId!,state.selectedIds,id)))choose(scopeShapes().slice(count).map(s=>s.id));}
+  function selectedHasBindings():boolean{return selected().some(s=>s.type==='line'&&s.connections);}
+
   function addShape(type:'text'|SlidePreset,connector=false):void {
     const m=doc(),slide=locateSlide(snap(),state.slideId!).slide,shapeId=id(),geometry={x:Math.round(m.size.width*.2),y:Math.round(m.size.height*.2),width:Math.round(m.size.width*.4),height:Math.round(m.size.height*(type==='line'?.15:type==='text'?.2:.3)),rotation:0};let shape:Shape;
     if(type==='text')shape={id:shapeId,type,runs:[{id:id(),type:'text',text:''}],textStyle:{fontSize:304800},geometry};
     else shape={id:shapeId,type,geometry,...(connector?{connector:true as const}:{}),...(type==='line'?{}:{fill:{kind:'theme',name:'accent1'} as Color}),stroke:{color:{kind:'theme',name:type==='line'?'accent1':'dk1'},width:12700}};
     if(apply(insertShapes(snap(),state.slideId!,slide.shapes.length,[shape]))){choose([shapeId]);if(type==='text')textEditor.focus();}
   }
-  button('slideAdd',()=>{const current=locateSlide(snap(),state.slideId!),newId=id();if(apply(addSlide(snap(),current.index+1,newId,current.slide.background as Color))){state.slideId=newId;state.selectedIds=[];refresh();}},toolbar,'slide-add');
-  button('slideDuplicate',()=>{const current=locateSlide(snap(),state.slideId!);if(apply(duplicateSlide(snap(),state.slideId!,id))){state.slideId=doc().slides[current.index+1]!.id;state.selectedIds=[];refresh();}},toolbar,'slide-duplicate');
-  const deletePage=button('slideDelete',()=>{const current=locateSlide(snap(),state.slideId!);if(apply(deleteSlide(snap(),state.slideId!))){state.slideId=doc().slides[Math.min(current.index,doc().slides.length-1)]!.id;state.selectedIds=[];refresh();}},toolbar,'slide-delete');
+  button('slideAdd',()=>{const current=locateSlide(snap(),state.slideId!),newId=id();if(apply(addSlide(snap(),current.index+1,newId,current.slide.background as Color))){state.slideId=newId;state.groupId=undefined;state.selectedIds=[];refresh();}},toolbar,'slide-add');
+  button('slideDuplicate',()=>{const current=locateSlide(snap(),state.slideId!);if(apply(duplicateSlide(snap(),state.slideId!,id))){state.slideId=doc().slides[current.index+1]!.id;state.groupId=undefined;state.selectedIds=[];refresh();}},toolbar,'slide-duplicate');
+  const deletePage=button('slideDelete',()=>{const current=locateSlide(snap(),state.slideId!);if(apply(deleteSlide(snap(),state.slideId!))){state.slideId=doc().slides[Math.min(current.index,doc().slides.length-1)]!.id;state.groupId=undefined;state.selectedIds=[];refresh();}},toolbar,'slide-delete');
   const earlier=button('slideEarlier',()=>{const current=locateSlide(snap(),state.slideId!);apply(moveSlide(snap(),state.slideId!,current.index-1));},toolbar,'slide-earlier');
   const later=button('slideLater',()=>{const current=locateSlide(snap(),state.slideId!);apply(moveSlide(snap(),state.slideId!,current.index+1));},toolbar,'slide-later');
   for(const [type,key] of [['text','slideText'],['rect','slideRectangle'],['ellipse','slideEllipse'],['line','slideLine']] as const)button(key,()=>addShape(type),toolbar,'slide-insert-'+type);
@@ -96,11 +140,17 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   const geometryFields={x:geometryInput('slideX','x'),y:geometryInput('slideY','y'),width:geometryInput('slideWidth','width'),height:geometryInput('slideHeight','height'),rotation:geometryInput('slideRotation','rotation')};geometryFields.width.min='0';geometryFields.height.min='0';
   const aspect=element('input');aspect.type='checkbox';aspect.checked=state.lockAspect;field('slideAspect',aspect,geometryGroup);aspect.onchange=()=>{state.lockAspect=aspect.checked;};
   const objectActions=element('div','','slides-tool-buttons');geometryGroup.append(objectActions);
-  button('slideDuplicateObject',()=>{const count=locateSlide(snap(),state.slideId!).slide.shapes.length;if(apply(duplicateShapes(snap(),state.slideId!,state.selectedIds,id)))choose(locateSlide(snap(),state.slideId!).slide.shapes.slice(count).map(s=>s.id));},objectActions,'slide-object-duplicate',true);
+  button('slideDuplicateObject',duplicateSelection,objectActions,'slide-object-duplicate',true);
   button('slideDeleteObject',()=>{if(apply(removeShapes(snap(),state.slideId!,state.selectedIds)))choose([]);},objectActions,'slide-object-delete',true);
   const groupButton=button('slideGroupObjects',()=>{const groupId=id();if(apply(groupShapes(snap(),state.slideId!,state.selectedIds,()=>groupId)))choose([groupId]);},objectActions,'slide-group',true);
   const ungroupButton=button('slideUngroupObjects',()=>{const shape=selected()[0];if(shape?.type==='group'){const ids=shape.children.map(child=>child.id);if(apply(ungroupShape(snap(),state.slideId!,shape.id)))choose(ids);}},objectActions,'slide-ungroup',true);
   const flipButtons=(['flipH','flipV'] as const).map((axis,index)=>button(index?'slideFlipV':'slideFlipH',()=>apply(flipSlideShapes(snap(),state.slideId!,state.selectedIds,axis)),objectActions,'slide-'+axis,true));
+  const editGroup=button('slideEditGroup',()=>{const shape=selected()[0];if(shape?.type==='group')enterGroup(shape);},objectActions,'slide-edit-group',true);
+  const exitGroup=button('slideExitGroup',leaveGroup,objectActions,'slide-exit-group');
+  const connectButton=button('slideConnectObjects',()=>{const newId=id();if(apply(connectSlideShapes(snap(),state.slideId!,state.selectedIds,()=>newId)))choose([newId]);},objectActions,'slide-connect-objects',true);
+  const detachButton=button('slideDetachConnector',()=>{const shape=selected()[0];if(shape?.type==='line'&&shape.connections)apply(setSlideConnections(snap(),state.slideId!,shape.id,null));},objectActions,'slide-detach-connector',true);
+  const objectTree=element('select');objectTree.id='slide-object-tree';field('slideObjectTree',objectTree,geometryGroup);
+  objectTree.onchange=()=>safe(()=>{if(objectTree.value)choose([objectTree.value]);});
   const arrangeGroup=element('div','','slides-tool-buttons');geometryGroup.append(arrangeGroup);
   for(const [move,key] of [['front','slideFront'],['back','slideBack'],['forward','slideForward'],['backward','slideBackward']] as const)button(key,()=>apply(reorderShapes(snap(),state.slideId!,state.selectedIds,move as LayerMove)),arrangeGroup,'slide-layer-'+move,true);
   for(const [alignment,key] of [['left','writerAlignLeft'],['center','writerAlignCenter'],['right','writerAlignRight'],['top','slideAlignTop'],['middle','slideAlignMiddle'],['bottom','slideAlignBottom']] as const)button(key,()=>apply(alignShapes(snap(),state.slideId!,state.selectedIds,alignment as ShapeAlignment)),arrangeGroup,'slide-align-'+alignment,true);
@@ -159,7 +209,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     const shape=selectedText();if(!shape||host.legacyPresentation)return;const revision=snap().revision,shapeId=shape.id,slideId=state.slideId!;
     void document.fonts.ready.then(()=>safe(()=>{
       if(disposed||!host.isCurrent()||snap().revision!==revision||state.slideId!==slideId||selectedText()?.id!==shapeId)return;
-      const candidate=buildSlideScene(snap(),slideId).shapes.find(s=>s.id===shapeId);if(candidate?.type!=='text')return;
+      const candidate=[...walkSlideScene(buildSlideScene(snap(),slideId).shapes)].find(s=>s.id===shapeId);if(candidate?.type!=='text')return;
       const fontScale=measureSlideTextFit(candidate);if(!fontScale)throw new OfficeError('limit','Text cannot fit at the minimum supported scale');
       apply(setShapeTextFrame(snap(),slideId,shapeId,{autofit:{mode:'normal',fontScale,lineReduction:candidate.autofit?.mode==='normal'?candidate.autofit.lineReduction:0}}));
     }));
@@ -178,18 +228,26 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   button('writerApplyPage',()=>apply(setSlideSize(snap(),emu(slideWidth.value),emu(slideHeight.value))),slideGroup,'slide-size-apply');
 
   function syncInspector():void {
-    const m=doc(),current=locateSlide(snap(),state.slideId!);state.selectedIds=state.selectedIds.filter(shapeId=>current.slide.shapes.some(s=>s.id===shapeId));const shapes=selected(),single=shapes.length===1?shapes[0]:undefined,text=single?.type==='text'?single:undefined;
+    const m=doc(),current=locateSlide(snap(),state.slideId!);const scope=scopeShapes();state.selectedIds=state.selectedIds.filter(shapeId=>scope.some(s=>s.id===shapeId));const shapes=selected(),single=shapes.length===1?shapes[0]:undefined,text=single?.type==='text'?single:undefined;
     for(const control of editControls)control.disabled=!!host.readOnly;for(const control of selectionControls)control.disabled=!!host.readOnly||!shapes.length;
     deletePage.disabled=!!host.readOnly||m.slides.length<2;earlier.disabled=!!host.readOnly||current.index===0;later.disabled=!!host.readOnly||current.index===m.slides.length-1;
-    for(const [key,control] of Object.entries(geometryFields)){control.disabled=!!host.readOnly||!single;control.value=single?String(Math.round(single.geometry[key as keyof Geometry]/(key==='rotation'?ROTATION_UNITS_PER_DEGREE:EMU_PER_POINT)*100)/100):'';}
+    const attached=single?.type==='line'&&Boolean(single.connections),displayGeometry=single?([...walkSlideScene(scene.shapes)].find(s=>s.id===single.id)?.geometry??single.geometry):undefined;
+    for(const [key,control] of Object.entries(geometryFields)){control.disabled=!!host.readOnly||!single||attached;control.value=displayGeometry?String(Math.round(displayGeometry[key as keyof Geometry]/(key==='rotation'?ROTATION_UNITS_PER_DEGREE:EMU_PER_POINT)*100)/100):'';}
     aspect.checked=single?.type==='image'||!!state.lockAspect;aspect.disabled=single?.type==='image'||!!host.readOnly;
     fill.value=colorHex(single?.fill);stroke.value=colorHex(single?.stroke?.color,'#182030');strokeWidth.value=String((single?.stroke?.width??12700)/EMU_PER_POINT);
     const graphicsDisabled=!!host.readOnly||!!host.legacyPresentation;
     for(const control of newGraphics)control.disabled=graphicsDisabled;
-    const selectedIndices=current.slide.shapes.flatMap((shape,i)=>state.selectedIds.includes(shape.id)?[i]:[]);
+    const selectedIndices=scope.flatMap((shape,i)=>state.selectedIds.includes(shape.id)?[i]:[]);
     groupButton.disabled=graphicsDisabled||selectedIndices.length<2||selectedIndices.at(-1)!-selectedIndices[0]!+1!==selectedIndices.length;
     ungroupButton.disabled=graphicsDisabled||!single||!canUngroupShape(single);
-    for(const control of flipButtons)control.disabled=graphicsDisabled||!shapes.length||shapes.some(shape=>shape.type==='text');
+    for(const control of flipButtons)control.disabled=graphicsDisabled||!shapes.length||shapes.some(shape=>shape.type==='text'||shape.type==='line'&&shape.connections);
+    editGroup.disabled=graphicsDisabled||single?.type!=='group';exitGroup.disabled=graphicsDisabled||!state.groupId;connectButton.disabled=graphicsDisabled||!!state.groupId||shapes.length!==2||!shapes.every(isConnectorTarget);detachButton.disabled=graphicsDisabled||!attached;
+    groupButton.disabled||=scope.some(s=>s.type==='line'&&s.connections&&(state.selectedIds.includes(s.id)||state.selectedIds.includes(s.connections.start.shapeId)||state.selectedIds.includes(s.connections.end.shapeId)));
+    const options=document.createDocumentFragment(),placeholder=element('option','—');placeholder.value='';options.append(placeholder);
+    const names:Record<Shape['type'],MessageKey>={text:'slideText',rect:'slideRectangle',ellipse:'slideEllipse',line:'slideLine',image:'writerInsertImage',group:'slideGroupObjects',roundRect:'slideRoundRect',triangle:'slideTriangle',diamond:'slideDiamond',parallelogram:'slideParallelogram'};
+    const addOptions=(nodes:readonly ShapeSnapshot[],depth:number)=>{for(const [index,shape]of nodes.entries()){const label=t(names[shape.type])+' '+host.number(index+1)+(shape.type==='text'?' — '+shapeText(shape).slice(0,32):'');const option=element('option','　'.repeat(depth)+label);option.value=shape.id;options.append(option);if(shape.type==='group')addOptions(shape.children,depth+1);}};
+    addOptions(current.slide.shapes,0);objectTree.replaceChildren(options);objectTree.value=single?.id??'';objectTree.disabled=!!host.readOnly||!current.slide.shapes.length;
+
     fill.disabled=!!host.readOnly||!single||single.type==='group';
     stroke.disabled=strokeWidth.disabled=!!host.readOnly||!single||single.type==='group';
     dash.disabled=graphicsDisabled||!single||['text','image','group'].includes(single.type);
@@ -207,7 +265,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   function checkOverflow():void {if(disposed||!sceneElement?.isConnected||scene.revision!==snap().revision)return;const overflowIds=overflowingSlideText(sceneElement);overflow.hidden=overflowIds.length===0;overflow.textContent=overflowIds.length?t('slideTextOverflow'):'';for(const node of sceneElement.querySelectorAll<HTMLElement>('[data-shape-id]'))node.classList.toggle('slides-text-overflow',overflowIds.includes(node.dataset.shapeId!));}
   function refreshScene():void {
     const snapshot=snap(),m=presentation(snapshot);if(!m.slides.length)throw new OfficeError('invalid','Presentation has no slides');if(!m.slides.some(s=>s.id===state.slideId))state.slideId=m.slides[0]!.id;
-    scene=buildSlideScene(snapshot,state.slideId!);sceneElement=createSlideSceneElement(scene);sceneElement.id='slide-canvas';scaled.replaceChildren(sceneElement,overlay);resize();paintGeometry();requestAnimationFrame(checkOverflow);void document.fonts.ready.then(()=>{if(!disposed)checkOverflow();});
+    activeGroup();scene=buildSlideScene(snapshot,state.slideId!);sceneElement=createSlideSceneElement(scene);sceneElement.id='slide-canvas';scaled.replaceChildren(sceneElement,overlay);resize();paintGeometry();requestAnimationFrame(checkOverflow);void document.fonts.ready.then(()=>{if(!disposed)checkOverflow();});
   }
   function refreshThumbnails():void {
     thumbObserver?.disconnect();rail.replaceChildren();const snapshot=snap(),m=presentation(snapshot),seen=new Set<string>();
@@ -220,15 +278,28 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     if(!scene)return;const width=scene.width/EMU_PER_CSS_PIXEL,height=scene.height/EMU_PER_CSS_PIXEL,fit=Math.max(.05,Math.min(1,(stage.clientWidth-56)/width,(Math.max(360,stage.clientHeight)-56)/height));zoom=state.zoom>0?state.zoom:fit;surface.style.width=width*zoom+'px';surface.style.height=height*zoom+'px';scaled.style.width=width+'px';scaled.style.height=height+'px';scaled.style.transform=`scale(${zoom})`;stage.dataset.zoom=String(zoom);paintGeometry();
   }
   function paintGeometry():void {
-    if(!sceneElement)return;const values=gesture?.preview??{};for(const node of sceneElement.querySelectorAll<HTMLElement>('[data-shape-id]')){const shape=scene.shapes.find(s=>s.id===node.dataset.shapeId);if(!shape)continue;const g=values[shape.id]??shape.geometry;updateSlideShapeGeometry(node,shape,g);}
-    overlay.replaceChildren();for(const shapeId of state.selectedIds){const shape=scene.shapes.find(s=>s.id===shapeId);if(!shape)continue;const g=values[shapeId]??shape.geometry,box=element('div','','slides-selection-box');box.dataset.selectedShape=shapeId;Object.assign(box.style,{left:g.x/EMU_PER_CSS_PIXEL+'px',top:g.y/EMU_PER_CSS_PIXEL+'px',width:g.width/EMU_PER_CSS_PIXEL+'px',height:g.height/EMU_PER_CSS_PIXEL+'px',transform:`rotate(${g.rotation/ROTATION_UNITS_PER_DEGREE}deg)`,borderWidth:1.5/zoom+'px'});overlay.append(box);
-      if(state.selectedIds.length===1&&!host.readOnly)for(const corner of ['nw','ne','se','sw','rotate']){const handle=element('span','','slides-handle slides-handle-'+corner);handle.dataset.handle=corner;handle.dataset.shapeId=shapeId;handle.style.width=9/zoom+'px';handle.style.height=9/zoom+'px';handle.style.borderWidth=1/zoom+'px';if(corner==='rotate')handle.style.top=-24/zoom+'px';handle.setAttribute('aria-hidden','true');box.append(handle);}}
+    if(!sceneElement)return;const values=gesture?.preview??{},projected=new Map([...walkSlideScene(scene.shapes)].map(s=>[s.id,s]));
+    const roots=locateSlide(snap(),state.slideId!).slide.shapes,siblings=new Map(roots.map(s=>[s.id,values[s.id]?{...s,geometry:values[s.id]!}:s]));
+    for(const node of sceneElement.querySelectorAll<HTMLElement>('[data-shape-id]')){
+      let shape=projected.get(node.dataset.shapeId!);if(!shape)continue;
+      const original=siblings.get(shape.id);
+      if(original?.type==='line'&&original.connections){const current=resolveSlideConnector(original,siblings);shape={...shape,geometry:current.geometry,flipH:current.flipH,flipV:current.flipV};}
+      updateSlideShapeGeometry(node,shape,values[shape.id]??shape.geometry);projected.set(shape.id,shape);
+    }
+    overlay.replaceChildren();const parent=scopeMatrix();
+    for(const shapeId of state.selectedIds){const shape=projected.get(shapeId);if(!shape)continue;const g=values[shapeId]??shape.geometry,box=element('div','','slides-selection-box');box.dataset.selectedShape=shapeId;
+      const matrix=multiply(parent,shapeTransform(g));Object.assign(box.style,{left:'0',top:'0',width:g.width/EMU_PER_CSS_PIXEL+'px',height:g.height/EMU_PER_CSS_PIXEL+'px',transformOrigin:'0 0',transform:`matrix(${matrix[0]},${matrix[1]},${matrix[2]},${matrix[3]},${matrix[4]/EMU_PER_CSS_PIXEL},${matrix[5]/EMU_PER_CSS_PIXEL})`,borderWidth:1.5/zoom+'px'});overlay.append(box);
+      if(state.selectedIds.length===1&&!host.readOnly&&!selectedHasBindings())for(const corner of ['nw','ne','se','sw','rotate']){const handle=element('span','','slides-handle slides-handle-'+corner);handle.dataset.handle=corner;handle.dataset.shapeId=shapeId;handle.style.width=9/zoom+'px';handle.style.height=9/zoom+'px';handle.style.borderWidth=1/zoom+'px';if(corner==='rotate')handle.style.top=-24/zoom+'px';handle.setAttribute('aria-hidden','true');box.append(handle);}
+    }
   }
-  function point(event:PointerEvent|MouseEvent):Point {const rect=sceneElement.getBoundingClientRect();return {x:(event.clientX-rect.left)/zoom*EMU_PER_CSS_PIXEL,y:(event.clientY-rect.top)/zoom*EMU_PER_CSS_PIXEL};}
+  function point(event:PointerEvent|MouseEvent):Point {const rect=sceneElement.getBoundingClientRect();return transform(inverse(scopeMatrix()),{x:(event.clientX-rect.left)/zoom*EMU_PER_CSS_PIXEL,y:(event.clientY-rect.top)/zoom*EMU_PER_CSS_PIXEL});}
+  function scopeHit(p:Point,tolerance:number):string|undefined{
+    const shapes=scopeShapes(),map=new Map(shapes.map(s=>[s.id,s]));return hitTest(shapes.map(s=>resolveSlideConnector(s,map)),p,tolerance);
+  }
   stage.onpointerdown=event=>safe(()=>{
     if(event.button!==0||host.readOnly||host.composing())return;const target=event.target as HTMLElement,handle=target.closest<HTMLElement>('[data-handle]'),p=point(event);if(!flush())return;
     if(handle){const shape=locateShape(snap(),state.slideId!,handle.dataset.shapeId!).shape,g={...shape.geometry};gesture={pointerId:event.pointerId,revision:snap().revision,kind:handle.dataset.handle==='rotate'?'rotate':'resize',start:p,shapeId:shape.id,corner:handle.dataset.handle,geometries:{[shape.id]:g},preview:{[shape.id]:g},angle:Math.atan2(p.y-g.y-g.height/2,p.x-g.x-g.width/2)};}
-    else {const shapeId=hitTest(locateSlide(snap(),state.slideId!).slide.shapes,p,6/zoom*EMU_PER_CSS_PIXEL);if(!shapeId){choose([]);stage.focus();return;}if(event.shiftKey){choose(state.selectedIds.includes(shapeId)?state.selectedIds.filter(value=>value!==shapeId):[...state.selectedIds,shapeId]);return;}if(!state.selectedIds.includes(shapeId))choose([shapeId]);const geometries=Object.fromEntries(selected().map(s=>[s.id,{...s.geometry}]));gesture={pointerId:event.pointerId,revision:snap().revision,kind:'move',start:p,geometries,preview:geometries};}
+    else {const shapeId=scopeHit(p,6/zoom*EMU_PER_CSS_PIXEL);if(!shapeId){choose([]);stage.focus();return;}if(event.shiftKey){choose(state.selectedIds.includes(shapeId)?state.selectedIds.filter(value=>value!==shapeId):[...state.selectedIds,shapeId]);return;}if(!state.selectedIds.includes(shapeId))choose([shapeId]);if(selectedHasBindings()){stage.focus({preventScroll:true});return;}const geometries=Object.fromEntries(selected().map(s=>[s.id,{...s.geometry}]));gesture={pointerId:event.pointerId,revision:snap().revision,kind:'move',start:p,geometries,preview:geometries};}
     event.preventDefault();stage.focus({preventScroll:true});stage.setPointerCapture(event.pointerId);
   });
   stage.onpointermove=event=>safe(()=>{
@@ -241,20 +312,20 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     if(current.frame===undefined)current.frame=requestAnimationFrame(()=>{current.frame=undefined;if(gesture===current)paintGeometry();});
   });
   stage.onpointerup=event=>safe(()=>{if(!gesture||gesture.pointerId!==event.pointerId)return;const current=gesture;gesture=undefined;if(current.frame!==undefined)cancelAnimationFrame(current.frame);if(stage.hasPointerCapture(event.pointerId))stage.releasePointerCapture(event.pointerId);if(current.revision!==snap().revision){refresh();return;}apply(setShapeGeometries(snap(),state.slideId!,current.preview));});
-  stage.onpointercancel=()=>cancelGesture();stage.onlostpointercapture=()=>{if(gesture)cancelGesture();};stage.ondblclick=event=>safe(()=>{const shapeId=hitTest(locateSlide(snap(),state.slideId!).slide.shapes,point(event),4/zoom*EMU_PER_CSS_PIXEL);if(shapeId){choose([shapeId]);if(selectedText()){textEditor.focus();textEditor.setSelectionRange(0,textEditor.value.length);}}});
+  stage.onpointercancel=()=>cancelGesture();stage.onlostpointercapture=()=>{if(gesture)cancelGesture();};stage.ondblclick=event=>safe(()=>{const shapeId=scopeHit(point(event),4/zoom*EMU_PER_CSS_PIXEL);if(shapeId){choose([shapeId]);const shape=selected()[0];if(shape?.type==='group')enterGroup(shape);else if(selectedText()){textEditor.focus();textEditor.setSelectionRange(0,textEditor.value.length);}}});
   root.addEventListener('keydown',event=>safe(()=>{
     if(event.key==='Escape'&&gesture){event.preventDefault();event.stopPropagation();cancelGesture();return;}if(host.composing()||isTyping(event.target)||host.readOnly)return;
-    if(event.key==='Escape'){choose([]);event.preventDefault();return;}
+    if(event.key==='Escape'){if(state.selectedIds.length)choose([]);else leaveGroup();event.preventDefault();return;}
     if(event.key==='F5'){event.preventDefault();if(flush())present();return;}
-    if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='a'){choose(locateSlide(snap(),state.slideId!).slide.shapes.map(s=>s.id));event.preventDefault();return;}
-    if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='d'){event.preventDefault();if(flush()){const count=locateSlide(snap(),state.slideId!).slide.shapes.length;if(apply(duplicateShapes(snap(),state.slideId!,state.selectedIds,id)))choose(locateSlide(snap(),state.slideId!).slide.shapes.slice(count).map(s=>s.id));}return;}
+    if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='a'){choose(scopeShapes().map(s=>s.id));event.preventDefault();return;}
+    if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='d'){event.preventDefault();if(flush()&&state.selectedIds.length)duplicateSelection();return;}
     if(!state.selectedIds.length)return;if(['Delete','Backspace'].includes(event.key)){event.preventDefault();if(flush()&&apply(removeShapes(snap(),state.slideId!,state.selectedIds)))choose([]);return;}
     if(event.key==='Enter'&&selectedText()){event.preventDefault();textEditor.focus();return;}
-    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();if(!flush())return;const step=(event.shiftKey?10:1)*EMU_PER_CSS_PIXEL,dx=event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0,dy=event.key==='ArrowUp'?-step:event.key==='ArrowDown'?step:0;apply(setShapeGeometries(snap(),state.slideId!,Object.fromEntries(selected().map(s=>[s.id,{...s.geometry,x:s.geometry.x+dx,y:s.geometry.y+dy}]))));}
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();if(!flush()||selectedHasBindings())return;const step=(event.shiftKey?10:1)*EMU_PER_CSS_PIXEL,dx=event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0,dy=event.key==='ArrowUp'?-step:event.key==='ArrowDown'?step:0;apply(setShapeGeometries(snap(),state.slideId!,Object.fromEntries(selected().map(s=>[s.id,{...s.geometry,x:s.geometry.x+dx,y:s.geometry.y+dy}]))));}
   }));
-  root.addEventListener('copy',event=>safe(()=>{if(isTyping(event.target)||!state.selectedIds.length||!flush())return;const shapes=selected(),resources:Record<string,DeepReadonly<ImageResource>>={};for(const shape of walkSlideShapes(shapes))if(shape.type==='image'){const r=doc().resources[shape.resourceId];if(r?.dataBase64)resources[shape.resourceId]=r as DeepReadonly<ImageResource>;}copiedShapes={nonce:id(),shapes,resources};event.clipboardData?.setData('application/x-office-ex-shapes',copiedShapes.nonce);event.clipboardData?.setData('text/plain',shapes.filter(s=>s.type==='text').map(shapeText).join('\n'));event.preventDefault();}));
+  root.addEventListener('copy',event=>safe(()=>{if(isTyping(event.target)||!state.selectedIds.length||!flush())return;const source=scopeShapes(),siblings=new Map(source.map(s=>[s.id,s])),shapes=selected().map(shape=>resolveSlideConnector(shape,siblings)),resources:Record<string,DeepReadonly<ImageResource>>={};for(const shape of walkSlideShapes(shapes))if(shape.type==='image'){const r=doc().resources[shape.resourceId];if(r?.dataBase64)resources[shape.resourceId]=r as DeepReadonly<ImageResource>;}copiedShapes={nonce:id(),shapes,resources};event.clipboardData?.setData('application/x-office-ex-shapes',copiedShapes.nonce);event.clipboardData?.setData('text/plain',shapes.filter(s=>s.type==='text').map(shapeText).join('\n'));event.preventDefault();}));
   root.addEventListener('cut',event=>safe(()=>{if(isTyping(event.target)||host.readOnly||!state.selectedIds.length||!flush())return;const copy=new ClipboardEvent('copy',{bubbles:true,clipboardData:event.clipboardData});stage.dispatchEvent(copy);if(copiedShapes&&event.clipboardData?.getData('application/x-office-ex-shapes')===copiedShapes.nonce){event.preventDefault();if(apply(removeShapes(snap(),state.slideId!,state.selectedIds)))choose([]);}}));
-  root.addEventListener('paste',event=>safe(()=>{if(isTyping(event.target)||!copiedShapes||event.clipboardData?.getData('application/x-office-ex-shapes')!==copiedShapes.nonce||host.readOnly||!flush())return;event.preventDefault();if(host.legacyPresentation&&copiedShapes.shapes.some(s=>!['rect','ellipse','line','image','text'].includes(s.type)||s.flipH||s.flipV||s.type==='image'&&s.crop||s.type==='line'&&s.connector||s.stroke?.dash&&s.stroke.dash!=='solid'||s.stroke?.head||s.stroke?.tail))throw new OfficeError('unsupported','Clipboard graphics cannot be preserved in legacy PPT');const count=locateSlide(snap(),state.slideId!).slide.shapes.length;if(apply(pasteShapes(snap(),state.slideId!,copiedShapes.shapes,copiedShapes.resources,id)))choose(locateSlide(snap(),state.slideId!).slide.shapes.slice(count).map(s=>s.id));}));
+  root.addEventListener('paste',event=>safe(()=>{if(isTyping(event.target)||!copiedShapes||event.clipboardData?.getData('application/x-office-ex-shapes')!==copiedShapes.nonce||host.readOnly||!flush())return;event.preventDefault();if(host.legacyPresentation&&copiedShapes.shapes.some(s=>!['rect','ellipse','line','image','text'].includes(s.type)||s.flipH||s.flipV||s.type==='image'&&s.crop||s.type==='line'&&s.connector||s.stroke?.dash&&s.stroke.dash!=='solid'||s.stroke?.head||s.stroke?.tail))throw new OfficeError('unsupported','Clipboard graphics cannot be preserved in legacy PPT');const count=scopeShapes().length;if(apply(pasteShapes(snap(),state.slideId!,copiedShapes.shapes,copiedShapes.resources,id,state.groupId)))choose(scopeShapes().slice(count).map(s=>s.id));}));
 
   function present():void {
     if(!flush())return;const snapshot=snap(),m=presentation(snapshot);let page=Math.max(0,m.slides.findIndex(s=>s.id===state.slideId));const dialog=element('dialog','','slides-presentation'),screen=element('div','','slides-presentation-screen'),bar=element('div','','slides-presentation-bar'),caption=element('span','');presentationDialog=dialog;dialog.tabIndex=-1;dialog.dataset.revision=String(snapshot.revision);root.append(dialog);dialog.append(screen,bar);

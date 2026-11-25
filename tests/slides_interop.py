@@ -195,4 +195,20 @@ with tempfile.TemporaryDirectory(prefix='office-ex-slides-interop-') as temporar
     line3=graphics_saved.slides[0].shapes[1];assert line3.shape_type==MSO_SHAPE_TYPE.LINE
     assert line3._element.spPr.ln.find(ns+'prstDash').get('val')=='dash'
     assert line3._element.spPr.ln.find(ns+'tailEnd').get('type')=='arrow'
-    print('Independent PPT/PPTX interop passed: 13 readable/editable source and output fixtures, 3 protected external profiles.')
+    # Real independently authored two-ended attachment between two rectangles.
+    connections=Presentation();cs=connections.slides.add_slide(connections.slide_layouts[6])
+    ca=add_vector(cs.shapes,MSO_SHAPE.RECTANGLE,1,1);cb=add_vector(cs.shapes,MSO_SHAPE.RECTANGLE,5,1)
+    cx=cs.shapes.add_connector(MSO_CONNECTOR.STRAIGHT,ca.left+ca.width,ca.top+ca.height//2,cb.left,cb.top+cb.height//2)
+    cx.line.color.rgb=RGBColor(15,25,35);cx.line.width=Pt(2);cx._element.spPr.append(OxmlElement('a:effectLst'))
+    cx.begin_connect(ca,3);cx.end_connect(cb,1)
+    connections.save(target/'external-bound.pptx')
+    subprocess.run([os.environ.get('NODE','node'),'--import','tsx','tests/slides-external-bound.mjs',str(target)],cwd=ROOT,check=True)
+    bound=Presentation(target/'external-bound-edited.pptx');items=bound.slides[0].shapes;line=items[0]
+    assert line.shape_type==MSO_SHAPE_TYPE.LINE
+    binding=line._element.nvCxnSpPr.cNvCxnSpPr
+    assert binding.find(ns+'stCxn').get('id')==str(items[2].shape_id)
+    assert binding.find(ns+'endCxn').get('id')==str(items[1].shape_id)
+    assert binding.find(ns+'stCxn').get('idx')=='3' and binding.find(ns+'endCxn').get('idx')=='1'
+    assert items[1].top==cb.top+Inches(1)
+    assert line.height==Inches(1)
+    print('Independent PPT/PPTX interop passed: 15 readable/editable source and output fixtures, 3 protected external profiles.')

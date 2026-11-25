@@ -2,9 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OfficeError, EMU_PER_POINT, graphemeBoundaries } from '@office-ex/contracts';
-import { createDocument, DocumentSession, makeImageResource, patchCommand, validateDocument, type SlidesDocument, type Shape } from '@office-ex/core';
-import { addSlide, duplicateSlide, deleteSlide, moveSlide, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, replaceShapeText, formatShapeText, formatSlideParagraphs, shapeText, slideTextEditDiff, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes } from '@office-ex/slides';
-import { buildSlideScene, resolveSlideColor, hitTest, shapeTransform, transform } from '@office-ex/render';
+import { createDocument, DocumentSession, makeImageResource, patchCommand, validateDocument, connectionPoint, resolveSlideConnector, type SlidesDocument, type Shape } from '@office-ex/core';
+import { addSlide, duplicateSlide, deleteSlide, moveSlide, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, replaceShapeText, formatShapeText, formatSlideParagraphs, shapeText, slideTextEditDiff, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes, locateShape, connectSlideShapes, setSlideConnections } from '@office-ex/slides';
+import { buildSlideScene, resolveSlideColor, hitTest, shapeTransform, transform, inverse, groupChildTransform, slideShapeParentTransform } from '@office-ex/render';
 import { PNG, JPEG } from './writer-image-fixture.js';
 const fails=(code:string)=>(error:unknown)=>error instanceof OfficeError&&error.code===code;
 const geometry={x:100000,y:200000,width:3000000,height:1000000,rotation:0};
@@ -143,4 +143,49 @@ test('Crop, flip, shape hit geometry and unsupported scaled ungroup are transact
  const group=model(s).slides[0]!.shapes[0]!;s.execute(setShapeGeometries(s.snapshot(),'slide-1',{[group.id]:{...group.geometry,width:group.geometry.width*2}}));
  assert.throws(()=>ungroupShape(s.snapshot(),'slide-1',group.id),fails('unsupported'));
  assert.equal(s.snapshot().document.resources[asset.id]!.sha256,asset.sha256);
+});
+
+test('Nested child editing preserves group transforms, sibling order and undo',()=>{
+ const d=createDocument('slides','nested-editor');d.slides[0]!.shapes=[{id:'g',type:'group',geometry:{x:1000000,y:2000000,width:4000000,height:3000000,rotation:1800000},flipH:true,childSpace:{x:500000,y:600000,width:2000000,height:3000000},children:[
+ {id:'a',type:'rect',geometry:{...geometry,x:550000,y:650000,width:600000,height:900000}},
+ {id:'b',type:'text',geometry:{...geometry,x:1300000,y:1700000,width:700000,height:900000},runs:[{id:'r',type:'text',text:'Before'}]}
+ ]}];
+ const session=new DocumentSession(d,{saved:true}),ids=next(),original=session.snapshot(),g=d.slides[0]!.shapes[0]!;
+ assert.equal(g.type,'group');if(g.type!=='group')return;
+ const parent=slideShapeParentTransform(d.slides[0]!.shapes,'b')!;assert.deepEqual(parent,groupChildTransform(g));
+ const world=transform(parent,{x:1300000,y:1700000}),local=transform(inverse(parent),world);assert.ok(Math.abs(local.x-1300000)<.001&&Math.abs(local.y-1700000)<.001);
+ session.execute(replaceShapeText(session.snapshot(),'slide-1','b',0,6,'Edited',ids));
+ session.execute(setShapeGeometries(session.snapshot(),'slide-1',{a:{...g.children[0]!.geometry,x:650000}}));
+ session.execute(reorderShapes(session.snapshot(),'slide-1',['b'],'back'));
+ const location=locateShape(session.snapshot(),'slide-1','b');assert.deepEqual(location.path,['slides',0,'shapes',0,'children',0]);assert.equal(shapeText(location.shape),'Edited');
+ const after=model(session).slides[0]!.shapes[0]!;assert.equal(after.type,'group');if(after.type!=='group')return;
+ assert.deepEqual(after.geometry,g.geometry);assert.deepEqual(after.childSpace,g.childSpace);assert.equal(after.children[1]!.geometry.x,650000);
+ session.execute(duplicateShapes(session.snapshot(),'slide-1',['b'],ids));assert.equal(locateShape(session.snapshot(),'slide-1','b').siblings.length,3);
+ session.execute(removeShapes(session.snapshot(),'slide-1',['b']));assert.equal((model(session).slides[0]!.shapes[0] as Extract<Shape,{type:'group'}>).children.length,2);
+ for(let i=0;i<5;i++)session.undo();assert.deepEqual(session.snapshot().document,original.document);
+});
+
+test('Attached connectors follow moving/rotated targets, remap complete copies and detach on delete',()=>{
+ const d=createDocument('slides','connector-editor');d.slides[0]!.shapes=[
+ {id:'a',type:'rect',geometry:{x:1000000,y:1000000,width:1000000,height:1000000,rotation:0}},
+ {id:'b',type:'rect',geometry:{x:5000000,y:1000000,width:1000000,height:1000000,rotation:0}}
+ ];const s=new DocumentSession(d,{saved:true}),ids=next();
+ s.execute(connectSlideShapes(s.snapshot(),'slide-1',['a','b'],ids));
+ const line=model(s).slides[0]!.shapes[2]!;assert.equal(line.type,'line');if(line.type!=='line')return;
+ assert.deepEqual(line.connections,{start:{shapeId:'a',site:3},end:{shapeId:'b',site:1}});
+ assert.deepEqual(buildSlideScene(s.snapshot(),'slide-1').shapes[2]!.geometry,{x:2000000,y:1500000,width:3000000,height:0,rotation:0});
+ const target=locateShape(s.snapshot(),'slide-1','b').shape;
+ s.execute(setShapeGeometries(s.snapshot(),'slide-1',{b:{...target.geometry,y:2500000,rotation:5400000}}));
+ const derived=buildSlideScene(s.snapshot(),'slide-1').shapes[2]!.geometry;
+ assert.notDeepEqual(derived,line.geometry);
+ assert.throws(()=>setShapeGeometries(s.snapshot(),'slide-1',{[line.id]:line.geometry}),fails('unsupported'));
+ assert.throws(()=>groupShapes(s.snapshot(),'slide-1',['a','b'],ids),fails('unsupported'));
+ s.execute(duplicateSlide(s.snapshot(),'slide-1',ids));
+ const copy=model(s).slides[1]!,copied=copy.shapes[2]!;assert.equal(copied.type,'line');if(copied.type!=='line')return;
+ assert.equal(copied.connections?.start.shapeId,copy.shapes[0]!.id);assert.equal(copied.connections?.end.shapeId,copy.shapes[1]!.id);
+ s.undo();s.execute(duplicateShapes(s.snapshot(),'slide-1',[line.id],ids));const free=model(s).slides[0]!.shapes.at(-1)!;
+ assert.equal(free.type,'line');if(free.type!=='line')return;assert.equal(free.connections,undefined);assert.equal(free.geometry.x,derived.x+190500);
+ s.undo();s.execute(removeShapes(s.snapshot(),'slide-1',['b']));const detached=model(s).slides[0]!.shapes[1]!;assert.equal(detached.type,'line');if(detached.type!=='line')return;
+ assert.equal(detached.connections,undefined);assert.deepEqual(detached.geometry,derived);s.undo();
+ s.execute(setSlideConnections(s.snapshot(),'slide-1',line.id,null));const unbound=locateShape(s.snapshot(),'slide-1',line.id).shape;assert.equal(unbound.type,'line');if(unbound.type==='line')assert.equal(unbound.connections,undefined);
 });

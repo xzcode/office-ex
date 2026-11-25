@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+import assert from 'node:assert/strict';
+import {readFile,writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
+import {openSlidesPptx,saveSlidesPptx,openOpc} from '@office-ex/ooxml';
+import {prepareSlidesSave,serializeDraft,inspectForEditor} from '@office-ex/format-service';
+import {DocumentSession} from '@office-ex/core';
+import {buildSlideScene} from '@office-ex/render';
+const dir=process.argv[2],source=await readFile(join(dir,'external-bound.pptx')),model=openSlidesPptx(source,'external-bound').document;
+const [a,b,line]=model.slides[0].shapes;
+assert.equal(a.type,'rect');assert.equal(b.type,'rect');assert.equal(line.type,'line');
+assert.deepEqual(line.connections,{start:{shapeId:a.id,site:3},end:{shapeId:b.id,site:1}});
+assert.ok(Buffer.from(saveSlidesPptx(source,model)).equals(source));
+assert.equal((await inspectForEditor(source,'external-bound.pptx',model.documentId)).report.readOnly,false);
+b.geometry.y+=914400;model.slides[0].shapes=[line,b,a];
+assert.equal(buildSlideScene(new DocumentSession(model).snapshot(),'slide-1').shapes[0].geometry.height,914400);
+const output=prepareSlidesSave('pptx',serializeDraft(model),model.documentId,source),after=openSlidesPptx(output,model.documentId).document.slides[0].shapes;
+assert.deepEqual(after[0].connections,{start:{shapeId:after[2].id,site:3},end:{shapeId:after[1].id,site:1}});
+assert.equal(after[0].geometry.height,914400);
+await writeFile(join(dir,'external-bound-edited.pptx'),output);
+console.log('Independent two-ended straight connector follows target and preserves source numeric target links after reordering.');

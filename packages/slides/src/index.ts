@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /** Presentation commands use stable IDs and one atomic patch per user action. */
 import { assert, assertId, assertUnicode, graphemeBoundaries } from '@office-ex/contracts';
-import { cloneData, patchCommand, DEFAULT_SLIDE_THEME_COLORS, validateColor, validateGeometry, validateSlideCrop, walkSlideShapes, validateTextStyle, validateSlideParagraph, resolveTextStyle, splitSlideParagraphs, firstSlideParagraphRun, validateImageResource, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type SlidesDocument, type Slide, type Shape, type Geometry, type Color, type TextRun, type TextStyle, type SlideTextFrame, type SlideCrop, type SlideStroke, type SlideParagraphFormat, type SlideTheme, type ImageResource, type PatchOperation } from '@office-ex/core';
+import { cloneData, patchCommand, DEFAULT_SLIDE_THEME_COLORS, validateColor, validateGeometry, validateSlideCrop, walkSlideShapes, resolveSlideConnector, isConnectorTarget, nearestSlideConnections, connectorGeometry, validateTextStyle, validateSlideParagraph, resolveTextStyle, splitSlideParagraphs, firstSlideParagraphRun, validateImageResource, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type SlidesDocument, type Slide, type Shape, type Geometry, type Color, type TextRun, type TextStyle, type SlideTextFrame, type SlideCrop, type SlideStroke, type SlideConnections, type ModelPath, type SlideParagraphFormat, type SlideTheme, type ImageResource, type PatchOperation } from '@office-ex/core';
 
 export type PresentationSnapshot = DeepReadonly<SlidesDocument>;
 export type SlideSnapshot = DeepReadonly<Slide>;
@@ -14,9 +14,28 @@ export function locateSlide(snapshot: DocumentSnapshot, slideId: string): { slid
   const doc = presentation(snapshot), index = doc.slides.findIndex(slide => slide.id === slideId);
   assert(index >= 0, 'invalid', 'Slide does not exist'); return { slide: doc.slides[index]!, index };
 }
-export function locateShape(snapshot: DocumentSnapshot, slideId: string, shapeId: string): { shape: ShapeSnapshot; slideIndex: number; index: number } {
-  const { slide, index: slideIndex } = locateSlide(snapshot, slideId), index = slide.shapes.findIndex(shape => shape.id === shapeId);
-  assert(index >= 0, 'invalid', 'Shape does not exist'); return { shape: slide.shapes[index]!, slideIndex, index };
+export interface ShapeLocation {shape:ShapeSnapshot;slideIndex:number;index:number;path:ModelPath;containerPath:ModelPath;siblings:readonly ShapeSnapshot[];parent?:Extract<ShapeSnapshot,{type:'group'}>}
+export function locateShape(snapshot:DocumentSnapshot,slideId:string,shapeId:string):ShapeLocation{
+ const {slide,index:slideIndex}=locateSlide(snapshot,slideId);
+ const search=(shapes:readonly ShapeSnapshot[],containerPath:ModelPath,parent?:Extract<ShapeSnapshot,{type:'group'}>):ShapeLocation|undefined=>{
+  for(const [index,shape]of shapes.entries()){const path=[...containerPath,index];if(shape.id===shapeId)return {shape,slideIndex,index,path,containerPath,siblings:shapes,...(parent?{parent}:{})};if(shape.type==='group'){const found=search(shape.children,[...path,'children'],shape);if(found)return found;}}
+ };
+ const found=search(slide.shapes,['slides',slideIndex,'shapes']);assert(found,'invalid','Shape does not exist');return found;
+}
+function selectionContainer(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[]):{shapes:readonly ShapeSnapshot[];path:ModelPath;parent?:Extract<ShapeSnapshot,{type:'group'}>}{
+ const l=locateSlide(snapshot,slideId);if(!shapeIds.length)return {shapes:l.slide.shapes,path:['slides',l.index,'shapes']};
+ const locations=shapeIds.map(id=>locateShape(snapshot,slideId,id)),first=locations[0]!;
+ assert(new Set(shapeIds).size===shapeIds.length&&locations.every(x=>x.siblings===first.siblings),'unsupported','Select objects within one group level');
+ return {shapes:first.siblings,path:first.containerPath,parent:first.parent};
+}
+function resolvedShapes(shapes:readonly ShapeSnapshot[]):ShapeSnapshot[]{const map=new Map(shapes.map(s=>[s.id,s]));return shapes.map(s=>resolveSlideConnector(s,map));}
+function reidentify(copies:Shape[],factory:IdFactory):void{
+ const mapping=new Map<string,string>();for(const item of walkSlideShapes(copies)){const old=item.id;item.id=factory();mapping.set(old,item.id);if(item.type==='text')for(const run of item.runs)run.id=factory();}
+ for(const item of walkSlideShapes(copies))if(item.type==='line'&&item.connections){
+  const start=mapping.get(item.connections.start.shapeId),end=mapping.get(item.connections.end.shapeId);
+  if(start&&end)item.connections={start:{...item.connections.start,shapeId:start},end:{...item.connections.end,shapeId:end}};
+  else delete item.connections;
+ }
 }
 function command(snapshot: DocumentSnapshot, operations: readonly PatchOperation[]): DocumentCommand { return patchCommand(snapshot, 'SLD-02', operations); }
 function uniqueIds(snapshot:DocumentSnapshot, factory:IdFactory):IdFactory {
@@ -29,7 +48,7 @@ export function addSlide(snapshot: DocumentSnapshot, index: number, id: string, 
 }
 export function duplicateSlide(snapshot:DocumentSnapshot,slideId:string,factory:IdFactory):DocumentCommand {
   const {slide,index}=locateSlide(snapshot,slideId),id=uniqueIds(snapshot,factory),copy=cloneData(slide) as Slide;copy.id=id();
-  for(const shape of walkSlideShapes(copy.shapes)){shape.id=id();if(shape.type==='text')for(const run of shape.runs)run.id=id();}
+  copy.shapes=cloneData(resolvedShapes(slide.shapes)) as Shape[];reidentify(copy.shapes,id);
   return command(snapshot,[{op:'splice',path:['slides'],index:index+1,deleteCount:0,items:[copy]}]);
 }
 export function deleteSlide(snapshot:DocumentSnapshot,slideId:string):DocumentCommand {
@@ -50,18 +69,23 @@ export function insertShapes(snapshot:DocumentSnapshot,slideId:string,index:numb
   const located=locateSlide(snapshot,slideId);assert(Number.isSafeInteger(index)&&index>=0&&index<=located.slide.shapes.length,'invalid','Invalid shape insertion index');
   return command(snapshot,[{op:'splice',path:['slides',located.index,'shapes'],index,deleteCount:0,items:shapes}]);
 }
-export function removeShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[]):DocumentCommand {
-  const {slide,index}=locateSlide(snapshot,slideId),set=new Set(shapeIds);assert(set.size===shapeIds.length&&shapeIds.every(id=>slide.shapes.some(s=>s.id===id)),'invalid','Invalid shape selection');
-  return command(snapshot,slide.shapes.flatMap((s,i)=>set.has(s.id)?[{op:'splice' as const,path:['slides',index,'shapes'],index:i,deleteCount:1,items:[]}]:[]).reverse());
+export function removeShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[]):DocumentCommand{
+ const {shapes,path,parent}=selectionContainer(snapshot,slideId,shapeIds),set=new Set(shapeIds);assert(!parent||shapes.length>set.size,'unsupported','A group must retain at least one child');
+ const resolved=new Map(resolvedShapes(shapes).map(shape=>[shape.id,shape]));const kept=shapes.filter(s=>!set.has(s.id)).map(shape=>{
+  if(shape.type==='line'&&shape.connections&&(set.has(shape.connections.start.shapeId)||set.has(shape.connections.end.shapeId))){const copy=cloneData(resolved.get(shape.id)!) as Shape;if(copy.type==='line')delete copy.connections;return copy;}
+  return shape;
+ });
+ return command(snapshot,[{op:'set',path,value:kept}]);
 }
-export function duplicateShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],factory:IdFactory,offset={x:190500,y:190500}):DocumentCommand {
-  const {slide}=locateSlide(snapshot,slideId),set=new Set(shapeIds),id=uniqueIds(snapshot,factory);assert(shapeIds.every(value=>slide.shapes.some(s=>s.id===value)),'invalid','Invalid shape selection');
-  const copies=slide.shapes.filter(s=>set.has(s.id)).map(s=>{const copy=cloneData(s) as Shape;copy.geometry.x+=offset.x;copy.geometry.y+=offset.y;for(const item of walkSlideShapes([copy])){item.id=id();if(item.type==='text')for(const r of item.runs)r.id=id();}return copy;});
-  return insertShapes(snapshot,slideId,slide.shapes.length,copies);
+export function duplicateShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],factory:IdFactory,offset={x:190500,y:190500}):DocumentCommand{
+ const {shapes,path}=selectionContainer(snapshot,slideId,shapeIds),set=new Set(shapeIds),copies=cloneData(resolvedShapes(shapes).filter(s=>set.has(s.id))) as Shape[];
+ for(const copy of copies){copy.geometry.x+=offset.x;copy.geometry.y+=offset.y;}
+ reidentify(copies,uniqueIds(snapshot,factory));
+ return command(snapshot,[{op:'splice',path,index:shapes.length,deleteCount:0,items:copies}]);
 }
 /** Transient pointer previews are outside this API; a completed gesture uses one command. */
 export function setShapeGeometries(snapshot:DocumentSnapshot,slideId:string,values:Readonly<Record<string,Geometry>>):DocumentCommand {
-  return command(snapshot,Object.entries(values).map(([id,geometry])=>{validateGeometry(geometry);const located=locateShape(snapshot,slideId,id);return {op:'set',path:['slides',located.slideIndex,'shapes',located.index,'geometry'],value:geometry};}));
+  return command(snapshot,Object.entries(values).map(([id,geometry])=>{validateGeometry(geometry);const located=locateShape(snapshot,slideId,id);assert(!(located.shape.type==='line'&&located.shape.connections),'unsupported','Detach the connector before changing its geometry');return {op:'set',path:[...located.path,'geometry'],value:geometry};}));
 }
 export function setShapeGeometry(snapshot:DocumentSnapshot,slideId:string,shapeId:string,geometry:Geometry):DocumentCommand {return setShapeGeometries(snapshot,slideId,{[shapeId]:geometry});}
 export function nudgeShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],dx:number,dy:number):DocumentCommand {
@@ -70,21 +94,21 @@ export function nudgeShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:re
 }
 export function setShapePaint(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],paint:{fill?:Color|null;stroke?:SlideStroke|null}):DocumentCommand {
   const operations:PatchOperation[]=[];if(paint.fill)validateColor(paint.fill);if(paint.stroke){validateColor(paint.stroke.color);assert(Number.isSafeInteger(paint.stroke.width)&&paint.stroke.width>=0,'invalid','Invalid stroke width');}
-  for(const id of shapeIds){const l=locateShape(snapshot,slideId,id),base=['slides',l.slideIndex,'shapes',l.index];assert(l.shape.type!=='group','unsupported','Group paint requires ungrouping first');for(const key of ['fill','stroke'] as const)if(paint[key]!==undefined)operations.push(paint[key]===null?{op:'delete',path:[...base,key]}:{op:'set',path:[...base,key],value:paint[key]});}
+  for(const id of shapeIds){const l=locateShape(snapshot,slideId,id),base=l.path;assert(l.shape.type!=='group','unsupported','Group paint requires ungrouping first');for(const key of ['fill','stroke'] as const)if(paint[key]!==undefined)operations.push(paint[key]===null?{op:'delete',path:[...base,key]}:{op:'set',path:[...base,key],value:paint[key]});}
   return command(snapshot,operations);
 }
 export type LayerMove='front'|'back'|'forward'|'backward';
 export function reorderShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],move:LayerMove):DocumentCommand {
-  const {slide,index}=locateSlide(snapshot,slideId),selected=new Set(shapeIds),shapes=[...slide.shapes];assert(shapeIds.every(id=>shapes.some(s=>s.id===id)),'invalid','Invalid shape selection');
-  if(move==='front'||move==='back'){const chosen=shapes.filter(s=>selected.has(s.id)),rest=shapes.filter(s=>!selected.has(s.id));return command(snapshot,[{op:'set',path:['slides',index,'shapes'],value:move==='front'?[...rest,...chosen]:[...chosen,...rest]}]);}
+  const container=selectionContainer(snapshot,slideId,shapeIds),selected=new Set(shapeIds),shapes=[...container.shapes];
+  if(move==='front'||move==='back'){const chosen=shapes.filter(s=>selected.has(s.id)),rest=shapes.filter(s=>!selected.has(s.id));return command(snapshot,[{op:'set',path:container.path,value:move==='front'?[...rest,...chosen]:[...chosen,...rest]}]);}
   if(move==='forward')for(let i=shapes.length-2;i>=0;i--){if(selected.has(shapes[i]!.id)&&!selected.has(shapes[i+1]!.id))[shapes[i],shapes[i+1]]=[shapes[i+1]!,shapes[i]!];}
   else for(let i=1;i<shapes.length;i++){if(selected.has(shapes[i]!.id)&&!selected.has(shapes[i-1]!.id))[shapes[i],shapes[i-1]]=[shapes[i-1]!,shapes[i]!];}
-  return command(snapshot,[{op:'set',path:['slides',index,'shapes'],value:shapes}]);
+  return command(snapshot,[{op:'set',path:container.path,value:shapes}]);
 }
 export type ShapeAlignment='left'|'center'|'right'|'top'|'middle'|'bottom';
 export function alignShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],alignment:ShapeAlignment,toSlide=false):DocumentCommand {
-  const doc=presentation(snapshot),shapes=shapeIds.map(id=>locateShape(snapshot,slideId,id).shape);assert(shapes.length>0,'invalid','No selected shapes');
-  const bounds=toSlide||shapes.length===1?{left:0,top:0,right:doc.size.width,bottom:doc.size.height}:{left:Math.min(...shapes.map(s=>s.geometry.x)),top:Math.min(...shapes.map(s=>s.geometry.y)),right:Math.max(...shapes.map(s=>s.geometry.x+s.geometry.width)),bottom:Math.max(...shapes.map(s=>s.geometry.y+s.geometry.height))};
+  const doc=presentation(snapshot),container=selectionContainer(snapshot,slideId,shapeIds),shapes=shapeIds.map(id=>locateShape(snapshot,slideId,id).shape);assert(shapes.length>0,'invalid','No selected shapes');
+  const space=container.parent?.childSpace??{x:0,y:0,width:doc.size.width,height:doc.size.height};const bounds=toSlide||shapes.length===1?{left:space.x,top:space.y,right:space.x+space.width,bottom:space.y+space.height}:{left:Math.min(...shapes.map(s=>s.geometry.x)),top:Math.min(...shapes.map(s=>s.geometry.y)),right:Math.max(...shapes.map(s=>s.geometry.x+s.geometry.width)),bottom:Math.max(...shapes.map(s=>s.geometry.y+s.geometry.height))};
   return setShapeGeometries(snapshot,slideId,Object.fromEntries(shapes.map(s=>{const g={...s.geometry};switch(alignment){case 'left':g.x=bounds.left;break;case 'center':g.x=Math.round((bounds.left+bounds.right-g.width)/2);break;case 'right':g.x=bounds.right-g.width;break;case 'top':g.y=bounds.top;break;case 'middle':g.y=Math.round((bounds.top+bounds.bottom-g.height)/2);break;case 'bottom':g.y=bounds.bottom-g.height;break;}return [s.id,g];})));
 }
 export function insertSlideImage(snapshot:DocumentSnapshot,slideId:string,index:number,shapeId:string,resource:ImageResource,geometry:Geometry):DocumentCommand {
@@ -110,7 +134,7 @@ export function replaceShapeText(snapshot:DocumentSnapshot,slideId:string,shapeI
   inherit??=previous;
   const insertion:TextRun[]=[];if(text.length)insertion.push({id:id(),type:'text',text,...(inherit?.styleId?{styleId:inherit.styleId}:{}),...(inherit?.style?{style:cloneData(inherit.style) as TextStyle}:{})});
   const runs=[...before,...insertion,...after];if(!runs.length)runs.push({id:id(),type:'text',text:'',...(inherit?.styleId?{styleId:inherit.styleId}:{}),...(inherit?.style?{style:cloneData(inherit.style) as TextStyle}:{})});
-  return command(snapshot,[{op:'set',path:['slides',l.slideIndex,'shapes',l.index,'runs'],value:runs}]);
+  return command(snapshot,[{op:'set',path:[...l.path,'runs'],value:runs}]);
 }
 /** Difference boundaries expand to complete graphemes in both old and new text. */
 export function slideTextEditDiff(before:string,after:string):{start:number;end:number;text:string}{
@@ -122,14 +146,14 @@ export function slideTextEditDiff(before:string,after:string):{start:number;end:
 }
 export function formatShapeText(snapshot:DocumentSnapshot,slideId:string,shapeId:string,style:TextStyle,range?:{start:number;end:number},factory?:IdFactory):DocumentCommand {
   validateTextStyle(style);const l=locateShape(snapshot,slideId,shapeId),shape=l.shape;assert(shape.type==='text','invalid','Expected text shape');
-  if(!range||range.start===range.end)return command(snapshot,[{op:'set',path:['slides',l.slideIndex,'shapes',l.index,'textStyle'],value:{...shape.textStyle,...style}},{op:'set',path:['slides',l.slideIndex,'shapes',l.index,'runs'],value:shape.runs.map(run=>({...run,style:{...run.style,...style}}))}]);
+  if(!range||range.start===range.end)return command(snapshot,[{op:'set',path:[...l.path,'textStyle'],value:{...shape.textStyle,...style}},{op:'set',path:[...l.path,'runs'],value:shape.runs.map(run=>({...run,style:{...run.style,...style}}))}]);
   textRange(shape,range.start,range.end);assert(factory,'invalid','A split-run ID factory is required');const id=uniqueIds(snapshot,factory),runs:TextRun[]=[];let at=0;
   for(const run of shape.runs){const stop=at+run.text.length;if(stop<=range.start||at>=range.end){runs.push(cloneData(run) as TextRun);at=stop;continue;}
     const first=Math.max(0,range.start-at),last=Math.min(run.text.length,range.end-at);if(first>0)runs.push({...cloneData(run),text:run.text.slice(0,first)} as TextRun);
     runs.push({...cloneData(run),id:first>0?id():run.id,text:run.text.slice(first,last),style:{...run.style,...style}} as TextRun);
     if(last<run.text.length)runs.push({...cloneData(run),id:id(),text:run.text.slice(last)} as TextRun);at=stop;
   }
-  return command(snapshot,[{op:'set',path:['slides',l.slideIndex,'shapes',l.index,'runs'],value:runs}]);
+  return command(snapshot,[{op:'set',path:[...l.path,'runs'],value:runs}]);
 }
 /** A selection is expanded to complete logical paragraphs. Formatting changes
  * never insert marker characters into the document text. */
@@ -153,31 +177,34 @@ export function formatSlideParagraphs(snapshot:DocumentSnapshot,slideId:string,s
   }
   at=end+1;
  }
- return command(snapshot,[{op:'set',path:['slides',l.slideIndex,'shapes',l.index,'runs'],value:runs}]);
+ return command(snapshot,[{op:'set',path:[...l.path,'runs'],value:runs}]);
 }
 export function setShapeTextFrame(snapshot:DocumentSnapshot,slideId:string,shapeId:string,frame:SlideTextFrame):DocumentCommand {
-  const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type==='text','invalid','Expected text shape');return command(snapshot,[{op:'set',path:['slides',l.slideIndex,'shapes',l.index,'textFrame'],value:{...l.shape.textFrame,...frame}}]);
+  const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type==='text','invalid','Expected text shape');return command(snapshot,[{op:'set',path:[...l.path,'textFrame'],value:{...l.shape.textFrame,...frame}}]);
 }
 
 /** Paste copies model objects and immutable image assets, never active clipboard markup. */
-export function pasteShapes(snapshot:DocumentSnapshot,slideId:string,shapes:readonly ShapeSnapshot[],resources:Readonly<Record<string,DeepReadonly<ImageResource>>>,factory:IdFactory):DocumentCommand {
+export function pasteShapes(snapshot:DocumentSnapshot,slideId:string,shapes:readonly ShapeSnapshot[],resources:Readonly<Record<string,DeepReadonly<ImageResource>>>,factory:IdFactory,parentId?:string):DocumentCommand {
   const doc=presentation(snapshot),{slide,index}=locateSlide(snapshot,slideId),id=uniqueIds(snapshot,factory),operations:PatchOperation[]=[],added=new Set<string>();
-  const copies=shapes.map(s=>{const copy=cloneData(s) as Shape;copy.geometry.x+=190500;copy.geometry.y+=190500;for(const item of walkSlideShapes([copy])){item.id=id();if(item.type==='text')for(const run of item.runs)run.id=id();if(item.type==='image'){const resource=resources[item.resourceId];assert(resource,'invalid','Copied image payload is missing');validateImageResource(resource);const existing=doc.resources[item.resourceId];assert(!existing||existing.sha256===resource.sha256&&existing.dataBase64===resource.dataBase64,'conflict','Copied image payload differs');if(!existing&&!added.has(item.resourceId)){added.add(item.resourceId);operations.push({op:'set',path:['resources',item.resourceId],value:resource});}}}return copy;});
-  operations.push({op:'splice',path:['slides',index,'shapes'],index:slide.shapes.length,deleteCount:0,items:copies});return command(snapshot,operations);
+  const parent=parentId?locateShape(snapshot,slideId,parentId):undefined;assert(!parent||parent.shape.type==='group','invalid','Expected group paste target');
+  const target=parent&&parent.shape.type==='group'?{path:[...parent.path,'children'],count:parent.shape.children.length}:{path:['slides',index,'shapes'],count:slide.shapes.length};
+  const copies=shapes.map(s=>{const copy=cloneData(s) as Shape;copy.geometry.x+=190500;copy.geometry.y+=190500;for(const item of walkSlideShapes([copy])){if(item.type==='image'){const resource=resources[item.resourceId];assert(resource,'invalid','Copied image payload is missing');validateImageResource(resource);const existing=doc.resources[item.resourceId];assert(!existing||existing.sha256===resource.sha256&&existing.dataBase64===resource.dataBase64,'conflict','Copied image payload differs');if(!existing&&!added.has(item.resourceId)){added.add(item.resourceId);operations.push({op:'set',path:['resources',item.resourceId],value:resource});}}}return copy;});
+  reidentify(copies,id);if(parent)for(const shape of copies)if(shape.type==='line')delete shape.connections;operations.push({op:'splice',path:target.path,index:target.count,deleteCount:0,items:copies});return command(snapshot,operations);
 }
 
 /** Group contiguous paint-order objects without changing their world geometry. */
 export function groupShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],factory:IdFactory):DocumentCommand{
- const l=locateSlide(snapshot,slideId),set=new Set(shapeIds),indices=l.slide.shapes.flatMap((shape,i)=>set.has(shape.id)?[i]:[]);
+ const container=selectionContainer(snapshot,slideId,shapeIds),set=new Set(shapeIds),indices=container.shapes.flatMap((shape,i)=>set.has(shape.id)?[i]:[]);
  assert(set.size===shapeIds.length&&indices.length===shapeIds.length&&indices.length>=2,'invalid','Select at least two distinct shapes');
  assert(indices.at(-1)!-indices[0]!+1===indices.length,'unsupported','Grouping noncontiguous paint layers would change their stacking order');
- const selected=l.slide.shapes.slice(indices[0]!,indices.at(-1)!+1),points=selected.flatMap(({geometry:g})=>{
+ assert(!container.shapes.some(shape=>shape.type==='line'&&shape.connections&&(set.has(shape.id)||set.has(shape.connections.start.shapeId)||set.has(shape.connections.end.shapeId))),'unsupported','Detach connectors before grouping their targets');
+ const selected=container.shapes.slice(indices[0]!,indices.at(-1)!+1),points=selected.flatMap(({geometry:g})=>{
   const a=g.rotation/60000*Math.PI/180,c=Math.cos(a),s=Math.sin(a),cx=g.x+g.width/2,cy=g.y+g.height/2;
   return [[-g.width/2,-g.height/2],[g.width/2,-g.height/2],[g.width/2,g.height/2],[-g.width/2,g.height/2]].map(([x,y])=>({x:cx+x!*c-y!*s,y:cy+x!*s+y!*c}));
  });
  const x=Math.floor(Math.min(...points.map(p=>p.x))),y=Math.floor(Math.min(...points.map(p=>p.y))),width=Math.max(1,Math.ceil(Math.max(...points.map(p=>p.x)))-x),height=Math.max(1,Math.ceil(Math.max(...points.map(p=>p.y)))-y);
  const group:Shape={type:'group',id:uniqueIds(snapshot,factory)(),geometry:{x,y,width,height,rotation:0},childSpace:{x,y,width,height},children:cloneData(selected) as Shape[]};
- return command(snapshot,[{op:'splice',path:['slides',l.index,'shapes'],index:indices[0]!,deleteCount:indices.length,items:[group]}]);
+ return command(snapshot,[{op:'splice',path:container.path,index:indices[0]!,deleteCount:indices.length,items:[group]}]);
 }
 /** Exact rigid ungrouping; refuse scaled/flipped groups instead of flattening
  * text metrics, strokes or non-uniform transforms incorrectly. */
@@ -189,13 +216,28 @@ export function ungroupShape(snapshot:DocumentSnapshot,slideId:string,shapeId:st
  const g=shape.geometry,space=shape.childSpace,a=g.rotation/60000*Math.PI/180,c=Math.cos(a),s=Math.sin(a),cx=g.x+g.width/2,cy=g.y+g.height/2;
  const children=cloneData(shape.children) as Shape[];
  for(const child of children){const v=child.geometry,x=v.x+v.width/2-space.x-space.width/2,y=v.y+v.height/2-space.y-space.height/2;child.geometry={...v,x:Math.round(cx+c*x-s*y-v.width/2),y:Math.round(cy+s*x+c*y-v.height/2),rotation:((v.rotation+g.rotation)%21600000+21600000)%21600000};}
- return command(snapshot,[{op:'splice',path:['slides',l.slideIndex,'shapes'],index:l.index,deleteCount:1,items:children}]);
+ return command(snapshot,[{op:'splice',path:l.containerPath,index:l.index,deleteCount:1,items:children}]);
 }
 export function setSlideImageCrop(snapshot:DocumentSnapshot,slideId:string,shapeId:string,crop:SlideCrop):DocumentCommand{
  validateSlideCrop(crop);const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type==='image','invalid','Expected a picture');
- const path=['slides',l.slideIndex,'shapes',l.index,'crop'];
+ const path=[...l.path,'crop'];
  return command(snapshot,Object.values(crop).some(v=>v!==0)?[{op:'set',path,value:crop}]:l.shape.crop?[{op:'delete',path}]:[]);
 }
 export function flipSlideShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],axis:'flipH'|'flipV'):DocumentCommand{
- return command(snapshot,shapeIds.map(shapeId=>{const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type!=='text','unsupported','Flipped text is outside the editable profile');return {op:'set',path:['slides',l.slideIndex,'shapes',l.index,axis],value:!l.shape[axis]};}));
+ return command(snapshot,shapeIds.map(shapeId=>{const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type!=='text'&&!(l.shape.type==='line'&&l.shape.connections),'unsupported','Cannot flip text or an attached connector');return {op:'set',path:[...l.path,axis],value:!l.shape[axis]};}));
+}
+
+/** Create one attached straight connector; endpoints are stable model IDs. */
+export function connectSlideShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],factory:IdFactory):DocumentCommand{
+ assert(shapeIds.length===2,'invalid','Select two rectangular objects');
+ const {slide}=locateSlide(snapshot,slideId),map=new Map(slide.shapes.map(s=>[s.id,s])),a=map.get(shapeIds[0]!),b=map.get(shapeIds[1]!);
+ assert(isConnectorTarget(a)&&isConnectorTarget(b),'unsupported','Connections require top-level rectangular objects');
+ const connections=nearestSlideConnections(a,b),shape:Shape={id:uniqueIds(snapshot,factory)(),type:'line',connector:true,connections,...connectorGeometry(connections,map),stroke:{color:{kind:'theme',name:'accent1'},width:25400,tail:{type:'triangle'}}};
+ return insertShapes(snapshot,slideId,slide.shapes.length,[shape]);
+}
+export function setSlideConnections(snapshot:DocumentSnapshot,slideId:string,shapeId:string,connections:SlideConnections|null):DocumentCommand{
+ const l=locateShape(snapshot,slideId,shapeId),shape=l.shape;assert(!l.parent&&shape.type==='line'&&shape.connector,'invalid','Expected top-level straight connector');
+ const map=new Map(l.siblings.map(s=>[s.id,s])),resolved=connections?{...shape,connections,...connectorGeometry(connections,map)}:resolveSlideConnector(shape,map);
+ const next=cloneData(resolved) as Shape;if(!connections&&next.type==='line')delete next.connections;
+ return command(snapshot,[{op:'set',path:l.path,value:next}]);
 }

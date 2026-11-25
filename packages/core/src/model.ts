@@ -46,11 +46,14 @@ export interface SlideArrow {type:'triangle'|'arrow';width?:'sm'|'med'|'lg';leng
 export interface SlideStroke {color:Color;width:number;dash?:SlideDash;head?:SlideArrow;tail?:SlideArrow}
 export interface SlideCrop {left:number;top:number;right:number;bottom:number}
 export interface SlideChildSpace {x:number;y:number;width:number;height:number}
+/** DrawingML rectangle connection-site order: top, left, bottom, right. */
+export interface SlideConnection {shapeId:string;site:0|1|2|3}
+export interface SlideConnections {start:SlideConnection;end:SlideConnection}
 interface ShapeBase { id: string; geometry: Geometry; fill?: Color; stroke?: SlideStroke; flipH?:boolean; flipV?:boolean }
 export interface SlideTextFrame { autofit?:{mode:'none'}|{mode:'normal';fontScale:number;lineReduction:number}; wrap?: boolean; verticalAlignment?: 'top'|'center'|'bottom'; margins?: {top:number;right:number;bottom:number;left:number}; direction?: 'ltr'|'rtl'|'auto' }
 export interface SlideThemeFontDetails { eastAsia?:string; complex?:string; scripts?:Record<string,string> }
 export interface SlideTheme { name:string; colors:Record<string,Extract<Color,{kind:'rgba'}>>; majorFont?:string; minorFont?:string; majorFontDetails?:SlideThemeFontDetails; minorFontDetails?:SlideThemeFontDetails }
-export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: SlidePreset; connector?:true }) | (ShapeBase & { type: 'image'; resourceId: string; crop?:SlideCrop }) | (ShapeBase & {type:'group';childSpace:SlideChildSpace;children:Shape[]});
+export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: SlidePreset; connector?:true; connections?:SlideConnections }) | (ShapeBase & { type: 'image'; resourceId: string; crop?:SlideCrop }) | (ShapeBase & {type:'group';childSpace:SlideChildSpace;children:Shape[]});
 export interface Slide { id: string; background: Color; shapes: Shape[] }
 export interface SlidesDocument extends DocumentBase { kind: 'slides'; size: { width: number; height: number }; slides: Slide[]; theme?: SlideTheme }
 export type OfficeDocument = WriterDocument | SheetsDocument | SlidesDocument;
@@ -321,10 +324,16 @@ export function validateDocument(value: unknown): OfficeDocument {
     list(model.slides).forEach((candidate) => {
       const slide = object(candidate, ['id', 'background', 'shapes']); id(slide.id); validateColor(slide.background);
       const validateShape=(candidate:unknown,depth:number):void=>{
-        const shape = object(candidate, ['id', 'type', 'geometry', 'fill', 'stroke', 'runs', 'resourceId', 'textStyle', 'textFrame','flipH','flipV','connector','crop','childSpace','children']); id(shape.id); validateGeometry(shape.geometry);
+        const shape = object(candidate, ['id', 'type', 'geometry', 'fill', 'stroke', 'runs', 'resourceId', 'textStyle', 'textFrame','flipH','flipV','connector','connections','crop','childSpace','children']); id(shape.id); validateGeometry(shape.geometry);
         assert(++shapeCount<=100000&&depth<=16,'limit','Presentation shape tree budget exceeded');
         if(shape.flipH!==undefined)bool(shape.flipH);if(shape.flipV!==undefined)bool(shape.flipV);
         if(shape.connector!==undefined)assert(shape.type==='line'&&shape.connector===true,'invalid','Invalid connector shape');
+        if(shape.connections!==undefined){
+          assert(depth===0&&shape.type==='line'&&shape.connector===true,'unsupported','Bound connectors must be top-level straight connectors');
+          const refs=object(shape.connections,['start','end']),start=object(refs.start,['shapeId','site']),end=object(refs.end,['shapeId','site']);
+          for(const ref of [start,end]){assertId(ref.shapeId);integer(ref.site,0,3);}
+          assert(start.shapeId!==end.shapeId&&start.shapeId!==shape.id&&end.shapeId!==shape.id,'invalid','Invalid connector endpoints');
+        }
         if(shape.type!=='group')assert(!('childSpace' in shape)&&!('children' in shape),'invalid','Unexpected group fields');
         if(shape.type!=='image')assert(!('crop' in shape),'invalid','Unexpected image crop');
         if(shape.type==='text')assert(!shape.flipH&&!shape.flipV,'unsupported','Flipped text is outside presentation profile');
@@ -356,6 +365,10 @@ export function validateDocument(value: unknown): OfficeDocument {
         else assert(['rect','ellipse','line','roundRect','triangle','diamond','parallelogram'].includes(String(shape.type)) && !('textStyle' in shape)&&!('textFrame' in shape)&& !('runs' in shape) && !('resourceId' in shape), 'invalid', 'Invalid shape type');
       };
       list(slide.shapes).forEach(candidate=>validateShape(candidate,0));
+      const siblings=new Map((slide.shapes as Shape[]).map(shape=>[shape.id,shape]));
+      for(const shape of slide.shapes as Shape[])if(shape.type==='line'&&shape.connections){
+        for(const ref of [shape.connections.start,shape.connections.end]){const target=siblings.get(ref.shapeId);assert(target&&(target.type==='rect'||target.type==='text')&&target.geometry.width>0&&target.geometry.height>0,'unsupported','Connector endpoint requires a top-level rectangle or textbox');}
+      }
     });
   } else throw new OfficeError('invalid', 'Invalid document kind');
   return value as unknown as OfficeDocument;

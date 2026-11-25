@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /** A revision-bound scene shared by editing, thumbnails, presentation and print. */
 import { assert, type Diagnostic } from '@office-ex/contracts';
-import { freezeData, resolveTextStyle, resolveSlideThemeColor, resolveSlideThemeFont, splitSlideParagraphs, firstSlideParagraphRun, type SlideTextFrame, type SlidePreset, type SlideCrop, type SlideStroke, type SlideChildSpace, type DeepReadonly, type Color, type DocumentSnapshot, type Geometry, type ResourceRef, type Shape, type SlideTheme, type TextStyle } from '@office-ex/core';
+import { freezeData, resolveTextStyle, resolveSlideThemeColor, resolveSlideThemeFont, resolveSlideConnector, splitSlideParagraphs, firstSlideParagraphRun, type SlideTextFrame, type SlidePreset, type SlideCrop, type SlideStroke, type SlideChildSpace, type DeepReadonly, type Color, type DocumentSnapshot, type Geometry, type ResourceRef, type Shape, type SlideTheme, type TextStyle } from '@office-ex/core';
 
 type Rgba=Extract<Color,{kind:'rgba'}>;
 export interface SlideSceneRun {readonly id:string;readonly text:string;readonly style:DeepReadonly<TextStyle>}
@@ -45,7 +45,7 @@ export function buildSlideScene(snapshot:DocumentSnapshot,slideId:string):SlideS
     });
     return {...base,type:'text',paragraphs,textStyle,wrap:shape.textFrame?.wrap??true,verticalAlignment:shape.textFrame?.verticalAlignment??'top',margins:shape.textFrame?.margins??{top:45720,right:91440,bottom:45720,left:91440},direction,...(shape.textFrame?.autofit?{autofit:shape.textFrame.autofit}:{})};
   };
-  const shapes=slide.shapes.map(project);
+  const siblings=new Map(slide.shapes.map(shape=>[shape.id,shape]));const shapes=slide.shapes.map(shape=>project(resolveSlideConnector(shape,siblings)));
   return freezeData({documentId:doc.documentId,revision:snapshot.revision,contentId:snapshot.contentId,slideId,width:doc.size.width,height:doc.size.height,background:color(slide.background),shapes,diagnostics});
 }
 

@@ -30,6 +30,10 @@ function slides(): SlidesDocument {
     {id:'list-a',type:'text',text:'List alpha',style:{fontSize:228600,slideParagraph:{marginLeft:304800,firstLineIndent:-228600,bullet:{kind:'number',scheme:'arabicPeriod',startAt:3}}}},
     {id:'list-b',type:'text',text:'\nList beta',style:{fontSize:228600,slideParagraph:{marginLeft:304800,firstLineIndent:-228600,bullet:{kind:'number',scheme:'arabicPeriod'}}}}
   ]});
+  const slide=d.slides[1]!,members=slide.shapes;
+  const picture=members.find(s=>s.type==='image');if(picture?.type==='image')picture.crop={left:10000,right:5000,top:5000,bottom:0};
+  members.push({id:'group-text',type:'text',geometry:{x:914400,y:5486400,width:4000000,height:914400,rotation:0},runs:[{id:'group-run',type:'text',text:'Grouped output',style:{fontSize:228600}}]});
+  slide.shapes=[{id:'pdf-group',type:'group',geometry:{x:0,y:0,width:d.size.width,height:d.size.height,rotation:0},childSpace:{x:0,y:0,width:d.size.width,height:d.size.height},children:members}];
   return d;
 }
 let state: PdfViewState | undefined;

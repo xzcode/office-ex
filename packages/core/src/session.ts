@@ -105,6 +105,15 @@ function applyBatch(document: OfficeDocument, operations: readonly PatchOperatio
   return { document: next, forward, inverse };
 }
 
+/** Preview a validated candidate for a synchronous layout-dependent command.
+ * This is not a mutation authority; final execution still checks capabilities. */
+export function previewModelPatch(snapshot:DocumentSnapshot,command:DocumentCommand):DocumentSnapshot{
+  assert(command.type==='model.patch'&&command.documentId===snapshot.document.documentId&&command.expectedRevision===snapshot.revision,'conflict','Invalid preview command');
+  assert(command.payload.operations.length<=10000,'limit','Preview operation budget exceeded');
+  const candidate=applyBatch(snapshot.document as OfficeDocument,command.payload.operations);
+  return {...snapshot,document:candidate.document};
+}
+
 /** A single document authority; history retains deltas, not whole-document snapshots. */
 export class DocumentSession {
   #document: OfficeDocument; #revision = 0; #contentCounter = 0; #contentId: string;
