@@ -211,7 +211,17 @@ export const russian = {
   "writerTextLanguage": "Язык текста (BCP 47)",
   "writerParagraphDirection": "Направление абзаца",
   "writerLtr": "Слева направо",
-  "writerRtl": "Справа налево"
+  "writerRtl": "Справа налево",
+  "docNew": "Новый DOC",
+  "docDocument": "Документ Word 97–2003",
+  "docNote": "Ограниченное редактирование DOC: текст Unicode, базовое форматирование и один раздел. Неподдерживаемые DOC доступны только для чтения; таблицы и изображения не сохраняются.",
+  "docTextPreview": "Предпросмотр основного текста без полного макета, только чтение. Копия сохраняет исходные байты.",
+  "convertDoc": "Преобразовать в DOC",
+  "convertDocx": "Преобразовать в DOCX",
+  "conversionBoundary": "Преобразуются только поддерживаемые структуры. Нераспознанные части остаются в исходном файле.",
+  "writerPageEdit": "Редактировать на странице",
+  "writerExitPageEdit": "Вернуться к инструментам",
+  "writerNativePageNote": "Редактируйте прямо на странице с нативной обработкой текста. Выделяйте перетаскиванием; внутренний буфер обмена сохраняет поддерживаемые стили и изображения. Точность относительно Word ещё не проверена."
 } as const;
 export const italian = {
   "open": "Apri file",
@@ -424,5 +434,15 @@ export const italian = {
   "writerTextLanguage": "Lingua del testo (BCP 47)",
   "writerParagraphDirection": "Direzione del paragrafo",
   "writerLtr": "Da sinistra a destra",
-  "writerRtl": "Da destra a sinistra"
+  "writerRtl": "Da destra a sinistra",
+  "docNew": "Nuovo DOC",
+  "docDocument": "Documento Word 97–2003",
+  "docNote": "Modifica DOC limitata: testo Unicode, formattazione di base e una sezione. I DOC non supportati restano in sola lettura; tabelle e immagini non sono salvabili.",
+  "docTextPreview": "Anteprima del testo principale in sola lettura, non del layout completo. La copia conserva i byte originali.",
+  "convertDoc": "Converti in DOC",
+  "convertDocx": "Converti in DOCX",
+  "conversionBoundary": "Si convertono solo le strutture supportate. Le parti non interpretate restano nel file sorgente.",
+  "writerPageEdit": "Modifica sulla pagina",
+  "writerExitPageEdit": "Torna agli strumenti",
+  "writerNativePageNote": "Modifica sulla pagina con la composizione nativa del testo. Trascina per selezionare; gli appunti interni conservano formati e immagini supportati. La fedeltà a Word non è ancora verificata."
 } as const;

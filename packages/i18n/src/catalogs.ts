@@ -211,7 +211,17 @@ export const english = {
   "writerTextLanguage": "Text language (BCP 47)",
   "writerParagraphDirection": "Paragraph direction",
   "writerLtr": "Left to right",
-  "writerRtl": "Right to left"
+  "writerRtl": "Right to left",
+  "docNew": "New DOC",
+  "docDocument": "Word 97–2003 document",
+  "docNote": "Limited DOC editing: Unicode text, basic styles and one section. Unsupported DOC files remain read-only; tables and pictures cannot be saved in this profile.",
+  "docTextPreview": "Read-only main-story text preview, not the complete document layout. Saving a copy preserves the original bytes.",
+  "convertDoc": "Convert to DOC",
+  "convertDocx": "Convert to DOCX",
+  "conversionBoundary": "Conversion requires a document containing only supported structures; opaque parts are preserved in the source, not discarded.",
+  "writerPageEdit": "Edit on page",
+  "writerExitPageEdit": "Back to tools",
+  "writerNativePageNote": "Edit on the page using native browser text shaping. Drag to select; copy and paste retain supported Office EX formatting and images. Page fidelity is not yet verified against Word."
 } as const;
 export const simplified = {
   "open": "打开文件",
@@ -424,7 +434,17 @@ export const simplified = {
   "writerTextLanguage": "文字语言（BCP 47）",
   "writerParagraphDirection": "段落方向",
   "writerLtr": "从左到右",
-  "writerRtl": "从右到左"
+  "writerRtl": "从右到左",
+  "docNew": "新建 DOC",
+  "docDocument": "Word 97–2003 文档",
+  "docNote": "DOC 限定编辑：Unicode 文字、基本格式和单节页面。不支持的 DOC 文件保持只读；此范围不能保存表格和图片。",
+  "docTextPreview": "只读正文文字预览，并非完整文档排版。保存副本保留原始字节。",
+  "convertDoc": "转换为 DOC",
+  "convertDocx": "转换为 DOCX",
+  "conversionBoundary": "转换要求文档仅包含已支持的结构；不透明部件保留在源文件中，不会被丢弃。",
+  "writerPageEdit": "页面编辑",
+  "writerExitPageEdit": "返回编辑工具",
+  "writerNativePageNote": "使用原生文字塑形直接在页面上编辑，拖动可选取文字；内部复制粘贴保留支持的格式和图片。尚未与 Word 验证排版精度。"
 } as const;
 export const traditional = {
   "open": "開啟檔案",
@@ -637,7 +657,17 @@ export const traditional = {
   "writerTextLanguage": "文字語言（BCP 47）",
   "writerParagraphDirection": "段落方向",
   "writerLtr": "從左到右",
-  "writerRtl": "從右到左"
+  "writerRtl": "從右到左",
+  "docNew": "新增 DOC",
+  "docDocument": "Word 97–2003 文件",
+  "docNote": "DOC 限定編輯：Unicode 文字、基本格式與單節頁面。不支援的 DOC 檔案維持唯讀；此範圍無法儲存表格及圖片。",
+  "docTextPreview": "唯讀正文文字預覽，並非完整文件排版。儲存副本保留原始位元組。",
+  "convertDoc": "轉換為 DOC",
+  "convertDocx": "轉換為 DOCX",
+  "conversionBoundary": "轉換要求文件僅含已支援的結構；不透明部件保留於來源檔案，不會遭丟棄。",
+  "writerPageEdit": "頁面編輯",
+  "writerExitPageEdit": "返回編輯工具",
+  "writerNativePageNote": "使用原生文字塑形直接在頁面上編輯，拖曳可選取文字；內部複製貼上保留支援的格式與圖片。尚未與 Word 驗證排版精度。"
 } as const;
 export const japanese = {
   "open": "ファイルを開く",
@@ -850,5 +880,15 @@ export const japanese = {
   "writerTextLanguage": "テキストの言語 (BCP 47)",
   "writerParagraphDirection": "段落の方向",
   "writerLtr": "左から右",
-  "writerRtl": "右から左"
+  "writerRtl": "右から左",
+  "docNew": "DOC を新規作成",
+  "docDocument": "Word 97–2003 文書",
+  "docNote": "DOC の限定編集：Unicode テキスト、基本書式、1 セクション。未対応の DOC は読み取り専用です。表や画像は保存できません。",
+  "docTextPreview": "本文の読み取り専用テキストプレビューです。完全なレイアウトではありません。コピーは元のバイト列を保持します。",
+  "convertDoc": "DOC に変換",
+  "convertDocx": "DOCX に変換",
+  "conversionBoundary": "対応済みの構造のみ変換できます。未解釈の部品は元のファイルに保持されます。",
+  "writerPageEdit": "ページ上で編集",
+  "writerExitPageEdit": "編集ツールに戻る",
+  "writerNativePageNote": "ブラウザーの文字組版を使い、ページ上で編集します。ドラッグで選択でき、内部のコピーと貼り付けは対応書式と画像を保持します。Word との版面精度は未検証です。"
 } as const;

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "2026-11-24",
-  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed. Spec v1.1 adds I18N-01–05 and QA-07 as planned cross-cutting P0 release requirements; historical M1 evidence is unchanged. M2-I18N initial implementation has four draft UI catalogs and shared settings/formatting; not yet verified, 22-locale release gate unchanged. A-batch second iteration implements 11 candidate UI catalogs, structured messages and pseudo fixtures; new CI and full 22-locale gates remain. M2 Writer first slice: paragraph transactions and narrow DOCX semantic adapter implemented; verification and later gates pending. M2 Writer first slice passed 121/121 regression and narrow DOCX independent interop on 7692c0c; remaining WRT, M2-L and release gates unchanged. M2 second slice adds bounded Writer layout and native paragraph controls with 11 localized catalogs; CI pending, full acceptance remains. M2 second slice automated core and interoperability checks passed on 84db801; native status separately tracked, full M2 acceptance remains. M2 Writer third slice connects narrow DOCX desktop editing and guarded native commits; actual CI status pending. Third slice verified automated and independent narrow-profile interoperability on c79feaf; native acceptance separately tracked. M2 third slice native CI 45428117703 all jobs passed; fourth slice extends named styles and toolbar, verification pending. M2 fourth slice core/style interop passed on 75cad7b; native acceptance separately tracked; full compatibility gates unchanged. M2 fourth slice native CI 45432375135 passed; fifth slice implements rectangular tables, row pagination and DOCX table profile; verification pending. M2 table slice initial core 145/145 and independent interop passed; final XML order correction passed substantive check/interop/license steps. Full native and release gates remain. M2 integrated image/page slice implemented, acceptance incomplete; do not mark M2 or legacy DOC verified. M2 image/page slice passed 152/152 core regression and independent DOCX image interop on 2ce8f45; native checks separately tracked. M2 exit audit remains incomplete; M2-L DOC required. No release. M2 seventh integrated slice adds cross-paragraph ranges and mixed inline pictures; acceptance remains incomplete. Seventh slice also adds next-page sections and document-language/direction metadata; full acceptance remains pending. Seventh slice passed 162/162 core tests and independent Python-edited controlled DOCX interop on 3e0a60f; full M2/I18N and M2-L remain mandatory.",
+  "statusNote": "M1 infrastructure verified against source 7d0522d and CI 45375454826. Whole requirement status and m1Acceptance are separate: broad format, security, filesystem and UI requirements retain their later obligations. All individual normative MUST rules still apply. No Office semantic editor or formal release is claimed. Spec v1.1 adds I18N-01–05 and QA-07 as planned cross-cutting P0 release requirements; historical M1 evidence is unchanged. M2-I18N initial implementation has four draft UI catalogs and shared settings/formatting; not yet verified, 22-locale release gate unchanged. A-batch second iteration implements 11 candidate UI catalogs, structured messages and pseudo fixtures; new CI and full 22-locale gates remain. M2 Writer first slice: paragraph transactions and narrow DOCX semantic adapter implemented; verification and later gates pending. M2 Writer first slice passed 121/121 regression and narrow DOCX independent interop on 7692c0c; remaining WRT, M2-L and release gates unchanged. M2 second slice adds bounded Writer layout and native paragraph controls with 11 localized catalogs; CI pending, full acceptance remains. M2 second slice automated core and interoperability checks passed on 84db801; native status separately tracked, full M2 acceptance remains. M2 Writer third slice connects narrow DOCX desktop editing and guarded native commits; actual CI status pending. Third slice verified automated and independent narrow-profile interoperability on c79feaf; native acceptance separately tracked. M2 third slice native CI 45428117703 all jobs passed; fourth slice extends named styles and toolbar, verification pending. M2 fourth slice core/style interop passed on 75cad7b; native acceptance separately tracked; full compatibility gates unchanged. M2 fourth slice native CI 45432375135 passed; fifth slice implements rectangular tables, row pagination and DOCX table profile; verification pending. M2 table slice initial core 145/145 and independent interop passed; final XML order correction passed substantive check/interop/license steps. Full native and release gates remain. M2 integrated image/page slice implemented, acceptance incomplete; do not mark M2 or legacy DOC verified. M2 image/page slice passed 152/152 core regression and independent DOCX image interop on 2ce8f45; native checks separately tracked. M2 exit audit remains incomplete; M2-L DOC required. No release. M2 seventh integrated slice adds cross-paragraph ranges and mixed inline pictures; acceptance remains incomplete. Seventh slice also adds next-page sections and document-language/direction metadata; full acceptance remains pending. Seventh slice passed 162/162 core tests and independent Python-edited controlled DOCX interop on 3e0a60f; full M2/I18N and M2-L remain mandatory. Eighth slice covers all remaining development areas with limited profiles; local 167/167, independent DOCX/DOC interoperability and build passed. M2/M2-L not fully verified.",
   "features": [
     {
       "id": "ARC-01",
@@ -319,7 +319,9 @@
         "https://github.com/xzcode/office-ex/actions/runs/45434512688",
         "https://github.com/xzcode/office-ex/actions/runs/45434702537",
         "https://github.com/xzcode/office-ex/actions/runs/45437070146",
-        "https://github.com/xzcode/office-ex/actions/runs/45527322279"
+        "https://github.com/xzcode/office-ex/actions/runs/45527322279",
+        "tests/writer-m2-completion.test.ts",
+        "tests/writer_completion_interop.py"
       ],
       "implementationPaths": [
         "packages/writer/src/paragraphs.ts",
@@ -340,11 +342,12 @@
         "packages/writer/src/ranges.ts",
         "tests/writer-ranges.test.ts",
         "tests/writer-sections.test.ts",
-        "tests/writer_integrated_interop.py"
+        "tests/writer_integrated_interop.py",
+        "packages/ui/src/native-writer-page.ts"
       ],
       "remainingScope": [
-        "Seventh integrated slice: 162/162 core tests and independent controlled mixed-image, section, language and Python-authored edit interop passed; native status tracked in linked CI.",
-        "Full bidi/shaping, true paginated WYSIWYG, incremental layout, rich clipboard, broader Word/legacy dependencies and reference Office fidelity remain."
+        "Eighth integrated slice implements native page editing, browser shaping, incremental section/paragraph caches, rich clipboard, ordinary-template DOCX and closed DOC read/write. Local 167/167 and independent interop/build/license passed. New native CI separately tracked.",
+        "Full Word-equivalent layout, all scripts/fonts/IME and structural selections, broad historical DOC semantics, full reference Office and M2-L acceptance remain mandatory."
       ],
       "m2InitialAcceptance": {
         "status": "verified",
@@ -475,7 +478,9 @@
         "https://github.com/xzcode/office-ex/actions/runs/45434512688",
         "https://github.com/xzcode/office-ex/actions/runs/45434702537",
         "https://github.com/xzcode/office-ex/actions/runs/45437070146",
-        "https://github.com/xzcode/office-ex/actions/runs/45527322279"
+        "https://github.com/xzcode/office-ex/actions/runs/45527322279",
+        "tests/writer-m2-completion.test.ts",
+        "tests/writer_completion_interop.py"
       ],
       "implementationPaths": [
         "packages/render/src/writer-layout.ts",
@@ -498,11 +503,13 @@
         "packages/writer/src/ranges.ts",
         "tests/writer-ranges.test.ts",
         "tests/writer-sections.test.ts",
-        "tests/writer_integrated_interop.py"
+        "tests/writer_integrated_interop.py",
+        "packages/render/src/writer-pagination.ts",
+        "packages/ui/src/native-writer-shaper.ts"
       ],
       "remainingScope": [
-        "Seventh integrated slice: 162/162 core tests and independent controlled mixed-image, section, language and Python-authored edit interop passed; native status tracked in linked CI.",
-        "Full bidi/shaping, true paginated WYSIWYG, incremental layout, rich clipboard, broader Word/legacy dependencies and reference Office fidelity remain."
+        "Eighth integrated slice implements native page editing, browser shaping, incremental section/paragraph caches, rich clipboard, ordinary-template DOCX and closed DOC read/write. Local 167/167 and independent interop/build/license passed. New native CI separately tracked.",
+        "Full Word-equivalent layout, all scripts/fonts/IME and structural selections, broad historical DOC semantics, full reference Office and M2-L acceptance remain mandatory."
       ],
       "m2LayoutAcceptance": {
         "status": "verified",
@@ -651,7 +658,9 @@
         "https://github.com/xzcode/office-ex/actions/runs/45434512688",
         "https://github.com/xzcode/office-ex/actions/runs/45434702537",
         "https://github.com/xzcode/office-ex/actions/runs/45437070146",
-        "https://github.com/xzcode/office-ex/actions/runs/45527322279"
+        "https://github.com/xzcode/office-ex/actions/runs/45527322279",
+        "tests/writer-m2-completion.test.ts",
+        "tests/writer_completion_interop.py"
       ],
       "implementationPaths": [
         "packages/writer/src/paragraphs.ts",
@@ -675,11 +684,13 @@
         "packages/writer/src/ranges.ts",
         "tests/writer-ranges.test.ts",
         "tests/writer-sections.test.ts",
-        "tests/writer_integrated_interop.py"
+        "tests/writer_integrated_interop.py",
+        "packages/writer/src/clipboard.ts",
+        "packages/ui/src/native-writer-page.ts"
       ],
       "remainingScope": [
-        "Seventh integrated slice: 162/162 core tests and independent controlled mixed-image, section, language and Python-authored edit interop passed; native status tracked in linked CI.",
-        "Full bidi/shaping, true paginated WYSIWYG, incremental layout, rich clipboard, broader Word/legacy dependencies and reference Office fidelity remain."
+        "Eighth integrated slice implements native page editing, browser shaping, incremental section/paragraph caches, rich clipboard, ordinary-template DOCX and closed DOC read/write. Local 167/167 and independent interop/build/license passed. New native CI separately tracked.",
+        "Full Word-equivalent layout, all scripts/fonts/IME and structural selections, broad historical DOC semantics, full reference Office and M2-L acceptance remain mandatory."
       ],
       "m2InitialAcceptance": {
         "status": "verified",
@@ -839,7 +850,9 @@
         "https://github.com/xzcode/office-ex/actions/runs/45434512688",
         "https://github.com/xzcode/office-ex/actions/runs/45434702537",
         "https://github.com/xzcode/office-ex/actions/runs/45437070146",
-        "https://github.com/xzcode/office-ex/actions/runs/45527322279"
+        "https://github.com/xzcode/office-ex/actions/runs/45527322279",
+        "tests/writer-m2-completion.test.ts",
+        "tests/writer_completion_interop.py"
       ],
       "implementationPaths": [
         "packages/ooxml/src/writer-docx.ts",
@@ -872,11 +885,14 @@
         "packages/writer/src/ranges.ts",
         "tests/writer-ranges.test.ts",
         "tests/writer-sections.test.ts",
-        "tests/writer_integrated_interop.py"
+        "tests/writer_integrated_interop.py",
+        "packages/ooxml/src/writer-docx-auxiliary.ts",
+        "packages/format-service/src/legacy-doc.ts",
+        "tests/writer_completion_interop.py"
       ],
       "remainingScope": [
-        "Seventh integrated slice: 162/162 core tests and independent controlled mixed-image, section, language and Python-authored edit interop passed; native status tracked in linked CI.",
-        "Full bidi/shaping, true paginated WYSIWYG, incremental layout, rich clipboard, broader Word/legacy dependencies and reference Office fidelity remain."
+        "Eighth integrated slice implements native page editing, browser shaping, incremental section/paragraph caches, rich clipboard, ordinary-template DOCX and closed DOC read/write. Local 167/167 and independent interop/build/license passed. New native CI separately tracked.",
+        "Full Word-equivalent layout, all scripts/fonts/IME and structural selections, broad historical DOC semantics, full reference Office and M2-L acceptance remain mandatory."
       ],
       "m2InitialAcceptance": {
         "status": "verified",
@@ -1027,8 +1043,24 @@
       "milestone": "M2-L",
       "priority": "P0",
       "acceptance": "DOC 97–2003 读写",
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/M2-WRITER.md",
+        "tests/writer-m2-completion.test.ts",
+        "tests/writer_completion_interop.py"
+      ],
+      "implementationPaths": [
+        "packages/format-service/src/legacy-doc.ts",
+        "packages/format-service/src/index.ts",
+        "packages/ui/src/renderer.ts",
+        "apps/desktop/src/docx-verifier.ts",
+        "tests/writer-m2-completion.test.ts",
+        "tests/writer_completion_interop.py"
+      ],
+      "remainingScope": [
+        "Eighth integrated slice implements native page editing, browser shaping, incremental section/paragraph caches, rich clipboard, ordinary-template DOCX and closed DOC read/write. Local 167/167 and independent interop/build/license passed. New native CI separately tracked.",
+        "Full Word-equivalent layout, all scripts/fonts/IME and structural selections, broad historical DOC semantics, full reference Office and M2-L acceptance remain mandatory."
+      ]
     },
     {
       "id": "SHT-01",
@@ -1233,7 +1265,9 @@
       "status": "implemented",
       "evidence": [
         "docs/M2-WRITER.md",
-        "https://github.com/xzcode/office-ex/actions/runs/45527322279"
+        "https://github.com/xzcode/office-ex/actions/runs/45527322279",
+        "tests/writer-m2-completion.test.ts",
+        "tests/writer_completion_interop.py"
       ],
       "spec": "docs/specs/09-i18n.md",
       "implementationPaths": [
@@ -1241,11 +1275,13 @@
         "packages/core/src/model.ts",
         "packages/ooxml/src/writer-docx.ts",
         "tests/writer-sections.test.ts",
-        "tests/writer_integrated_interop.py"
+        "tests/writer_integrated_interop.py",
+        "packages/ui/src/native-writer-shaper.ts",
+        "packages/ui/src/native-writer-page.ts"
       ],
       "remainingScope": [
-        "Seventh integrated slice: 162/162 core tests and independent controlled mixed-image, section, language and Python-authored edit interop passed; native status tracked in linked CI.",
-        "Full bidi/shaping, true paginated WYSIWYG, incremental layout, rich clipboard, broader Word/legacy dependencies and reference Office fidelity remain."
+        "Eighth integrated slice implements native page editing, browser shaping, incremental section/paragraph caches, rich clipboard, ordinary-template DOCX and closed DOC read/write. Local 167/167 and independent interop/build/license passed. New native CI separately tracked.",
+        "Full Word-equivalent layout, all scripts/fonts/IME and structural selections, broad historical DOC semantics, full reference Office and M2-L acceptance remain mandatory."
       ],
       "m2RangeSectionAcceptance": {
         "status": "verified",

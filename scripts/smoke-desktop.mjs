@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { docxParts, writeZip, writeWriterDocx, openWriterDocx } from '@office-ex/ooxml';
 import { createDocument } from '@office-ex/core';
-import { serializeDraft } from '@office-ex/format-service';
+import { serializeDraft, openLegacyDoc, inspectLegacyDocText } from '@office-ex/format-service';
 import { styledFixture } from '../tests/writer-styled-fixture.ts';
 import {PNG,JPEG} from '../tests/writer-image-fixture.ts';
 import { openOpc } from '@office-ex/ooxml';
@@ -358,6 +358,47 @@ try{
   const continuousCount=await page.locator('.tab').count();await page.locator('.tab[aria-selected=true] .tab-close').click();
   await page.waitForFunction(n=>document.querySelectorAll('.tab').length===n-1,continuousCount);
   check('Native continuous selection, undo, inline image, section geometry and text language DOCX save');
+
+  // Page surface uses Chromium's native shaping geometry and an IME bridge.
+  const pagedPath=join(work,'paged.docx');
+  await page.locator('#home').click();await page.locator('#new-docx').click();
+  const complex='English 中文 العربية עברית हिन्दी ไทย 😀 e\u0301';
+  await page.locator('#draft-text').fill(complex);
+  await page.locator('#writer-page-edit').click();
+  await page.waitForSelector('#writer-native-page:not([hidden]) .writer-native-slice');
+  const pageInput=page.locator('#writer-page-input');
+  await page.waitForSelector('#writer-page-input:not([hidden])');
+  await pageInput.focus();
+  await page.keyboard.insertText('测');
+  await page.waitForFunction(()=>document.querySelector('#document-status')?.textContent.includes('修订 2')||document.querySelector('#writer-native-page')?.textContent.includes('测'));
+  assert.ok((await page.locator('#writer-native-page').textContent()).includes('测'));
+  await screenshot('writer-native-multilingual');
+  await dialogSave(pagedPath);await page.locator('#save').click();
+  await waitFor(async()=>{try{return openWriterDocx(await readFile(pagedPath),'page-native','Page').document.sections[0].blocks[0].runs.map(r=>r.type==='text'?r.text:'').join('').includes('测');}catch{return false;}},'native page edit DOCX save',30000);
+  await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));
+  await page.locator('.tab[aria-selected=true] .tab-close').click();
+  check('Native page surface shapes multilingual text and commits input to DOCX');
+
+  // Native DOC save uses the same isolated verifier and commit capability.
+  const legacyPath=join(work,'writer-legacy.doc'),convertedPath=join(work,'writer-converted.docx');
+  await page.locator('#home').click();
+  await page.locator('#settings').click();await page.locator('#document-language').selectOption('zh-CN');await page.locator('#settings-dialog button[value=close]').click();
+  await page.locator('#home').click();await page.locator('#new-doc').click();
+  await page.locator('#draft-text').fill('Native DOC 中文');
+  await dialogSave(legacyPath);await page.locator('#save').click();
+  await waitFor(async()=>{try{return inspectLegacyDocText(await readFile(legacyPath)).text==='Native DOC 中文\r';}catch{return false;}},'native DOC save',30000);
+  await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));
+  await page.locator('.tab[aria-selected=true] .tab-close').click();
+  await dialogOpen(legacyPath);await inputEquals('#draft-text','Native DOC 中文','native DOC reopen');
+  const beforeConversion=await page.locator('.tab').count();await page.locator('#convert-writer').click();
+  await page.waitForFunction(n=>document.querySelectorAll('.tab').length===n+1,beforeConversion);
+  await inputEquals('#draft-text','Native DOC 中文','conversion model');
+  await dialogSave(convertedPath);await page.locator('#save').click();
+  await waitFor(async()=>{try{return openWriterDocx(await readFile(convertedPath),'converted-native','Converted').document.sections[0].blocks[0].runs[0].text==='Native DOC 中文';}catch{return false;}},'native DOC to DOCX conversion',30000);
+  await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));
+  await page.locator('.tab[aria-selected=true] .tab-close').click();
+  await page.locator('.tab[aria-selected=true] .tab-close').click();
+  check('Native DOC creation, verified save, reopen and conversion to DOCX');
 
   await page.locator('.tab').first().click();assert.equal(await page.locator('#draft-text').inputValue(),'Edit made while saving');
   // Bad save destination keeps the document dirty, usable and the old file unchanged.

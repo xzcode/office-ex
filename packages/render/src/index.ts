@@ -111,3 +111,5 @@ export class FontMeasurementCache {
 }
 
 export * from './writer-layout.js';
+
+export * from './writer-pagination.js';

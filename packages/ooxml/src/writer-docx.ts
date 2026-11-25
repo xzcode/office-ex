@@ -19,8 +19,8 @@ const XMLNS='http://www.w3.org/2000/xmlns/';
 const ROOT_REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument';
 const MAIN_TYPE='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml';
 const DECL='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const CHAR_KEYS=['fontFamily','fontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection'];
-const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight','paragraphDirection'];
+const CHAR_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection'];
+const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','paragraphDirection'];
 const MAX_BLOCKS=10000;
 const MAX_RUNS=50000;
 const MAX_TEXT=4*1024*1024;
@@ -31,6 +31,10 @@ function attrs(el:Element,allowed:readonly string[]=[]):void{
   for(let i=0;i<el.attributes.length;i++){
     const a=el.attributes.item(i)!;
     if(a.namespaceURI===XMLNS)continue;
+    // rsid identifies an editing session, not tracked-change content. No
+    // revision markup is admitted. Ignore only the enumerated metadata attrs.
+    if(a.namespaceURI===W&&['rsidR','rsidRPr','rsidRDefault','rsidP','rsidDel','rsidSect'].includes(a.localName??'')&&['p','r','sectPr'].includes(el.localName??'')&&/^[0-9A-Fa-f]{8}$/.test(a.value))continue;
+    if(a.namespaceURI==='http://schemas.openxmlformats.org/markup-compatibility/2006'&&a.localName==='Ignorable'&&el.localName==='document'&&a.value.split(/\s+/).every(prefix=>prefix&&el.lookupNamespaceURI(prefix)?.startsWith('http://schemas.microsoft.com/office/')))continue;
     const name=a.namespaceURI===W?'w:'+a.localName:a.namespaceURI===XML?'xml:'+a.localName:'?'+a.name;
     valid(allowed.includes(name),'Unrecognized attribute on '+el.localName);
   }
@@ -66,8 +70,14 @@ export function readRunStyle(el:Element,reference?:(id:string)=>void,theme?:Them
       case 'i':{const value=toggled(child);if(named){if(value)toggles?.push('italic');}else style.italic=value;break;}
       case 'u':{attrs(child,['w:val']);empty(child);const value=prop(child,'val');valid(value==='single'||value==='none','Unsupported underline');style.underline=value==='single';break;}
       case 'sz':attrs(child,['w:val']);empty(child);style.fontSize=numberProp(child,'val',1,3276)*6350;break;
-      case 'color':{attrs(child,theme?['w:val','w:themeColor']:['w:val']);empty(child);const key=prop(child,'themeColor');const color=key!==undefined?(theme?.colors[key]??''):prop(child,'val')??'';valid(/^[0-9a-fA-F]{6}$/.test(color),'Unsupported color');style.color={kind:'rgba',red:parseInt(color.slice(0,2),16),green:parseInt(color.slice(2,4),16),blue:parseInt(color.slice(4,6),16),alpha:255};break;}
-      case 'rFonts':{attrs(child,theme?['w:ascii','w:hAnsi','w:eastAsia','w:cs','w:asciiTheme','w:hAnsiTheme','w:eastAsiaTheme','w:cstheme']:['w:ascii','w:hAnsi','w:eastAsia','w:cs']);empty(child);const fontKeys=[['ascii','asciiTheme'],['hAnsi','hAnsiTheme'],['eastAsia','eastAsiaTheme'],['cs','cstheme']] as const;const fonts=fontKeys.map(([literal,themed])=>{const ref=prop(child,themed);return ref!==undefined?theme?.fonts[ref]:prop(child,literal);});const font=fonts[0];valid(font&&fonts.every(f=>f===font),'Mixed or inherited font mapping');style.fontFamily=font;break;}
+      case 'szCs':attrs(child,['w:val']);empty(child);style.complexFontSize=numberProp(child,'val',1,3276)*6350;break;
+      case 'bCs':case 'iCs':{valid(named||theme,'Independent complex-script toggle requires preserved source style');const value=toggled(child);const corresponding=child.localName==='bCs'?'bold':'italic';const direct=elements(el).find(e=>isW(e,corresponding==='bold'?'b':'i'));valid(direct&&toggled(direct)===value,'Independent complex-script toggle needs a later adapter');break;}
+      case 'color':{attrs(child,theme?['w:val','w:themeColor','w:themeShade','w:themeTint']:['w:val']);empty(child);const key=prop(child,'themeColor'),shade=prop(child,'themeShade'),tint=prop(child,'themeTint');valid(!(shade&&tint)&&(!shade||/^[0-9a-fA-F]{2}$/.test(shade))&&(!tint||/^[0-9a-fA-F]{2}$/.test(tint))&&(!(shade||tint)||key&&theme?.colors[key]),'Invalid theme transform');const color=shade||tint?prop(child,'val')??'':key!==undefined?(theme?.colors[key]??''):prop(child,'val')??'';valid(/^[0-9a-fA-F]{6}$/.test(color),'Unsupported color');style.color={kind:'rgba',red:parseInt(color.slice(0,2),16),green:parseInt(color.slice(2,4),16),blue:parseInt(color.slice(4,6),16),alpha:255};break;}
+      case 'rFonts':{attrs(child,theme?['w:ascii','w:hAnsi','w:eastAsia','w:cs','w:asciiTheme','w:hAnsiTheme','w:eastAsiaTheme','w:cstheme']:['w:ascii','w:hAnsi','w:eastAsia','w:cs']);empty(child);const fontKeys=[['ascii','asciiTheme'],['hAnsi','hAnsiTheme'],['eastAsia','eastAsiaTheme'],['cs','cstheme']] as const;const fonts=fontKeys.map(([literal,themed])=>{const ref=prop(child,themed);return ref!==undefined?theme?.fonts[ref]:prop(child,literal);});const font=fonts[0]??fonts[1];valid(font,'Missing Latin font mapping');
+        for(const [literal,themed] of fontKeys){const ref=prop(child,themed);if(ref!==undefined)valid(theme&&Object.hasOwn(theme.fonts,ref),'Unknown theme font');}
+        if(fonts.every(f=>f===font))style.fontFamily=font;
+        else {style.fontFamily=font;for(let i=0;i<fonts.length;i++)if(fonts[i])style[(['fontAscii','fontHighAnsi','fontEastAsia','fontComplex'] as const)[i]!]=fonts[i];}
+        break;}
       default:unsupported('Unsupported run property '+child.localName);
     }
   }
@@ -79,6 +89,10 @@ export function readParagraphStyle(el:Element,reference?:(id:string)=>void,secti
     valid(child.namespaceURI===W&&child.localName!==null&&!seen.has(child.localName),'Duplicate or foreign paragraph property');seen.add(child.localName);
     switch(child.localName){
       case 'bidi':style.paragraphDirection=toggled(child)?'rtl':'ltr';break;
+      case 'keepNext':style.keepNext=toggled(child);break;
+      case 'keepLines':style.keepLines=toggled(child);break;
+      case 'widowControl':style.widowControl=toggled(child);break;
+      case 'outlineLvl':attrs(child,['w:val']);empty(child);style.outlineLevel=numberProp(child,'val',0,9);break;
       case 'sectPr':{valid(child===sectionEnd,'Unexpected section properties inside paragraph');break;}
       case 'pStyle':{valid(reference,'Unexpected paragraph style reference');attrs(child,['w:val']);empty(child);const id=prop(child,'val');valid(id,'Missing paragraph style reference');reference(id);break;}
       case 'jc':{attrs(child,['w:val']);empty(child);const v=prop(child,'val');valid(v==='left'||v==='center'||v==='right'||v==='both','Unsupported alignment');style.alignment=v==='left'?'start':v==='right'?'end':v==='both'?'justify':v;break;}
@@ -87,9 +101,9 @@ export function readParagraphStyle(el:Element,reference?:(id:string)=>void,secti
         attrs(child,['w:before','w:after','w:line','w:lineRule']);empty(child);
         if(prop(child,'before')!==undefined)style.spaceBefore=numberProp(child,'before',0,31680)*EMU_PER_TWIP;
         if(prop(child,'after')!==undefined)style.spaceAfter=numberProp(child,'after',0,31680)*EMU_PER_TWIP;
-        if(prop(child,'line')!==undefined){valid(prop(child,'lineRule')==='exact','Unsupported line-spacing rule');style.lineHeight=numberProp(child,'line',1,31680)*EMU_PER_TWIP;}
+        if(prop(child,'line')!==undefined){const rule=prop(child,'lineRule')??'auto',n=numberProp(child,'line',1,31680);if(rule==='exact')style.lineHeight=n*EMU_PER_TWIP;else if(rule==='auto')style.lineMultiple=n;else if(rule==='atLeast')style.minLineHeight=n*EMU_PER_TWIP;else unsupported('Unsupported line spacing rule');}
         else valid(prop(child,'lineRule')===undefined,'Line rule without line value');
-        valid(Object.keys(style).some(k=>['spaceBefore','spaceAfter','lineHeight'].includes(k)),'Empty spacing property');
+        valid(Object.keys(style).some(k=>['spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight'].includes(k)),'Empty spacing property');
         break;
       }
       default:unsupported('Unsupported paragraph property '+child.localName);
@@ -115,6 +129,7 @@ function readPage(el:Element):Pick<WriterSection,'page'|'pageExtras'>{
     valid((prop(cols,'num')===undefined||prop(cols,'num')==='1')&&(prop(cols,'equalWidth')===undefined||['1','true','on'].includes(prop(cols,'equalWidth')!))&&(prop(cols,'sep')===undefined||['0','false','off'].includes(prop(cols,'sep')!)),'Only a single column is supported');
     if(prop(cols,'space')!==undefined)extras.columnSpace=numberProp(cols,'space',0,31680)*EMU_PER_TWIP;
   }
+  if(items[i]&&isW(items[i]!,'docGrid')){const grid=items[i++]!;attrs(grid,['w:type','w:linePitch']);empty(grid);valid(prop(grid,'type')===undefined||prop(grid,'type')==='default','Active document grid unsupported');if(prop(grid,'linePitch')!==undefined)extras.docGridLinePitch=numberProp(grid,'linePitch',0,31680)*EMU_PER_TWIP;}
   valid(i===items.length,'Unsupported section properties');
   return {page:{width:width*EMU_PER_TWIP,height:height*EMU_PER_TWIP,margins:{top:numberProp(margins,'top',0,31680)*EMU_PER_TWIP,right:numberProp(margins,'right',0,31680)*EMU_PER_TWIP,bottom:numberProp(margins,'bottom',0,31680)*EMU_PER_TWIP,left:numberProp(margins,'left',0,31680)*EMU_PER_TWIP}},...(Object.keys(extras).length?{pageExtras:extras}:{})};
 }
@@ -287,13 +302,16 @@ function twip(value:number,min:number,max:number):number{
 function writeRunStyle(style:DeepReadonly<TextStyle>,styleId?:string):string{
   valid(Object.keys(style).every(k=>CHAR_KEYS.includes(k)),'Unsupported character style');
   let r=styleId?tag('rStyle',{val:styleId}):'';
-  if(style.fontFamily!==undefined)r+=tag('rFonts',{ascii:style.fontFamily,hAnsi:style.fontFamily,eastAsia:style.fontFamily,cs:style.fontFamily});
+  if(style.fontFamily!==undefined||style.fontAscii!==undefined||style.fontHighAnsi!==undefined||style.fontEastAsia!==undefined||style.fontComplex!==undefined){
+    const mapped=style.fontAscii!==undefined||style.fontHighAnsi!==undefined||style.fontEastAsia!==undefined||style.fontComplex!==undefined;const fonts:Record<string,string>={};for(const [key,value] of [['ascii',mapped?style.fontAscii:style.fontFamily],['hAnsi',mapped?style.fontHighAnsi:style.fontFamily],['eastAsia',mapped?style.fontEastAsia:style.fontFamily],['cs',mapped?style.fontComplex:style.fontFamily]] as const)if(value!==undefined)fonts[key]=value;r+=tag('rFonts',fonts);
+  }
   for(const [key,xml] of [['bold','b'],['italic','i']] as const)if(style[key]!==undefined)r+=tag(xml,{val:style[key]?1:0});
   if(style.color!==undefined){
     valid(style.color.kind==='rgba'&&style.color.alpha===255,'Theme or translucent text color unsupported');
     const v=[style.color.red,style.color.green,style.color.blue].map(n=>n.toString(16).padStart(2,'0')).join('').toUpperCase();r+=tag('color',{val:v});
   }
   if(style.fontSize!==undefined){const n=Math.round(style.fontSize/6350);valid(n>=1&&n<=3276,'Font size outside DOCX limits');r+=tag('sz',{val:n});}
+  if(style.complexFontSize!==undefined){const n=Math.round(style.complexFontSize/6350);valid(n>=1&&n<=3276,'Complex font size outside DOCX limits');r+=tag('szCs',{val:n});}
   if(style.underline!==undefined)r+=tag('u',{val:style.underline?'single':'none'});
   if(style.runDirection!==undefined)r+=tag('rtl',{val:style.runDirection==='rtl'?1:0});
   const langs:Record<string,string>={};for(const [key,property] of [['val','language'],['eastAsia','eastAsiaLanguage'],['bidi','bidiLanguage']] as const)if(style[property]!==undefined)langs[key]=style[property]!;
@@ -302,13 +320,16 @@ function writeRunStyle(style:DeepReadonly<TextStyle>,styleId?:string):string{
 }
 function writeParagraphStyle(style:DeepReadonly<TextStyle>,styleId?:string,sectionEnd=''):string{
   valid(Object.keys(style).every(k=>PARA_KEYS.includes(k)),'Unsupported paragraph style');
-  let p=styleId?tag('pStyle',{val:styleId}):'';if(style.paragraphDirection!==undefined)p+=tag('bidi',{val:style.paragraphDirection==='rtl'?1:0});const spacing:Record<string,string|number>={};
+  let p=styleId?tag('pStyle',{val:styleId}):'';for(const key of ['keepNext','keepLines','widowControl'] as const)if(style[key]!==undefined)p+=tag(key,{val:style[key]?1:0});if(style.paragraphDirection!==undefined)p+=tag('bidi',{val:style.paragraphDirection==='rtl'?1:0});const spacing:Record<string,string|number>={};
   if(style.spaceBefore!==undefined)spacing.before=twip(style.spaceBefore,0,31680);
   if(style.spaceAfter!==undefined)spacing.after=twip(style.spaceAfter,0,31680);
   if(style.lineHeight!==undefined){spacing.line=twip(style.lineHeight,1,31680);spacing.lineRule='exact';}
+  if(style.lineMultiple!==undefined){spacing.line=style.lineMultiple;spacing.lineRule='auto';}
+  if(style.minLineHeight!==undefined){spacing.line=twip(style.minLineHeight,1,31680);spacing.lineRule='atLeast';}
   if(Object.keys(spacing).length)p+=tag('spacing',spacing);
   if(style.indent!==undefined)p+=tag('ind',{left:twip(style.indent,-31680,31680)});
   if(style.alignment!==undefined)p+=tag('jc',{val:({start:'left',center:'center',end:'right',justify:'both'})[style.alignment]});
+  if(style.outlineLevel!==undefined)p+=tag('outlineLvl',{val:style.outlineLevel});
   return p||sectionEnd?'<w:pPr>'+p+sectionEnd+'</w:pPr>':'';
 }
 function writeText(text:string):string{
@@ -350,7 +371,7 @@ function mainXml(candidate:unknown,profile:DocxStyleProfile|undefined,media:Medi
     const p=s.page,width=twip(p.width,1,31680),height=twip(p.height,1,31680),m=p.margins,extra=s.pageExtras;
     return '<w:sectPr>'+tag('pgSz',{w:width,h:height,...(width>height?{orient:'landscape'}:{})})+
       tag('pgMar',{top:twip(m.top,0,31680),right:twip(m.right,0,31680),bottom:twip(m.bottom,0,31680),left:twip(m.left,0,31680),header:twip(extra?.headerDistance??0,0,31680),footer:twip(extra?.footerDistance??0,0,31680),gutter:0})+
-      (extra?.columnSpace===undefined?'':tag('cols',{num:1,space:twip(extra.columnSpace,0,31680)}))+'</w:sectPr>';
+      (extra?.columnSpace===undefined?'':tag('cols',{num:1,space:twip(extra.columnSpace,0,31680)}))+(extra?.docGridLinePitch===undefined?'':tag('docGrid',{type:'default',linePitch:twip(extra.docGridLinePitch,0,31680)}))+'</w:sectPr>';
   };
   for(let si=0;si<checked.sections.length;si++){
     section=checked.sections[si]!;const final=si===checked.sections.length-1;

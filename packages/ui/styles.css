@@ -24,3 +24,18 @@
 .writer-image-card{border:1px solid var(--line);border-radius:8px;padding:10px;margin-block:10px;background:var(--surface)}.writer-image-card img{display:block;max-width:100%;height:auto;margin-inline:auto}.writer-image-card .writer-table-controls{justify-content:center;margin-block-start:10px}.writer-image-card input{width:90px}.writer-table-controls select{max-width:150px}.writer-table-controls label{min-width:0}
 
 #writer-continuous{margin-block:0 10px}.writer-workspace[data-continuous=true]>.writer-controls,.writer-workspace[data-continuous=true]>.writer-format-fields,.writer-workspace[data-continuous=true]>.writer-table-controls,.writer-workspace[data-continuous=true]>.muted{display:none}.writer-workspace[data-continuous=true] .writer-edit-pane>:not(.writer-continuous-panel){display:none}.writer-continuous-panel .writer-continuous-input{display:block;width:100%;min-height:300px;box-sizing:border-box;resize:vertical;line-height:1.7;padding:12px}.writer-continuous-panel .writer-controls{margin-block-end:10px}.writer-continuous-panel .muted{font-size:12px;line-height:1.6}
+
+/* Native paginated Writer projection. The paper is not editable DOM; the
+   small IME bridge is positioned at the measured visual caret. */
+.writer-native-workspace{min-width:0;display:flex;flex-direction:column;gap:12px}
+.writer-native-workspace .writer-controls{align-items:end;gap:7px}
+.writer-native-workspace .writer-format-field input{max-width:135px}
+.writer-native-viewport{overflow:auto;background:var(--surface-2,var(--surface));padding:20px;max-height:70vh;min-height:360px}
+.writer-native-paper{position:relative;background:#fff;color:#20242c;box-shadow:0 3px 16px #0002;box-sizing:content-box;margin:0 auto;direction:ltr;user-select:none;touch-action:none;cursor:text;flex-shrink:0}
+.writer-native-paper[hidden]{display:none}.writer-native-slice{pointer-events:none;user-select:none}.writer-native-cell{box-sizing:border-box;pointer-events:none}
+.writer-native-overlays{position:absolute;inset:0;pointer-events:none;z-index:2}
+.writer-native-selection{background:rgba(53,108,220,.24);pointer-events:none}.writer-native-caret{background:#245bca;pointer-events:none}
+.writer-native-input{z-index:3;resize:none;overflow:hidden;opacity:.02;background:transparent;border:0;margin:0;padding:0;outline:0;min-width:0;min-height:0;white-space:pre}
+.writer-native-input.composing{opacity:1;background:#fff;min-width:160px;height:auto!important;min-height:22px;overflow:visible}
+.writer-native-paragraph{font-synthesis:weight style;text-rendering:auto}
+#writer-page-edit{margin-inline-end:8px;margin-block-end:10px}

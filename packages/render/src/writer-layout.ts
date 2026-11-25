@@ -10,12 +10,19 @@ import { measureText, type FontMetrics, type FontRequest, type Point } from './i
 export interface WriterPosition {paragraphId:string;offset:number}
 export interface WriterCaret {offset:number;x:number}
 export interface WriterFragment {text:string;x:number;width:number;request:FontRequest;style:DeepReadonly<TextStyle>}
-export interface WriterLine {paragraphId:string;start:number;end:number;x:number;y:number;width:number;height:number;baseline:number;carets:WriterCaret[];fragments:WriterFragment[];images:WriterImageBox[]}
+export interface WriterVisualCluster {start:number;end:number;x:number;width:number}
+export interface WriterNativeSlice {originX:number;boxWidth:number;sourceTop:number;paragraphWidth:number}
+export interface WriterLine {paragraphId:string;start:number;end:number;x:number;y:number;width:number;height:number;baseline:number;carets:WriterCaret[];fragments:WriterFragment[];images:WriterImageBox[];visualClusters?:WriterVisualCluster[];native?:WriterNativeSlice}
 export interface WriterTableCellBox {tableId:string;rowId:string;cellId:string;paragraphIds:string[];x:number;y:number;width:number;height:number;border?:DeepReadonly<NonNullable<Table['border']>>}
 export interface WriterImageBox {paragraphId:string;imageId:string;resourceId:string;x:number;y:number;width:number;height:number}
 export interface WriterPage {sectionId:string;width:number;height:number;margins:DeepReadonly<WriterSection['page']['margins']>;lines:WriterLine[];tableCells:WriterTableCellBox[];images:WriterImageBox[]}
 export interface WriterLayout {revision:number;contentId:string;environmentId:string;pages:WriterPage[];warnings:string[]}
-export interface WriterLayoutOptions {maxPages?:number;maxClusters?:number;cancellation?:Cancellation}
+/** Optional native shaping backend. All geometry is relative to the paragraph
+ * content box in EMU. The display backend uses the identical native paragraph
+ * projection clipped to the page's line ranges. */
+export interface NativeParagraphShape {lines:readonly WriterLine[];warnings:readonly string[];spaceBefore:number;spaceAfter:number;clusters:number}
+export interface WriterParagraphShaper {readonly environmentId:string;shape(model:DeepReadonly<WriterDocument>,paragraph:DeepReadonly<Paragraph>,width:number):NativeParagraphShape}
+export interface WriterLayoutOptions {maxPages?:number;maxClusters?:number;cancellation?:Cancellation;paragraphShaper?:WriterParagraphShaper}
 type ImageRun=DeepReadonly<Extract<Inline,{type:'image'}>>;
 type Glyph={start:number;end:number;text:string;advance:number;ascent:number;descent:number;style:DeepReadonly<TextStyle>;request:FontRequest;kind:'text'|'tab'|'break'|'image';image?:ImageRun};
 const COMPLEX=/[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Devanagari}\p{Script=Bengali}\p{Script=Gujarati}\p{Script=Gurmukhi}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Kannada}\p{Script=Malayalam}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\u202a-\u202e\u2066-\u2069]/u;
@@ -109,6 +116,20 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
 
     const layParagraph=(block:DeepReadonly<Paragraph>,originX:number,boxWidth:number,addSpace:(n:number)=>void,place:(line:WriterLine)=>void):void=>{
       check();assert(++blocks<=10000,'limit','Writer layout block budget exceeded');
+      if(options.paragraphShaper){
+        const shaped=options.paragraphShaper.shape(model,block,boxWidth);
+        assert(Number.isSafeInteger(shaped.clusters)&&shaped.clusters>=0,'invalid','Invalid native cluster count');
+        charge(shaped.clusters);for(const warning of shaped.warnings)warnings.add(warning);
+        addSpace(shaped.spaceBefore);
+        for(const line of shaped.lines){
+          check();assert(line.paragraphId===block.id&&line.height>0&&line.height<=usableHeight&&line.native,'unsupported','Native line exceeds usable page height');
+          const adjusted:WriterLine={...line,x:line.x+originX,carets:line.carets.map(c=>({...c,x:c.x+originX})),
+            fragments:line.fragments.map(f=>({...f,x:f.x+originX})),images:line.images.map(i=>({...i,x:i.x+originX})),
+            visualClusters:line.visualClusters?.map(c=>({...c,x:c.x+originX})),native:{...line.native,originX:line.native.originX+originX}};
+          place(adjusted);
+        }
+        addSpace(shaped.spaceAfter);return;
+      }
       const {glyphs,style,minimum}=glyphsFor(model,block,provider,warnings,charge,check);
       const indent=Math.max(0,style.indent??0);
       if((style.indent??0)<0)warnings.add('writer.negative-indent-limited');
@@ -123,8 +144,9 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
         let ascent=picturesOnly?0:Math.ceil((style.fontSize??152400)*0.8),descent=picturesOnly?0:Math.ceil((style.fontSize??152400)*0.2);
         for(const g of tokens){if(g.image){assert(g.advance<=available,'unsupported','Inline image exceeds paragraph width');ascent=Math.max(ascent,g.ascent);}else{ascent=Math.max(ascent,g.ascent,Math.ceil(g.request.size*0.8));descent=Math.max(descent,g.descent,Math.ceil(g.request.size*0.2));}}
         const natural=Math.max(picturesOnly?0:minimum,ascent+descent);
+        if(style.keepNext||style.keepLines||style.widowControl)warnings.add('writer.keep-pagination-limited');
         if(style.lineHeight!==undefined&&style.lineHeight<natural)warnings.add('writer.exact-lineheight-limited');
-        const height=Math.max(natural,style.lineHeight??0);
+        const height=Math.max(natural,Math.ceil(natural*(style.lineMultiple??240)/240),style.lineHeight??0,style.minLineHeight??0);
         assert(height<=usableHeight,'unsupported','Line exceeds usable page height');
         const x=originX+indent+(style.alignment==='center'?Math.max(0,Math.round((available-width)/2)):style.alignment==='end'?Math.max(0,available-width):0);
         if(width>available)warnings.add('writer.line-overflow');
@@ -212,7 +234,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
       layParagraph(block,m.left,usableWidth,space,placeTop);
     }
   }
-  return freezeData({revision:snapshot.revision,contentId:snapshot.contentId,environmentId:provider.environmentId,pages,warnings:[...warnings].sort()});
+  return freezeData({revision:snapshot.revision,contentId:snapshot.contentId,environmentId:options.paragraphShaper?.environmentId??provider.environmentId,pages,warnings:[...warnings].sort()});
 }
 type ReadLayout=DeepReadonly<WriterLayout>;
 export function hitTestWriterPage(layout:ReadLayout,pageIndex:number,point:Point):WriterPosition|undefined{
@@ -238,16 +260,21 @@ export function writerSelectionBoxes(layout:ReadLayout,paragraphId:string,start:
     const a=Math.max(start,line.start),b=Math.min(end,line.end);
     const first=line.carets.find(c=>c.offset===a),last=line.carets.find(c=>c.offset===b);
     assert(first&&last,'invalid','Selection splits a grapheme');
-    output.push({pageIndex,x:first.x,y:line.y,width:Math.max(0,last.x-first.x),height:line.height});
+    if(line.visualClusters){
+      const selected=line.visualClusters.filter(c=>c.start>=a&&c.end<=b).sort((a,b)=>a.x-b.x);
+      for(const c of selected){const prev=output.at(-1);if(prev&&prev.pageIndex===pageIndex&&prev.y===line.y&&prev.x+prev.width>=c.x-100){prev.width=Math.max(prev.width,c.x+c.width-prev.x);}else output.push({pageIndex,x:c.x,y:line.y,width:Math.max(1,c.width),height:line.height});}
+    }else output.push({pageIndex,x:Math.min(first.x,last.x),y:line.y,width:Math.abs(last.x-first.x),height:line.height});
   }
   return output;
 }
-export function writerCaretBox(layout:ReadLayout,position:WriterPosition,preferredPage?:number):WriterSelectionBox|undefined{
+export function writerCaretBox(layout:ReadLayout,position:WriterPosition,preferredPage?:number,preferredX?:number):WriterSelectionBox|undefined{
   const found:WriterSelectionBox[]=[];
   for(let pageIndex=0;pageIndex<layout.pages.length;pageIndex++)for(const line of layout.pages[pageIndex]!.lines){
     if(line.paragraphId!==position.paragraphId)continue;
     const caret=line.carets.find(c=>c.offset===position.offset);
     if(caret)found.push({pageIndex,x:caret.x,y:line.y,width:0,height:line.height});
   }
-  return found.find(b=>b.pageIndex===preferredPage)??found.at(-1);
+  const candidates=found.filter(b=>b.pageIndex===preferredPage);const pool=candidates.length?candidates:found;
+  if(preferredX!==undefined&&pool.length)return pool.reduce((a,b)=>Math.abs(a.x-preferredX)<=Math.abs(b.x-preferredX)?a:b);
+  return pool.at(-1);
 }

@@ -211,7 +211,17 @@ export const spanish = {
   "writerTextLanguage": "Idioma del texto (BCP 47)",
   "writerParagraphDirection": "Dirección del párrafo",
   "writerLtr": "De izquierda a derecha",
-  "writerRtl": "De derecha a izquierda"
+  "writerRtl": "De derecha a izquierda",
+  "docNew": "Nuevo DOC",
+  "docDocument": "Documento Word 97–2003",
+  "docNote": "Edición DOC limitada: texto Unicode, formato básico y una sección. Los DOC no compatibles son de solo lectura; no se pueden guardar tablas ni imágenes.",
+  "docTextPreview": "Vista previa de solo lectura del texto principal, no del diseño completo. La copia conserva los bytes originales.",
+  "convertDoc": "Convertir a DOC",
+  "convertDocx": "Convertir a DOCX",
+  "conversionBoundary": "Solo pueden convertirse estructuras compatibles. Las partes no interpretadas se conservan en el archivo original.",
+  "writerPageEdit": "Editar en la página",
+  "writerExitPageEdit": "Volver a las herramientas",
+  "writerNativePageNote": "Edita en la página con la composición nativa de texto. Arrastra para seleccionar; el portapapeles interno conserva formatos e imágenes compatibles. Aún no se ha verificado la fidelidad a Word."
 } as const;
 export const portuguese = {
   "open": "Abrir arquivo",
@@ -424,5 +434,15 @@ export const portuguese = {
   "writerTextLanguage": "Idioma do texto (BCP 47)",
   "writerParagraphDirection": "Direção do parágrafo",
   "writerLtr": "Da esquerda para a direita",
-  "writerRtl": "Da direita para a esquerda"
+  "writerRtl": "Da direita para a esquerda",
+  "docNew": "Novo DOC",
+  "docDocument": "Documento Word 97–2003",
+  "docNote": "Edição DOC limitada: texto Unicode, formatação básica e uma seção. DOC não compatível fica somente leitura; tabelas e imagens não podem ser salvas.",
+  "docTextPreview": "Prévia somente leitura do texto principal, não do layout completo. A cópia preserva os bytes originais.",
+  "convertDoc": "Converter para DOC",
+  "convertDocx": "Converter para DOCX",
+  "conversionBoundary": "Apenas estruturas compatíveis podem ser convertidas. Partes não interpretadas permanecem no arquivo de origem.",
+  "writerPageEdit": "Editar na página",
+  "writerExitPageEdit": "Voltar às ferramentas",
+  "writerNativePageNote": "Edite na página usando a composição nativa de texto. Arraste para selecionar; a área de transferência interna preserva formatação e imagens compatíveis. A fidelidade ao Word ainda não foi verificada."
 } as const;

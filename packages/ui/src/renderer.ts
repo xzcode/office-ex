@@ -9,8 +9,8 @@ import type { DesktopBridge, OpenFileResult, PublicSettings, RecoveryItem, MenuA
 import { availableLocales, TARGET_LOCALES, REGIONAL_LOCALES, resolveLocale, resolveRegion, localeDirection, localeLabel, isMessageKey, message as translate, diagnosticKey, errorKey, formatNumber, formatDate, type MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
 
-type WorkerType='inspect'|'serialize'|'recover'|'image';
-interface Tab {id:string;name:string;token?:string;session?:DocumentSession;inspection?:Inspection;busy:boolean;error?:{code:string;message:string};lastCheckpoint?:string;selectedShape?:string;writerState?:WriterViewState;format?:'docx'|'oex'}
+type WorkerType='inspect'|'serialize'|'recover'|'image'|'convert-doc'|'convert-docx';
+interface Tab {id:string;name:string;token?:string;session?:DocumentSession;inspection?:Inspection;busy:boolean;error?:{code:string;message:string};lastCheckpoint?:string;selectedShape?:string;writerState?:WriterViewState;format?:'docx'|'doc'|'oex'}
 const $=<T extends HTMLElement>(selector:string):T=>document.querySelector<T>(selector)!;
 const bridge:DesktopBridge=window.office;
 const tabs=new Map<string,Tab>();
@@ -33,8 +33,8 @@ function notify(key:MessageKey,error=false,detail?:string):void{notification={ke
 function run(work:()=>Promise<unknown>):void{void work().catch(errorMessage);}
 function isSaving(session:DocumentSession|undefined):boolean{return session?.saveState==='saving';}
 function current():Tab|undefined{return active?tabs.get(active):undefined;}
-function displayTitle(tab:Tab):string{return tab.format==='docx'?tab.name:tab.session?.snapshot().document.title??tab.name;}
-function formatLabel(tab:Tab):string{return t(tab.format==='docx'?'docxDocument':'draftLabel');}
+function displayTitle(tab:Tab):string{return tab.format==='docx'||tab.format==='doc'?tab.name:tab.session?.snapshot().document.title??tab.name;}
+function formatLabel(tab:Tab):string{return t(tab.format==='docx'?'docxDocument':tab.format==='doc'?'docDocument':'draftLabel');}
 function cancelTask(id:string):void{const task=tasks.get(id);if(task){task.worker.terminate();clearTimeout(task.timer);tasks.delete(id);task.reject(new OfficeError('cancelled','Task cancelled'));}}
 function task<T>(id:string,type:WorkerType,payload:{bytes?:Uint8Array;filename?:string;documentId?:string;document?:unknown}):Promise<T>{
   cancelTask(id);
@@ -99,6 +99,7 @@ function home():void{
   const docxActions=document.createElement('div');docxActions.className='docx-new-row';
   const createDocx=button(t('docxNew'),()=>run(()=>newDraft('writer',undefined,'docx')),'solid');createDocx.id='new-docx';
   docxActions.append(createDocx,text('span',t('docxNote'),'muted'));content.append(docxActions);
+  const docActions=document.createElement('div');docActions.className='docx-new-row';const createDoc=button(t('docNew'),()=>run(()=>newDraft('writer',undefined,'doc')),'solid');createDoc.id='new-doc';docActions.append(createDoc,text('span',t('docNote'),'muted'));content.append(docActions);
   const drop=document.createElement('div');drop.className='drop-zone';const labels=document.createElement('div');labels.append(text('strong',t('dropTitle')),text('p',t('dropHint')));drop.append(text('span','⇧','drop-icon'),labels,button(t('choose'),()=>run(openDialog)));content.append(drop);
   const note=document.createElement('div');note.className='boundary-note';note.append(text('span','ⓘ'),text('span',t('boundary')));content.append(note);
   const formats=document.createElement('div');formats.className='section-heading';formats.append(text('h2',t('formats')),text('span',t('stage')));content.append(formats);
@@ -107,9 +108,10 @@ function home():void{
 function execute(tab:Tab,command:DocumentCommand,rerender=true):boolean{try{tab.session!.execute(command);message('');if(rerender)render();else chrome();run(syncTabs);return true;}catch(error){errorMessage(error);return false;}}
 function documentView(tab:Tab):void{
   const session=tab.session!,snapshot=session.snapshot(),model=snapshot.document,content=$('#content');content.replaceChildren();
-  const header=document.createElement('div');header.className='document-header';const title=document.createElement('input');title.id='draft-title';title.dir='auto';title.value=displayTitle(tab);title.maxLength=1024;title.readOnly=tab.format==='docx';title.setAttribute('aria-label',t('draftTitle'));
-  title.onchange=()=>{if(tab.format==='docx')return;execute(tab,{documentId:session.documentId,expectedRevision:session.revision,type:'document.rename',payload:{title:title.value}},false);};
-  header.append(title,text('span',formatLabel(tab),'status-chip'));content.append(header);
+  const header=document.createElement('div');header.className='document-header';const title=document.createElement('input');title.id='draft-title';title.dir='auto';title.value=displayTitle(tab);title.maxLength=1024;title.readOnly=tab.format==='docx'||tab.format==='doc';title.setAttribute('aria-label',t('draftTitle'));
+  title.onchange=()=>{if(tab.format==='docx'||tab.format==='doc')return;execute(tab,{documentId:session.documentId,expectedRevision:session.revision,type:'document.rename',payload:{title:title.value}},false);};
+  header.append(title,text('span',formatLabel(tab),'status-chip'));
+  if(model.kind==='writer'&&(tab.format==='doc'||tab.format==='docx')){const convert=button(t(tab.format==='doc'?'convertDocx':'convertDoc'),()=>run(()=>convertWriter(tab)));convert.id='convert-writer';header.append(convert);}content.append(header);
   const card=document.createElement('div');card.className='workspace-card';
   if(model.kind==='writer'){
     tab.writerState??={start:0,end:0,pageIndex:0};
@@ -129,7 +131,7 @@ function documentView(tab:Tab):void{
     canvas.onclick=event=>{const box=canvas.getBoundingClientRect();tab.selectedShape=hitTest(slide.shapes,{x:(event.clientX-box.left)/box.width*model.size.width,y:(event.clientY-box.top)/box.height*model.size.height});render();};
     card.append(text('p',t('shapeNote'),'muted'),button(t('addShape'),()=>{const s=session.snapshot();if(s.document.kind!=='slides')return;const list=s.document.slides[0]!;execute(tab,insertShapes(s,list.id,list.shapes.length,[{id:crypto.randomUUID(),type:'rect',geometry:{x:1_000_000+(list.shapes.length%5)*600_000,y:1_000_000+(list.shapes.length%5)*400_000,width:3_000_000,height:1_500_000,rotation:0},fill:{kind:'rgba',red:67,green:111,blue:202,alpha:255}}]));}));
   }
-  content.append(card,text('p',t(tab.format==='docx'?'docxNote':'draftNote'),'boundary-note'));
+  content.append(card,text('p',t(tab.format==='docx'?'docxNote':tab.format==='doc'?'docNote':'draftNote'),'boundary-note'));
   const details=document.createElement('div');details.className='info-row';details.append(text('span',`${t('revision')}: ${session.revision}`),text('span',`${t('history')}: ${number(session.historyUsage.items)} · ${number(Math.ceil(session.historyUsage.bytes/1024))} KB`));
   // A real browser font measurement verifies the native provider without claiming pagination fidelity.
   const measured=measureText(new CanvasFontMetrics(),'Office EX 中文',{fontFamily:'sans-serif',fontSize:152400});details.append(text('span',`${t('canvas')}: ${number(measured.metrics.advance/EMU_PER_CSS_PIXEL,{maximumFractionDigits:1,minimumFractionDigits:1})} px`));content.append(details);
@@ -138,6 +140,7 @@ function inspectionView(tab:Tab):void{
   const content=$('#content'),view=tab.inspection!;content.replaceChildren(text('div',t('readOnly'),'eyebrow'),text('h1',tab.name));
   const row=document.createElement('div');row.className='info-row';row.append(text('span',`${t('format')}: ${view.detection.format.toUpperCase()}`),text('span',`${t('version')}: ${view.detection.version}`));content.append(row);
   const diags=document.createElement('div');diags.className='diagnostics';for(const diagnostic of view.report.diagnostics){const label=t(diagnosticKey(diagnostic.messageKey));diags.append(text('div',`${label}  [${diagnostic.featureId}]`,`diagnostic ${diagnostic.severity==='error'?'error':''}`));}content.append(diags);
+  if(view.legacyDocText){content.append(text('p',t('docTextPreview'),'boundary-note'));const preview=text('pre',view.legacyDocText.text.replace(/\r/g,'\n').replace(/[\x00-\x08\x0b-\x1f]/g,'�').slice(0,200000));preview.style.whiteSpace='pre-wrap';preview.dir='auto';preview.className='workspace-card';content.append(preview);}
   const heading=document.createElement('div');heading.className='section-heading';heading.append(text('h2',`${t('parts')} (${view.entries.length})`),text('span',`${view.sha256.slice(0,16)}…`));content.append(heading);
   if(!view.entries.length){content.append(text('p',t('noEntries'),'muted'));return;}
   const table=document.createElement('table');table.className='parts-table';const thead=document.createElement('thead'),tr=document.createElement('tr');for(const value of [t('part'),t('size'),t('digest')])tr.append(text('th',value));thead.append(tr);table.append(thead);const body=document.createElement('tbody');
@@ -145,8 +148,20 @@ function inspectionView(tab:Tab):void{
 }
 function render():void{if(composing)return;applyLanguage();recent();chrome();const tab=current();if(!tab){home();return;}if(tab.busy){const content=$('#content');const loading=document.createElement('div');loading.className='loading';loading.append(text('span','','spinner'),text('span',t('reading')),button(t('cancel'),()=>{cancelTask(tab.id);tab.busy=false;render();}));content.replaceChildren(loading);return;}if(tab.error){$('#content').replaceChildren(text('h1',tab.name),text('p',t(errorKey(tab.error.code)),'diagnostic error'));return;}if(tab.session)documentView(tab);else if(tab.inspection)inspectionView(tab);}
 async function refreshSettings():Promise<void>{const init=unwrap(await bridge.initialize());settings=init.settings;systemLocales=init.systemLocales;applyLanguage();recent();}
-async function newDraft(kind:DocumentKind,model?:OfficeDocument,format:'oex'|'docx'='oex'):Promise<void>{if(composing){notify('finishComposition');return;}if(tabs.size>=32)throw new OfficeError('limit',t('limitTabs'));const id=crypto.randomUUID();const document=model?validateDocument({...model,documentId:id,title:`${model.title} (${t('restore')})`}):createDocument(kind,id,`${t('untitled')} ${t(kind)}`);if(format==='docx'&&document.kind!=='writer')throw new OfficeError('invalid','DOCX requires a Writer document');if(!model&&document.kind==='writer'){const preference=settings.documentLanguage;const lang=preference==='system'?systemLocales.find(isDocumentLanguageTag)??'und':preference;document.defaultTextStyle.language=lang;}
+async function newDraft(kind:DocumentKind,model?:OfficeDocument,format:'oex'|'docx'|'doc'='oex'):Promise<void>{if(composing){notify('finishComposition');return;}if(tabs.size>=32)throw new OfficeError('limit',t('limitTabs'));const id=crypto.randomUUID();const document=model?validateDocument({...model,documentId:id,title:`${model.title} (${t('restore')})`}):createDocument(kind,id,`${t('untitled')} ${t(kind)}`);if(format!=='oex'&&document.kind!=='writer')throw new OfficeError('invalid','DOCX requires a Writer document');if(!model&&document.kind==='writer'){const preference=settings.documentLanguage;const lang=preference==='system'?systemLocales.find(isDocumentLanguageTag)??'und':preference;document.defaultTextStyle.language=lang;if(format==='doc')document.defaultTextStyle.fontFamily='Arial';}
   const tab:Tab={id,name:document.title,session:new DocumentSession(document),busy:false,format};tabs.set(id,tab);active=id;await syncTabs();message('');render();}
+async function convertWriter(tab:Tab):Promise<void>{
+  if(composing||!tab.session||tab.busy||tab.session.saveState==='saving')return;
+  if(tabs.size>=32)throw new OfficeError('limit',t('limitTabs'));
+  // Do not discard opaque auxiliary parts on cross-format conversion.
+  if(tab.format==='docx'&&tab.inspection&&(tab.inspection.entries.length!==3||tab.inspection.entries.some(e=>!['[Content_Types].xml','_rels/.rels','word/document.xml'].includes(e.name))))throw new OfficeError('unsupported',t('conversionBoundary'));
+  const target=tab.format==='doc'?'docx':'doc',source=tab.session.snapshot();
+  const id=crypto.randomUUID();
+  const model=validateDocument({...source.document,documentId:id,title:displayTitle(tab).replace(/\.docx?$/i,'')});
+  await task<boolean>(tab.id+'-convert',target==='doc'?'convert-doc':'convert-docx',{document:model,documentId:id});
+  if(tab.session.revision!==source.revision||!tabs.has(tab.id))throw new OfficeError('conflict','Source changed during conversion');
+  const next:Tab={id,name:model.title,session:new DocumentSession(model),busy:false,format:target};tabs.set(id,next);active=id;await syncTabs();render();
+}
 async function openDialog():Promise<void>{if(composing){notify('finishComposition');return;}const file=unwrap(await bridge.openFile());if(file)await openFile(file);}
 async function openFile(file:OpenFileResult):Promise<void>{
   if(composing){if(!file.duplicate&&!tabs.has(file.documentId))unwrap(await bridge.releaseDocument(file.documentId,false));notify('finishComposition');return;}
@@ -154,7 +169,7 @@ async function openFile(file:OpenFileResult):Promise<void>{
   if(tabs.size>=32){unwrap(await bridge.releaseDocument(file.documentId,false));throw new OfficeError('limit',t('limitTabs'));}
   const tab:Tab={id:file.documentId,name:file.name,token:file.token,busy:true};tabs.set(tab.id,tab);active=tab.id;await syncTabs();message('');render();
   try{const inspection=await task<Inspection>(tab.id,'inspect',{bytes:file.bytes,filename:file.name,documentId:file.documentId});if(!tabs.has(tab.id))return;tab.inspection=inspection;
-    if(inspection.editableWriter){const model=validateDocument(inspection.editableWriter);if(model.kind!=='writer'||model.documentId!==tab.id)throw new OfficeError('invalid','Invalid DOCX model identity');tab.session=new DocumentSession(model,{saved:true});tab.format='docx';}
+    if(inspection.editableWriter){const model=validateDocument(inspection.editableWriter);if(model.kind!=='writer'||model.documentId!==tab.id)throw new OfficeError('invalid','Invalid DOCX model identity');tab.session=new DocumentSession(model,{saved:true});tab.format=inspection.editableWriterFormat??'docx';}
     else if(inspection.draft){const model=validateDocument(inspection.draft);tab.session=new DocumentSession(model,{saved:true});tab.format='oex';}
   }catch(error){if(!tabs.has(tab.id))return;const f=asFailure(error);tab.error=f;}
   finally{tab.busy=false;if(tabs.has(tab.id)){await syncTabs();await refreshSettings();render();}}
@@ -166,9 +181,9 @@ async function save(tab:Tab|undefined,saveAs=false):Promise<boolean>{
   const session=tab.session;let ticket:SaveTicket|undefined;
   try{ticket=session.beginSave();chrome();const bytes=await task<Uint8Array>(`${tab.id}-save`,'serialize',{document:ticket.document});
     const request={documentId:tab.id,sourceToken:tab.token,bytes,revision:ticket.revision,contentId:ticket.contentId,saveAs,title:displayTitle(tab)};
-    const result=unwrap(await (tab.format==='docx'?bridge.saveDocx(request):bridge.saveDraft(request)));
+    const result=unwrap(await (tab.format==='docx'?bridge.saveDocx(request):tab.format==='doc'?bridge.saveDoc(request):bridge.saveDraft(request)));
     if(!result){session.cancelSave(ticket);return false;}tab.token=result.token;tab.name=result.name;session.completeSave(ticket);tab.lastCheckpoint=ticket.contentId;
-    if(tab.format==='docx'&&current()===tab){const title=$<HTMLInputElement>('#draft-title');if(title)title.value=tab.name;}
+    if((tab.format==='docx'||tab.format==='doc')&&current()===tab){const title=$<HTMLInputElement>('#draft-title');if(title)title.value=tab.name;}
     await syncTabs();await refreshSettings();chrome();notify(result.warnings?.length?'savedMaintenanceWarning':result.durability==='synced'?'savedNote':'partialDirectorySync');return true;
   }catch(error){if(ticket&&session.saveState==='saving')session.cancelSave(ticket);throw error;}finally{chrome();}
 }

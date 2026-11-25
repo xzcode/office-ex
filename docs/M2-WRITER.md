@@ -121,3 +121,28 @@ Writer 布局与输入：可测量行盒、分页、grapheme selection/IME 与�
 受测源码 3e0a60f62d543d3f77cde6847f7fc0ee36f46f32，[CI 45527322279](https://github.com/xzcode/office-ex/actions/runs/45527322279) verify-writer 成功：13 workspace、50 源文件，162/162 自动化测试通过，0 失败、0 跳过，新增 10 项。首轮 45526894374 的资源字典原型断言问题已修正；最终使用严格的资源字段/内容比较。独立 python-docx 读取受控混合图片、单元格图片、分节纸张、语言标记的 DOCX，并修改该文件；Office EX 实际导入、编辑及原格式保存，独立读取器再次验证，所有非正文部件逐字节一致。原有 OOXML/CFB 互读及依赖许可检查通过。记录时任务状态：verify-writer: success; native-other (ubuntu-24.04): in_progress; native-macos: in_progress; native-other (windows-2025): in_progress。未结束的原生任务不得计作通过。
 
 当前仅具备有边界的连续文字模式、行内图像/表格、下一页单栏分节及文字语言标记。尚未达到完整 M2：全页富文本所见即所得（连续模式是纯文本原生输入）、跨结构/富格式剪贴板、复杂脚本/RTL shaping 及精确光标、增量重排、广泛 Word 兼容和参考 Office 视觉实测。M2-L DOC 仍未完成，保留原要求。未合并 master、未发布安装包，不降低 22 locale 与六格式 P0 门槛。
+
+## 第八批集中实现：页面编辑、复杂文字、增量布局、普通 DOCX 与 DOC
+
+基线为 1a2f229e243c96403b5eddb4269d1a41fd3b5d55；前批 CI 45527322279 的 162 项测试、macOS、Windows、Linux 原生任务均成功。本批在首尔独立工作目录完成并验证；不是 M2 全部退出条件已通过的声明。
+
+| 范围 | 本批实现 | 尚未完整验收 |
+|---|---|---|
+| 分页富文本 | Native page mode，真实分节页面投影、点击/拖选、光标、输入、IME 事务桥、键盘编辑、粗斜下划线/字体/字号、对齐、内部富文本/图片剪贴板。旧段落、表格、图像、分节设置模式保留。 | 页面逐页展示；结构工具仍在原模式；跨节、跨表格结构选区、完整 Word 布局和 OS IME 实机矩阵。 |
+| 复杂文字 | Chromium 原生文字塑形与 Range 测量；同一段落 DOM 投影用于测量和裁切绘制，保留上下文与双向视觉簇；源 run/paragraph 方向、语言及多脚本字体字段保留。 | 行高采用保守统一行框；字体实际匹配、复杂字号、双向边界光标、Word 参考排版精度、变量行高及全部脚本/字体测试仍需收敛。 |
+| 增量重排 | WriterPaginationEngine 按不可变节、样式、资源、默认样式、宽度/环境及预算失效；未修改节复用，修改节重排并复用一致页；浏览器段落几何另有缓存。 | 修改节内部仍可能扫描整节，不是任意大文档的最小脏页重排。 |
+| 普通 DOCX | 允许已知设置、字体表、编号的未使用结构、stylesWithEffects、customXml 单一属性关系等受限依赖图；普通 Normal/Heading1、默认字体、语言及自动行距、标题大纲、已知 rsid/兼容元数据。保留非正文包部件字节。 | 活跃编号、复杂表格、浮动图形、域、修订、保护、外链及未知依赖闭包继续只读；分页 keep/widow、主题变换和字体映射的 Word 等价性未验证。已知编辑会话 rsid 与 ignorable 声明在改写正文中规范化，不是保留全部原 XML 字节。 |
+| DOC 97–2003 | 自主 MS-DOC 适配：FIB、CLX/Pcdt、CP/FC、Unicode/压缩片段映射、FFN、STSH、CHPX/PAPX FKP/BTE、SEPX/SED。封闭 Word97 profile 支持单节 Unicode 正文、基本直接字符/段落格式、软换行及分页符；新建、编辑、保存、复开、双向 DOC/DOCX 转换预检。通用可读 DOC 提供只读正文预览。 | 真实历史文件仅在二进制语义流可证明闭包时可编辑；通用 DOC 样式、表格、图片、多节、页眉页脚、修订、隐藏故事等未达完整 M2-L 兼容要求。Antiword/olefile 并非 Microsoft Word 的视觉/完整格式认证。 |
+
+DOC 文件保存沿用主进程持有源 token、独立隔离 verifier、生成后重开及原子写入；不信任 renderer 提交的目标二进制。未修改的闭包源返回原字节；编辑保留 CFB 元数据并验证语义流。源文件含未知结构不允许重写；转换生成独立未保存会话，且目标格式须预检，禁止简单改扩展名。没有引入外部 Office 编辑引擎，Antiword 只用于测试。依据 MS-DOC 公开规范：https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-doc/ 及 FcCompressed 2.9.73。
+
+本批 11 套现有 UI locale 均为 221 个消息键；22 locale 正式版门槛不变。
+
+### 本地实测（2026-11-25，OpenCloudOS 9.6 x64，Node 24.21.0）
+- npm run check：167/167，零失败，含原 162 项和 5 项新增定向用例。类型、架构均通过。
+- npm run test:interop：原有 CFB/OOXML/Writer 互通全部通过。新增独立 python-docx 默认模板（Normal、Heading 1 等，非本项目模板）打开、编辑、复开；除主文档外全部包部件逐字节不变。Antiword 0.37 读取新建/编辑 DOC 的中英文正文，olefile 读取 CFB stream，python-docx 读取转换后的 DOCX。
+- 独立 Chromium headless shell 159.0.8154.6 的开发夹具：中英、Arabic、Hebrew、Devanagari、Thai、emoji 与组合符混排、显式 RTL 段、软换行生成页面，页面输入一次成功并改变真实模型 revision；这不是实际三平台 Electron 或字形/Office 精度认证。服务器缺少 GBM/ALSA/Wayland 库，测试时仅在独立目录解包系统库；本机开发夹具是 headless，不是生产沙箱安全证据。
+- npm run setup:desktop、npm run build、npm run audit:licenses：通过；66 个锁定 npm 包及 23 份安装许可证文件。没有新增运行时依赖。
+- 新增原生 smoke 用例：混合脚本分页编辑保存 DOCX；DOC 新建、独立 verifier 保存、复开和 DOCX 转换。CI 状态在提交后另记。
+
+退出判定：WRT-01–04、I18N-04、LEG-02 均保留 implemented，不虚标 verified；本批覆盖上一轮全部开发重点，但原规范要求的广泛历史 DOC 编辑、复杂 Word 排版等价和完整三平台实机证据尚不完整。未发布正式版。保留六格式及 22 locale 的 P0 需求。

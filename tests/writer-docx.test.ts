@@ -53,7 +53,7 @@ test('WRT-04 refuses unsupported parts, elements and attributes; original bytes 
   const bytes=writeWriterDocx(fixture()),opc=openOpc(bytes),dec=new TextDecoder(),enc=new TextEncoder();
   const before=bytes.slice();
   for(const mutate of [
-    (s:string)=>s.replace('<w:p>','<w:p w:rsidR="00112233">'),
+    (s:string)=>s.replace('<w:p>','<w:p w:unrecognizedFeature="00112233">'),
     (s:string)=>s.replace('<w:p>','<w:p><!--preserve this-->'),
     (s:string)=>s.replace('<w:t xml:space="preserve">','<w:fldSimple w:instr="DATE"/><w:t xml:space="preserve">'),
     (s:string)=>s.replace('<w:sz w:val="24"/>','<w:lang w:val="en-US" w:unknown="1"/><w:sz w:val="24"/>')

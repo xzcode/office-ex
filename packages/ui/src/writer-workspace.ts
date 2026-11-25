@@ -5,8 +5,10 @@ import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagrap
 import { layoutWriter, hitTestWriterPage, writerCaretBox, writerSelectionBoxes, type WriterLayout } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
+import {nativeWriterPage,type NativePageCache} from './native-writer-page.js';
+import {WriterPaginationEngine} from '@office-ex/render';
 
-export interface WriterViewState{paragraphId?:string;start:number;end:number;pageIndex:number;focus?:boolean;continuous?:boolean;groupRange?:WriterRange;pageSectionId?:string}
+export interface WriterViewState{paragraphId?:string;start:number;end:number;pageIndex:number;focus?:boolean;continuous?:boolean;groupRange?:WriterRange;pageSectionId?:string;pageMode?:boolean;pageRange?:WriterRange;nativeCache?:NativePageCache;pagination?:WriterPaginationEngine}
 export interface WriterHost{
   snapshot():DocumentSnapshot;
   execute(command:DocumentCommand):boolean;
@@ -38,6 +40,7 @@ function safeColor(style:DeepReadonly<TextStyle>):string{
   const c=style.color;return c?.kind==='rgba'?'rgba('+c.red+','+c.green+','+c.blue+','+c.alpha/255+')':'#20242c';
 }
 export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLElement{
+  if(state.pageMode)return nativeWriterPage(host,state);
   const root=node('div','','writer-workspace');
   const controls=node('div','','writer-controls'),panes=node('div','','writer-panes');
   const edit=node('section','','writer-edit-pane'),preview=node('section','','writer-preview-pane');
@@ -54,6 +57,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   previous.disabled=true;next.disabled=true;pageBar.append(previous,pageText,next);preview.append(pageBar,canvas,layoutNote);
   let layout:DeepReadonly<WriterLayout>|undefined, timer:ReturnType<typeof setTimeout>|undefined;
   const provider=new CanvasFontMetrics();
+  const pagination=state.pagination??=new WriterPaginationEngine();
   let continuousRange:WriterRange|undefined,continuousPick:((id:string,offset:number)=>boolean)|undefined;
   const decodedImages=new Map<string,HTMLImageElement>();
   function raster(resourceId:string):HTMLImageElement|undefined{
@@ -122,7 +126,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   function updateLayout():void{
     if(!root.isConnected||host.composing())return;
     try{
-      const snapshot=host.snapshot();const result=layoutWriter(snapshot,provider,{maxPages:100,maxClusters:20000});
+      const snapshot=host.snapshot();const result=pagination.layout(snapshot,provider,{maxPages:100,maxClusters:20000});
       if(host.snapshot().revision!==result.revision)return;
       layout=result;follow();paint();
     }catch{
@@ -462,6 +466,11 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   }
   if(!state.paragraphId||!inputs.has(state.paragraphId)){state.paragraphId=inputs.keys().next().value;state.start=0;state.end=0;}
   const initial=activeParagraph();if(initial){initial.setSelectionRange(state.start,state.end);if(state.focus){state.focus=false;requestAnimationFrame(()=>{if(initial.isConnected)initial.focus({preventScroll:true});});}}
+  const pageEdit=button(t('writerPageEdit'),()=>safe(()=>{
+    if(host.composing())return;state.pageMode=true;
+    if(state.paragraphId)state.pageRange={anchor:{paragraphId:state.paragraphId,offset:state.start},focus:{paragraphId:state.paragraphId,offset:state.end}};
+    host.render();
+  }),'writer-page-edit');root.insertBefore(pageEdit,controls);
   const continuousToggle=button(t('writerContinuous'),()=>safe(()=>{
     if(host.composing()||!state.paragraphId)return;
     if(state.continuous){state.continuous=false;state.groupRange=undefined;state.focus=true;host.render();return;}

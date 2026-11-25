@@ -55,7 +55,7 @@ test('WRT-04 unsupported referenced/default style, unsupported theme color or in
   const variants=[
     alterPart(bytes,'word/document.xml',s=>s.replace('w:pStyle w:val="Heading"','w:pStyle w:val="UnusableChild"')),
     alterPart(bytes,'word/styles.xml',s=>s.replace('w:styleId="Normal"><w:name','w:styleId="Normal"><w:basedOn w:val="Heading"/><w:name')),
-    alterPart(bytes,'word/styles.xml',s=>s.replace('w:themeColor="accent1"','w:themeColor="accent1" w:themeTint="80"')),
+    alterPart(bytes,'word/styles.xml',s=>s.replace('w:themeColor="accent1"','w:themeColor="accent1" w:themeTint="invalid"')),
     alterPart(bytes,'word/styles.xml',s=>s.replace('w:asciiTheme="minorAscii"','w:asciiTheme="unknown"'))
   ];
   for(const input of variants){

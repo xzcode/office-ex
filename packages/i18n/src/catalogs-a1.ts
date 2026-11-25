@@ -211,7 +211,17 @@ export const korean = {
   "writerTextLanguage": "텍스트 언어 (BCP 47)",
   "writerParagraphDirection": "문단 방향",
   "writerLtr": "왼쪽에서 오른쪽으로",
-  "writerRtl": "오른쪽에서 왼쪽으로"
+  "writerRtl": "오른쪽에서 왼쪽으로",
+  "docNew": "새 DOC",
+  "docDocument": "Word 97–2003 문서",
+  "docNote": "제한된 DOC 편집: Unicode 텍스트, 기본 서식, 단일 구역. 지원하지 않는 DOC는 읽기 전용이며 표와 그림은 저장할 수 없습니다.",
+  "docTextPreview": "읽기 전용 본문 텍스트 미리보기입니다. 전체 레이아웃은 아니며 복사본은 원본 바이트를 유지합니다.",
+  "convertDoc": "DOC로 변환",
+  "convertDocx": "DOCX로 변환",
+  "conversionBoundary": "지원되는 구조만 변환할 수 있습니다. 해석되지 않은 부분은 원본에 보존됩니다.",
+  "writerPageEdit": "페이지에서 편집",
+  "writerExitPageEdit": "편집 도구로 돌아가기",
+  "writerNativePageNote": "브라우저의 기본 텍스트 셰이핑으로 페이지에서 편집합니다. 드래그로 선택하고 내부 복사 및 붙여넣기는 지원 서식과 이미지를 보존합니다. Word와의 배치 정확도는 검증되지 않았습니다."
 } as const;
 export const french = {
   "open": "Ouvrir un fichier",
@@ -424,7 +434,17 @@ export const french = {
   "writerTextLanguage": "Langue du texte (BCP 47)",
   "writerParagraphDirection": "Direction du paragraphe",
   "writerLtr": "De gauche à droite",
-  "writerRtl": "De droite à gauche"
+  "writerRtl": "De droite à gauche",
+  "docNew": "Nouveau DOC",
+  "docDocument": "Document Word 97–2003",
+  "docNote": "Édition DOC limitée : texte Unicode, mise en forme simple et une section. Les autres DOC restent en lecture seule ; tableaux et images ne sont pas enregistrables.",
+  "docTextPreview": "Aperçu du texte principal en lecture seule, sans mise en page complète. La copie conserve les octets d'origine.",
+  "convertDoc": "Convertir en DOC",
+  "convertDocx": "Convertir en DOCX",
+  "conversionBoundary": "Seules les structures prises en charge peuvent être converties ; les parties non interprétées restent dans le fichier source.",
+  "writerPageEdit": "Modifier sur la page",
+  "writerExitPageEdit": "Retour aux outils",
+  "writerNativePageNote": "Modifiez sur la page avec la mise en forme native du texte. Faites glisser pour sélectionner ; le presse-papiers interne conserve les styles et images pris en charge. La fidélité à Word reste à vérifier."
 } as const;
 export const german = {
   "open": "Datei öffnen",
@@ -637,5 +657,15 @@ export const german = {
   "writerTextLanguage": "Textsprache (BCP 47)",
   "writerParagraphDirection": "Absatzrichtung",
   "writerLtr": "Links nach rechts",
-  "writerRtl": "Rechts nach links"
+  "writerRtl": "Rechts nach links",
+  "docNew": "Neues DOC",
+  "docDocument": "Word-97–2003-Dokument",
+  "docNote": "Begrenzte DOC-Bearbeitung: Unicode-Text, einfache Formatierung und ein Abschnitt. Andere DOC-Dateien bleiben schreibgeschützt; Tabellen und Bilder können nicht gespeichert werden.",
+  "docTextPreview": "Schreibgeschützte Vorschau des Haupttexts, kein vollständiges Layout. Eine Kopie bewahrt die ursprünglichen Bytes.",
+  "convertDoc": "In DOC umwandeln",
+  "convertDocx": "In DOCX umwandeln",
+  "conversionBoundary": "Nur unterstützte Strukturen können konvertiert werden. Nicht interpretierte Teile bleiben in der Quelldatei.",
+  "writerPageEdit": "Auf der Seite bearbeiten",
+  "writerExitPageEdit": "Zurück zu den Werkzeugen",
+  "writerNativePageNote": "Bearbeiten Sie direkt auf der Seite mit nativer Textformung. Ziehen Sie zum Auswählen; die interne Zwischenablage erhält unterstützte Formate und Bilder. Die Layouttreue zu Word ist noch nicht geprüft."
 } as const;

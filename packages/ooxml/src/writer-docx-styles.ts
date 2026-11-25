@@ -8,6 +8,7 @@ import {OfficeError,assertId} from '@office-ex/contracts';
 import type {NamedStyle,TextStyle} from '@office-ex/core';
 import type {OpcPackage,OpcRelationship} from './opc.js';
 import {parseXml} from './xml.js';
+import {verifySettings,verifyAuxiliaryXml} from './writer-docx-auxiliary.js';
 import type {ContainerOptions} from './limits.js';
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const A='http://schemas.openxmlformats.org/drawingml/2006/main';
@@ -42,6 +43,7 @@ function attrs(el:Element,ns:string,keys:readonly string[]):void{
   for(let i=0;i<el.attributes.length;i++){
     const a=el.attributes.item(i)!;
     if(a.namespaceURI===NS)continue;
+    if(a.namespaceURI==='http://schemas.openxmlformats.org/markup-compatibility/2006'&&a.localName==='Ignorable'&&el.localName==='styles'&&a.value.split(/\s+/).every(prefix=>prefix&&el.lookupNamespaceURI(prefix)?.startsWith('http://schemas.microsoft.com/office/')))continue;
     allowed((a.namespaceURI??'')===ns&&a.localName!==null&&keys.includes(a.localName),'Unexpected attribute on '+el.localName);
   }
 }
@@ -83,8 +85,8 @@ function readTheme(bytes:Uint8Array,options:ContainerOptions):ThemeProfile{
       const node=only(group,A,element),face=node.getAttribute('typeface');
       // Empty typefaces rely on script-specific/theme fallback and are not
       // guessed. Styles using them stay outside the editable subset.
-      if(face&&face.length<=512&&!/[\x00-\x1f\x7f]/.test(face))
-        for(const suffix of suffixes)mapping[key+suffix]=face;
+      allowed(face!==null&&face.length<=512&&!/[\x00-\x1f\x7f]/.test(face),'Invalid theme typeface');
+      for(const suffix of suffixes)mapping[key+suffix]=face;
     }
   }
   return {colors,fonts:mapping};
@@ -140,6 +142,7 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,
         else if(n==='basedOn')basedOn=value(child);
         else if(n==='pPr'){allowed(entry.kind==='paragraph','Character style with paragraph properties');Object.assign(properties,readParagraph(child));}
         else if(n==='rPr')Object.assign(properties,readRun(child,undefined,theme,true,toggles));
+        else if(n==='rsid'){allowed(/^[0-9a-fA-F]{8}$/.test(value(child)),'Invalid style revision metadata');}
         else if(n==='next'||n==='link'||n==='aliases'||n==='uiPriority'){value(child);/* Preserved metadata; explicit style application only. */}
         else if(['qFormat','semiHidden','unhideWhenUsed','hidden','locked','autoRedefine','personal','personalCompose','personalReply'].includes(n)){
           attrs(child,W,['val']);allowed(!children(child).length,'Nested style flag');
@@ -181,7 +184,8 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
   allowed(!pkg.hasMacros&&!pkg.hasSignatures&&!pkg.externalRelationships,'Protected or linked document');
   const main=pkg.mainPart,expected=new Set<string>(['[Content_Types].xml','_rels/.rels',main]);
   const root=pkg.relationships.get('')??[];
-  let mainCount=0,stylePath:string|undefined,themePath:string|undefined,hasMetadata=false;
+  let mainCount=0,stylePath:string|undefined,themePath:string|undefined,hasMetadata=false,settingsPath:string|undefined;
+  const customParts:string[]=[];const extraSources=new Set<string>();
   const typesSeen=new Set<string>();
   function admit(rel:OpcRelationship,type:string):string{
     const path=rel.targetPart;allowed(rel.mode==='Internal'&&path&&rel.fragment===null&&!expected.has(path)&&pkg.contentTypes.get(path)===type,'Unsupported or duplicate relationship target');
@@ -192,6 +196,9 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
     if(rel.type===R+'officeDocument'){allowed(rel.targetPart===main&&rel.fragment===null&&rel.mode==='Internal','Invalid main part');mainCount++;}
     else if(rel.type===CORE){admit(rel,'application/vnd.openxmlformats-package.core-properties+xml');hasMetadata=true;}
     else if(rel.type===R+'extended-properties'){admit(rel,'application/vnd.openxmlformats-officedocument.extended-properties+xml');hasMetadata=true;}
+    else if(rel.type==='http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail'){
+      const type=rel.targetPart?pkg.contentTypes.get(rel.targetPart):undefined;allowed(type==='image/png'||type==='image/jpeg','Unsupported thumbnail');admit(rel,type);hasMetadata=true;
+    }
     else allowed(false,'Unsupported root relationship');
   }
   allowed(mainCount===1,'Missing main relationship');
@@ -202,11 +209,23 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
     for(const rel of mainRels){
       if(rel.type===R+'styles'){allowed(!stylePath,'Duplicate styles part');stylePath=admit(rel,STYLES);}
       else if(rel.type===R+'theme'){allowed(!themePath,'Duplicate theme part');themePath=admit(rel,THEME);}
+      else if(rel.type===R+'settings'){allowed(!settingsPath,'Duplicate settings');settingsPath=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml');verifySettings(pkg.parts.get(settingsPath)!,options);hasMetadata=true;}
+      else if(rel.type===R+'webSettings'){const path=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.webSettings+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'webSettings');hasMetadata=true;}
+      else if(rel.type===R+'fontTable'){const path=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'fonts');hasMetadata=true;}
+      else if(rel.type===R+'numbering'){const path=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'numbering');hasMetadata=true;}
+      else if(rel.type==='http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects'){const path=admit(rel,'application/vnd.ms-word.stylesWithEffects+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'styles');hasMetadata=true;}
+      else if(rel.type===R+'customXml'){const type=rel.targetPart?pkg.contentTypes.get(rel.targetPart):undefined;allowed(type==='application/xml'||type==='text/xml','Unsupported custom XML type');const path=admit(rel,type);verifyAuxiliaryXml(pkg.parts.get(path)!,options);customParts.push(path);hasMetadata=true;}
       else if(rel.type===R+'image'){const type=rel.targetPart?pkg.contentTypes.get(rel.targetPart):undefined;allowed(type==='image/png'||type==='image/jpeg','Unsupported image type');admit(rel,type);}
       else allowed(false,'Unsupported document relationship');
     }
   }
-  allowed([...pkg.relationships.keys()].every(k=>k===''||k===main),'Unexpected auxiliary relationship graph');
+  for(const path of customParts){
+    const rels=pkg.relationships.get(path);if(!rels)continue;
+    const relFile=[...pkg.parts.keys()].find(p=>p.toLowerCase()===relationPath(path).toLowerCase());
+    allowed(relFile&&pkg.contentTypes.get(relFile)===REL_TYPE&&rels.length===1&&rels[0]!.type===R+'customXmlProps','Unsupported custom XML dependency');expected.add(relFile);extraSources.add(path);
+    const props=admit(rels[0]!,'application/vnd.openxmlformats-officedocument.customXmlProperties+xml');verifyAuxiliaryXml(pkg.parts.get(props)!,options,'datastoreItem','http://schemas.openxmlformats.org/officeDocument/2006/customXml');
+  }
+  allowed([...pkg.relationships.keys()].every(k=>k===''||k===main||extraSources.has(k)),'Unexpected auxiliary relationship graph');
   allowed(pkg.parts.size===expected.size&&[...pkg.parts.keys()].every(k=>expected.has(k)),'Additional package parts require a later adapter');
   if(!stylePath&&!themePath&&!hasMetadata)return {part:main};
   const theme=themePath?readTheme(pkg.parts.get(themePath)!,options):undefined;

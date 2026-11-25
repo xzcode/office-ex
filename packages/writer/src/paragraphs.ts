@@ -104,7 +104,7 @@ export function replaceParagraphRange(snapshot:DocumentSnapshot,paragraphId:stri
   const right=sliceRuns(p.runs,end,p.text.length,used,allocate);
   return runPatch(snapshot,p,nonEmpty([...left,...(replacement?[inserted(template,replacement,allocate)]:[]),...right],template,allocate));
 }
-const CHARACTER_KEYS=['fontFamily','fontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection'];
+const CHARACTER_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection'];
 /** Split affected runs at grapheme-safe range endpoints and apply direct character style. */
 export function formatParagraphRange(snapshot:DocumentSnapshot,paragraphId:string,start:number,end:number,style:TextStyle,operationId:string):DocumentCommand{
   const p=locate(snapshot,paragraphId);assertParagraphRange(p.paragraph,start,end);assertPlainData(style);validateTextStyle(style);
@@ -112,7 +112,7 @@ export function formatParagraphRange(snapshot:DocumentSnapshot,paragraphId:strin
   if(start===end||!Object.keys(style).length)return patchCommand(snapshot,'WRT-03',[]);
   const allocate=allocator(operationId),used=new Set<string>();
   const left=sliceRuns(p.runs,0,start,used,allocate);
-  const middle=sliceRuns(p.runs,start,end,used,allocate).map(r=>r.type==='text'?({...r,style:{...r.style,...cloneData(style)}}):r);
+  const middle=sliceRuns(p.runs,start,end,used,allocate).map(r=>{if(r.type!=='text')return r;const next={...r.style,...cloneData(style)};if(style.fontFamily!==undefined){for(const key of ['fontAscii','fontHighAnsi','fontEastAsia','fontComplex'] as const)if(style[key]===undefined)delete next[key];}return {...r,style:next};});
   const right=sliceRuns(p.runs,end,p.text.length,used,allocate);
   return runPatch(snapshot,p,[...left,...middle,...right]);
 }
@@ -168,6 +168,7 @@ export function setParagraphMetrics(snapshot:DocumentSnapshot,paragraphId:string
   const p=locate(snapshot,paragraphId);assertPlainData(metrics);validateTextStyle(metrics);
   assert(Object.keys(metrics).every(k=>['indent','spaceBefore','spaceAfter','lineHeight'].includes(k)),'invalid','Unexpected paragraph property');
   const style={...p.paragraph.style,...cloneData(metrics)};
+  if(metrics.lineHeight!==undefined){delete style.lineMultiple;delete style.minLineHeight;}
   if(style.lineHeight===0)delete style.lineHeight;
   return patchCommand(snapshot,'WRT-03',[{op:'set',path:[...p.parent,p.block,'style'],value:style}]);
 }

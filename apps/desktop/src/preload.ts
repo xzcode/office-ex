@@ -13,6 +13,7 @@ const api: DesktopBridge = {
   },
   saveDraft: request => ipcRenderer.invoke('office:save-draft',request),
   saveDocx: request => ipcRenderer.invoke('office:save-docx',request),
+  saveDoc: request => ipcRenderer.invoke('office:save-doc',request),
   saveCopy: request => ipcRenderer.invoke('office:save-copy',request),
   updateTabs: states => ipcRenderer.invoke('office:tabs',states),
   confirmClose: id => ipcRenderer.invoke('office:confirm-close',id),

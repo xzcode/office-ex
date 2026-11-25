@@ -146,12 +146,12 @@ function installMenu():void {
 /** Shared atomic commit path. DOCX output is created by a host-owned sandbox,
  * not trusted from the ordinary renderer. The existing OEX flow is unchanged.
  */
-async function saveEditable(format:'oex'|'docx',candidate:unknown,owner:BrowserWindow){
-  const request=format==='docx'?parseDocxSave(candidate):parseDraftSave(candidate);
+async function saveEditable(format:'oex'|'docx'|'doc',candidate:unknown,owner:BrowserWindow){
+  const request=format!=='oex'?parseDocxSave(candidate):parseDraftSave(candidate);
   const tab=tabs.get(request.documentId);
   if(!tab)throw new OfficeError('invalid','Unknown document session');
   if(runningSaves.has(request.documentId))throw new OfficeError('conflict','Save is already running');
-  if(format==='docx'&&request.revision>tab.revision)throw new OfficeError('conflict','DOCX snapshot is newer than the registered session');
+  if(format!=='oex'&&request.revision>tab.revision)throw new OfficeError('conflict','DOCX snapshot is newer than the registered session');
   runningSaves.add(request.documentId);
   let createdTarget:string|undefined,committed=false;
   const reservation='save:'+request.documentId;
@@ -162,7 +162,7 @@ async function saveEditable(format:'oex'|'docx',candidate:unknown,owner:BrowserW
     const grant=token?authority.get(token,owner.id,request.documentId):undefined;
     if(grant&&extname(grant.path).toLowerCase()!=='.'+format)throw new OfficeError('unsafe','Save format must match the source capability');
     let output=request.bytes;
-    if(format==='docx'){
+    if(format!=='oex'){
       // Omitting an existing file capability cannot turn an imported file into
       // an unrestricted new-document save. The original is obtained only here.
       if(!token){
@@ -174,13 +174,13 @@ async function saveEditable(format:'oex'|'docx',candidate:unknown,owner:BrowserW
       }
       const original=token?originals.get(token):undefined;
       if(token&&(!original||!grant?.identity||byteHash(original)!==grant.identity.sha256))throw new OfficeError('conflict','DOCX source snapshot is unavailable or inconsistent');
-      output=await verifyDocx({documentId:request.documentId,bytes:request.bytes,...(original?{sourceBytes:original}: {})});
+      output=await verifyDocx({format,documentId:request.documentId,bytes:request.bytes,...(original?{sourceBytes:original}: {})});
       assertOwner();
     }
     if(!token||request.saveAs){
       const name=request.title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,160)||'Untitled';
       const baseName=name.toLowerCase().endsWith('.'+format)?name.slice(0,-format.length-1):name;
-      const chosen=await dialog.showSaveDialog(owner,{defaultPath:baseName+'.'+format,filters:[{name:format==='docx'?t('docxDocument'):t('draftLabel'),extensions:[format]}],properties:['showOverwriteConfirmation','createDirectory']});
+      const chosen=await dialog.showSaveDialog(owner,{defaultPath:baseName+'.'+format,filters:[{name:format==='docx'?t('docxDocument'):format==='doc'?t('docDocument'):t('draftLabel'),extensions:[format]}],properties:['showOverwriteConfirmation','createDirectory']});
       assertOwner();
       if(chosen.canceled||!chosen.filePath)return null;
       if(extname(chosen.filePath).toLowerCase()!=='.'+format)throw new OfficeError('invalid','Save destination must retain the selected file format');
@@ -234,6 +234,7 @@ function installIpc():void {
   });
   handle('office:save-draft',async(event,candidate)=>saveEditable('oex',candidate,trusted(event)));
   handle('office:save-docx',async(event,candidate)=>saveEditable('docx',candidate,trusted(event)));
+  handle('office:save-doc',async(event,candidate)=>saveEditable('doc',candidate,trusted(event)));
   handle('office:save-copy',async(_event,candidate)=>{
     const request=parsePreservedCopy(candidate);
     if(!tabs.has(request.documentId))throw new OfficeError('unsafe','Unknown document session');

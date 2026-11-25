@@ -86,14 +86,19 @@ export class ResourceStore {
 export function resolveTextStyle(defaults: TextStyle, styles: Readonly<Record<string, NamedStyle>>, namedIds: readonly string[] = [], direct: TextStyle = {}): { style: Readonly<TextStyle>; diagnostics: readonly Diagnostic[] } {
   validateTextStyle(defaults); validateTextStyle(direct);
   let style: TextStyle = cloneData(defaults); const diagnostics: Diagnostic[] = [];
+  const merge=(value:TextStyle):void=>{
+    if(value.lineHeight!==undefined||value.lineMultiple!==undefined||value.minLineHeight!==undefined){delete style.lineHeight;delete style.lineMultiple;delete style.minLineHeight;}
+    if(value.fontFamily!==undefined){delete style.fontAscii;delete style.fontHighAnsi;delete style.fontEastAsia;delete style.fontComplex;}
+    style={...style,...cloneData(value)};
+  };
   const append = (id: string, ancestors: Set<string>): void => {
     assert(!ancestors.has(id), 'invalid', 'Style inheritance cycle'); assert(ancestors.size < 128, 'limit', 'Style inheritance budget exceeded');
     const named = styles[id];
     if (!named) { diagnostics.push({ code: 'style.missing', severity: 'warning', featureId: 'WRT-02', sourceLocation: { nodeId: id }, messageKey: 'style.missing', safeAction: 'read-only' }); return; }
     ancestors.add(id); if (named.basedOn) append(named.basedOn, ancestors); ancestors.delete(id);
-    validateTextStyle(named.properties); style = { ...style, ...cloneData(named.properties) };
+    validateTextStyle(named.properties); merge(named.properties);
     for(const key of named.toggles??[]){assert((key==='bold'||key==='italic')&&!Object.hasOwn(named.properties,key),'invalid','Invalid style toggle');style[key]=!style[key];}
   };
   for (const id of namedIds) append(id, new Set());
-  return freezeData({ style: { ...style, ...cloneData(direct) }, diagnostics });
+  merge(direct);return freezeData({style,diagnostics});
 }
