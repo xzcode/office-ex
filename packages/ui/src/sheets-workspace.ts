@@ -24,7 +24,10 @@ export interface SheetsHost {
   locale():string; isCurrent():boolean; readOnly?:boolean; format?:'xls'|'xlsx'|'oex';
 }
 interface RunningCalculation { worker:Worker;documentId:string;request:number;revision:number;busy:boolean;state:SheetsViewState;timer?:ReturnType<typeof setTimeout> }
-interface RenderedCell {node:HTMLDivElement;result?:CalculationCell;revision?:number}
+interface RenderedCell {
+  node:HTMLDivElement;text:Text;row?:number;column?:number;result?:CalculationCell;revision?:number;
+  styleId?:string;directStyle?:CellSnapshot['style'];styleApplied?:boolean;
+}
 let running:RunningCalculation|undefined;
 var requestId = 0;
 let copied:{nonce:string;documentId:string;contentId:string;sheetId:string;range:CellRange}|undefined;
@@ -340,6 +343,10 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
   plane.style.width = totalWidth + "px";
   const displayRowScale = (rows.total + headerHeight) / totalHeight, displayColScale = (columns.total + headerWidth) / totalWidth;
   const layer = make("div", "", "sheets-cell-layer");
+  // The scroll plane establishes the logical scrollbar range; the painted
+  // surface itself is bounded to the actual viewport. Keep editor coordinates
+  // on the plane and translate only the recycled drawing layer.
+  Object.assign(layer.style,{inset:"auto",overflow:"hidden",contain:"layout style paint"});
   plane.append(layer);
   const renderedCells = new Map<string,RenderedCell>();
   const rowHeaders = new Map<number,HTMLDivElement>(), columnHeaders = new Map<number,HTMLDivElement>();
@@ -514,27 +521,41 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
     const fixed = row <= (sheet.view?.frozenRows ?? 0);
     return headerHeight + (fixed ? base + offset : base - offset * (displayRowScale - 1));
   }
-  const visualStyle = (node:HTMLDivElement, cell:CellSnapshot|undefined) => {
-    const style = { ...model.defaultTextStyle, ...cell?.styleId ? model.styles[cell.styleId]?.properties : {}, ...cell?.style };
-    node.style.fontFamily = style.fontFamily ?? "sans-serif";
-    node.style.fontSize = Math.min(200, (style.fontSize ?? 139700) / 9525) + "px";
-    node.style.fontWeight = style.bold ? "700" : "400";
-    node.style.fontStyle = style.italic ? "italic" : "normal";
-    node.style.textDecoration = style.underline ? "underline" : "none";
-    node.style.color = style.color ? styleColor(style.color) : "var(--text)";
-    if (style.fill) node.style.backgroundColor = styleColor(style.fill);
-    if (style.alignment) node.style.textAlign = style.alignment;
-    if (style.wrapText) {
-      node.style.whiteSpace = "pre-wrap";
-      node.style.overflowWrap = "anywhere";
-    }
-    if (style.border) node.style.border = Math.max(0.5, style.border.width / 9525) + "px solid " + styleColor(style.border.color);
-    node.style.alignContent = style.verticalAlignment === "top" ? "start" : style.verticalAlignment === "center" ? "center" : "end";
-  };
+  // The workbook snapshot is immutable within this mount. A recycled cell
+  // can retain its visual CSS only when the named and direct style match.
+  const styleProbe=document.createElement('div');
+  const namedCss=new Map<string|undefined,string>();
+  const directCss=new WeakMap<object,Map<string|undefined,string>>();
+  function visualCss(cell:CellSnapshot|undefined):string {
+    const named=cell?.styleId,direct=cell?.style;
+    let cache:Map<string|undefined,string>;
+    if(direct){cache=directCss.get(direct)??new Map();directCss.set(direct,cache);}
+    else cache=namedCss;
+    const old=cache.get(named);if(old!==undefined)return old;
+    const style={...model.defaultTextStyle,...(named?model.styles[named]?.properties:{}),...direct};
+    const css=styleProbe.style;css.cssText='';
+    css.fontFamily=style.fontFamily??"sans-serif";
+    css.fontSize=Math.min(200,(style.fontSize??139700)/9525)+"px";
+    css.fontWeight=style.bold?"700":"400";
+    css.fontStyle=style.italic?"italic":"normal";
+    css.textDecoration=style.underline?"underline":"none";
+    css.color=style.color?styleColor(style.color):"var(--text)";
+    if(style.fill)css.backgroundColor=styleColor(style.fill);
+    if(style.alignment)css.textAlign=style.alignment;
+    if(style.wrapText){css.whiteSpace="pre-wrap";css.overflowWrap="anywhere";}
+    if(style.border)css.border=Math.max(.5,style.border.width/9525)+"px solid "+styleColor(style.border.color);
+    css.alignContent=style.verticalAlignment==="top"?"start":style.verticalAlignment==="center"?"center":"end";
+    const result=css.cssText;cache.set(named,result);return result;
+  }
   function paint() {
     if (!root2.isConnected) return;
     const scrollTop = scroll.scrollTop, scrollLeft = scroll.scrollLeft, height = scroll.clientHeight, width = scroll.clientWidth;
     const y = scrollTop * displayRowScale, x = scrollLeft * displayColScale;
+    const layerLeft=scrollLeft+"px",layerTop=scrollTop+"px",layerWidth=width+"px",layerHeight=height+"px";
+    if(layer.style.left!==layerLeft)layer.style.left=layerLeft;
+    if(layer.style.top!==layerTop)layer.style.top=layerTop;
+    if(layer.style.width!==layerWidth)layer.style.width=layerWidth;
+    if(layer.style.height!==layerHeight)layer.style.height=layerHeight;
     const frozenRows = sheet.view?.frozenRows ?? 0, frozenColumns = sheet.view?.frozenColumns ?? 0;
     const fixedRows = rows.visible(0, Math.min(height / 2, 200), 40).filter((r) => r <= frozenRows), fixedColumns = columns.visible(0, Math.min(width / 2, 400), 20).filter((c) => c <= frozenColumns);
     const visibleRows = [.../* @__PURE__ */ new Set([...fixedRows, ...rows.visible(y, height, 160)])].filter((r) => rows.size(r) > 0);
@@ -542,121 +563,109 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
     const fragment = document.createDocumentFragment(), range = selectionRange();
     let count = 0, sum = 0;
     const activeId = "sheet-cell-" + state2.row + "-" + state2.column;
-    const painted = new Set<string>();
-    const drawCell = (row:number, column:number, merge?:CellRange) => {
-      const key = `${row}:${column}`;
-      if (painted.has(key)) return;
-      painted.add(key);
-      const cell = sheet.cells[key], formulaKey = calculationKey(sheet.id, row, column), isOpaque = opaque.has(formulaKey), result = cell?.value.kind === "formula" || isOpaque ? state2.calculation?.get(formulaKey) : void 0;
-      let rendered = renderedCells.get(key);
-      const created = !rendered;
-      if (!rendered) {
-        const node = make("div", "", "sheets-cell");
-        rendered = { node };
-        renderedCells.set(key, rendered);
-        node.id = "sheet-cell-" + row + "-" + column;
-        node.dataset.row = String(row);
-        node.dataset.column = String(column);
-        node.dataset.address = cellLabel(row, column);
-        node.setAttribute("role", "gridcell");
-        node.setAttribute("aria-rowindex", String(row));
-        node.setAttribute("aria-colindex", String(column));
-        node.setAttribute("aria-label", cellLabel(row, column));
-        node.dir = "auto";
-        if (merge) {
-          node.setAttribute("aria-rowspan", String(merge.rowCount));
-          node.setAttribute("aria-colspan", String(merge.columnCount));
+    // First plan only unique visible anchors. This lets outgoing nodes be
+    // rebound in place rather than creating a new DOM tree on fast scroll.
+    const planned=new Map<string,{row:number;column:number;merge?:CellRange}>();
+    const visibleMerges=sheet.merges.filter(m=>visibleRows.some(r=>r>=m.row&&r<m.row+m.rowCount)&&visibleColumns.some(c=>c>=m.column&&c<m.column+m.columnCount));
+    for(const row of visibleRows)for(const column of visibleColumns){
+      const merge=visibleMerges.find(m=>contains2(m,row,column)),r=merge?.row??row,c=merge?.column??column,key=r+":"+c;
+      if(!planned.has(key))planned.set(key,{row:r,column:c,...(merge?{merge}:{})});
+    }
+    const recycled=new Set<RenderedCell>(),byColumn=new Map<number,RenderedCell[]>();
+    for(const [key,rendered]of renderedCells)if(!planned.has(key)){
+      renderedCells.delete(key);recycled.add(rendered);
+      if(rendered.column!==undefined){let pool=byColumn.get(rendered.column);if(!pool){pool=[];byColumn.set(rendered.column,pool);}pool.push(rendered);}
+    }
+    // Reuse within the same column first: horizontal geometry and colindex
+    // remain unchanged for the common vertical-scroll case.
+    function takeCell(column:number):RenderedCell|undefined{
+      const pool=byColumn.get(column);while(pool?.length){const cell=pool.shift()!;if(recycled.delete(cell))return cell;}
+      const cell=recycled.values().next().value as RenderedCell|undefined;if(cell)recycled.delete(cell);return cell;
+    }
+    const locale=host.locale(),formatOptions={locale,dateSystem:model.dateSystem},currentRevision=state2.calculatedRevision;
+    const rowPosition=new Map<number,number>(),columnPosition=new Map<number,number>();
+    for(const row of visibleRows)rowPosition.set(row,screenY(row,scrollTop)-scrollTop);
+    for(const col of visibleColumns)columnPosition.set(col,screenX(col,scrollLeft)-scrollLeft);
+    for(const [key,{row,column,merge}]of planned){
+      const cell=sheet.cells[key],needsFormula=cell?.value.kind==="formula",formulaKey=needsFormula||opaque.size?calculationKey(sheet.id,row,column):"",isOpaque=opaque.has(formulaKey),result=needsFormula||isOpaque?state2.calculation?.get(formulaKey):undefined;
+      let rendered=renderedCells.get(key);const rebound=!rendered;
+      if(!rendered){
+        rendered=takeCell(column);
+        if(!rendered){
+          const node=make("div","","sheets-cell"),text=document.createTextNode("");
+          node.append(text);node.setAttribute("role","gridcell");node.dir="auto";fragment.append(node);rendered={node,text};
         }
-        node.style.width = columns.start(column + (merge?.columnCount ?? 1)) - columns.start(column) + "px";
-        node.style.height = rows.start(row + (merge?.rowCount ?? 1)) - rows.start(row) + "px";
-        if (row <= frozenRows || column <= frozenColumns) node.classList.add("frozen");
-        if (row <= frozenRows && column <= frozenColumns) node.classList.add("frozen-intersection");
-        if (sheet.view?.showGridLines === false) node.classList.add("no-grid");
-        visualStyle(node, cell);
-        fragment.append(node);
+        renderedCells.set(key,rendered);
+        const node=rendered.node,addressLabel=cellLabel(row,column);
+        node.id="sheet-cell-"+row+"-"+column;
+        if(rendered.row!==row){const value=String(row);node.dataset.row=value;node.setAttribute("aria-rowindex",value);rendered.row=row;}
+        if(rendered.column!==column){const value=String(column);node.dataset.column=value;node.setAttribute("aria-colindex",value);rendered.column=column;}
+        node.dataset.address=addressLabel;node.setAttribute("aria-label",addressLabel);
+        if(merge){node.setAttribute("aria-rowspan",String(merge.rowCount));node.setAttribute("aria-colspan",String(merge.columnCount));}
+        else if(node.hasAttribute("aria-rowspan")){node.removeAttribute("aria-rowspan");node.removeAttribute("aria-colspan");}
+        // Reset geometry, style and transient classes on every different key.
+        // Setting cssText clears an old background, border, wrap or alignment.
+        if(!rendered.styleApplied||rendered.styleId!==cell?.styleId||rendered.directStyle!==cell?.style){
+          node.style.cssText=visualCss(cell);
+          rendered.styleId=cell?.styleId;rendered.directStyle=cell?.style;rendered.styleApplied=true;
+        }
+        const cellWidth=columns.start(column+(merge?.columnCount??1))-columns.start(column),cellHeight=rows.start(row+(merge?.rowCount??1))-rows.start(row);
+        const w=cellWidth+"px",h=cellHeight+"px";
+        if(node.style.width!==w)node.style.width=w;if(node.style.height!==h)node.style.height=h;
+        node.classList.toggle("frozen",row<=frozenRows||column<=frozenColumns);
+        node.classList.toggle("frozen-intersection",row<=frozenRows&&column<=frozenColumns);
+        node.classList.toggle("no-grid",sheet.view?.showGridLines===false);
       }
-      const current = rendered.node, left = screenX(column, scrollLeft) + "px", top = screenY(row, scrollTop) + "px", selected2 = String(contains2(range, row, column));
-      if (current.style.left !== left) current.style.left = left;
-      if (current.style.top !== top) current.style.top = top;
-      if (current.getAttribute("aria-selected") !== selected2) current.setAttribute("aria-selected", selected2);
-      current.classList.toggle("active", row === state2.row && column === state2.column);
-      if (created || rendered.result !== result || rendered.revision !== state2.calculatedRevision) {
-        current.title = "";
-        delete current.dataset.calculationState;
-        if (isOpaque) {
-          current.textContent = result?.value ? formatCellValue(result.value, "General", { locale: host.locale(), dateSystem: model.dateSystem }) : "\u2026";
-          current.title = t("sheetUnsupported");
-          current.dataset.calculationState = "unsupported";
-        } else if (cell?.value.kind === "formula" && !result) {
-          current.textContent = "\u2026";
-          current.title = t("sheetFormulaPending");
-          current.dataset.calculationState = "stale";
-        } else {
-          current.textContent = formatCell(cell, result, { locale: host.locale(), dateSystem: model.dateSystem });
-          if (result) {
-            current.dataset.calculationState = state2.calculatedRevision === snapshot.revision ? result.state : "stale";
-            if (state2.calculatedRevision !== snapshot.revision) current.title = t("sheetStale");
-            else if (result.state !== "valid") current.title = t(result.state === "unsupported" ? "sheetUnsupported" : result.state === "stale" ? "sheetStale" : "sheetCalcError");
+      const current=rendered.node,left=(columnPosition.get(column)??(screenX(column,scrollLeft)-scrollLeft))+"px",top=(rowPosition.get(row)??(screenY(row,scrollTop)-scrollTop))+"px",selected2=String(contains2(range,row,column));
+      if(current.style.left!==left)current.style.left=left;
+      if(current.style.top!==top)current.style.top=top;
+      if(current.getAttribute("aria-selected")!==selected2)current.setAttribute("aria-selected",selected2);
+      current.classList.toggle("active",row===state2.row&&column===state2.column);
+      if(rebound||rendered.result!==result||(needsFormula||isOpaque)&&rendered.revision!==currentRevision){
+        if(current.title)current.title="";if(current.dataset.calculationState!==undefined)delete current.dataset.calculationState;
+        let text:string;
+        if(isOpaque){text=result?.value?formatCellValue(result.value,"General",formatOptions):"…";current.title=t("sheetUnsupported");current.dataset.calculationState="unsupported";}
+        else if(needsFormula&&!result){text="…";current.title=t("sheetFormulaPending");current.dataset.calculationState="stale";}
+        else{
+          text=formatCell(cell,result,formatOptions);
+          if(result){current.dataset.calculationState=currentRevision===snapshot.revision?result.state:"stale";
+            if(currentRevision!==snapshot.revision)current.title=t("sheetStale");
+            else if(result.state!=="valid")current.title=t(result.state==="unsupported"?"sheetUnsupported":result.state==="stale"?"sheetStale":"sheetCalcError");
           }
         }
-        current.classList.toggle("number", cell?.value.kind === "number" || result?.value?.kind === "number");
-        current.classList.toggle("cell-error", cell?.value.kind === "error" || result?.state === "error");
-        rendered.result = result;
-        rendered.revision = state2.calculatedRevision;
+        if(rendered.text.data!==text)rendered.text.data=text;
+        current.classList.toggle("number",cell?.value.kind==="number"||result?.value?.kind==="number");
+        current.classList.toggle("cell-error",cell?.value.kind==="error"||result?.state==="error");
+        rendered.result=result;rendered.revision=currentRevision;
       }
-    };
-    for (const row of visibleRows) for (const column of visibleColumns) {
-      const merge = sheet.merges.find((m) => contains2(m, row, column));
-      if (merge) drawCell(merge.row, merge.column, merge);
-      else drawCell(row, column);
     }
-    for (const [key, rendered] of renderedCells) if (!painted.has(key)) {
-      rendered.node.remove();
-      renderedCells.delete(key);
+    for(const rendered of recycled)rendered.node.remove();
+    // Row/column headers are recycled independently of cell contents.
+    const rowSet=new Set(visibleRows),columnSet=new Set(visibleColumns),freeRows:HTMLDivElement[]=[],freeColumns:HTMLDivElement[]=[];
+    for(const [row,header]of rowHeaders)if(!rowSet.has(row)){rowHeaders.delete(row);freeRows.push(header);}
+    for(const [column,header]of columnHeaders)if(!columnSet.has(column)){columnHeaders.delete(column);freeColumns.push(header);}
+    for(const row of visibleRows){
+      let header=rowHeaders.get(row);
+      if(!header){header=freeRows.pop();if(!header){header=make("div","","sheets-row-header");header.style.width=headerWidth+"px";header.setAttribute("role","rowheader");fragment.append(header);}
+        header.textContent=String(row);header.style.height=rows.size(row)+"px";header.dataset.headerRow=String(row);rowHeaders.set(row,header);}
+      const left="0px",top=rowPosition.get(row)!+"px";
+      if(header.style.left!==left)header.style.left=left;if(header.style.top!==top)header.style.top=top;
     }
-    for (const row of visibleRows) {
-      let header = rowHeaders.get(row);
-      if (!header) {
-        header = make("div", String(row), "sheets-row-header");
-        header.style.width = headerWidth + "px";
-        header.style.height = rows.size(row) + "px";
-        header.dataset.headerRow = String(row);
-        header.setAttribute("role", "rowheader");
-        rowHeaders.set(row, header);
-        fragment.append(header);
-      }
-      header.style.left = scrollLeft + "px";
-      header.style.top = screenY(row, scrollTop) + "px";
+    for(const column of visibleColumns){
+      let header=columnHeaders.get(column);
+      if(!header){header=freeColumns.pop();if(!header){header=make("div","","sheets-column-header");header.style.height=headerHeight+"px";header.setAttribute("role","columnheader");fragment.append(header);}
+        header.textContent=columnLabel(column);header.style.width=columns.size(column)+"px";header.dataset.headerColumn=String(column);columnHeaders.set(column,header);}
+      const top="0px",left=columnPosition.get(column)!+"px";
+      if(header.style.top!==top)header.style.top=top;if(header.style.left!==left)header.style.left=left;
     }
-    for (const column of visibleColumns) {
-      let header = columnHeaders.get(column);
-      if (!header) {
-        header = make("div", columnLabel(column), "sheets-column-header");
-        header.style.width = columns.size(column) + "px";
-        header.style.height = headerHeight + "px";
-        header.dataset.headerColumn = String(column);
-        header.setAttribute("role", "columnheader");
-        columnHeaders.set(column, header);
-        fragment.append(header);
-      }
-      header.style.top = scrollTop + "px";
-      header.style.left = screenX(column, scrollLeft) + "px";
-    }
-    for (const [row, header] of rowHeaders) if (!visibleRows.includes(row)) {
-      header.remove();
-      rowHeaders.delete(row);
-    }
-    for (const [column, header] of columnHeaders) if (!visibleColumns.includes(column)) {
-      header.remove();
-      columnHeaders.delete(column);
-    }
-    corner.style.left = scrollLeft + "px";
-    corner.style.top = scrollTop + "px";
+    for(const node of [...freeRows,...freeColumns])node.remove();
+    corner.style.left="0px";corner.style.top="0px";
     layer.append(fragment);
-    if (painted.has(state2.row + ":" + state2.column)) scroll.setAttribute("aria-activedescendant", activeId);
-    else scroll.removeAttribute("aria-activedescendant");
-    if (!addressDirty) address.value = rangeAddress();
-    if (!formulaDirty && !editing) formula.value = cellSource();
+    if(planned.has(state2.row+":"+state2.column)){if(scroll.getAttribute("aria-activedescendant")!==activeId)scroll.setAttribute("aria-activedescendant",activeId);}
+    else if(scroll.hasAttribute("aria-activedescendant"))scroll.removeAttribute("aria-activedescendant");
+    const displayedRange=rangeAddress();
+    if(!addressDirty&&address.value!==displayedRange)address.value=displayedRange;
+    if(!formulaDirty&&!editing){const source=cellSource();if(formula.value!==source)formula.value=source;}
     const selectionKey = state2.row + ":" + state2.column;
     if (controlsKey !== selectionKey) {
       controlsKey = selectionKey;
@@ -678,7 +687,7 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
       if (rh) rh.value = String(Math.round((sheet.rows[state2.row]?.height ?? 24 * 9525) / 9525));
       if (cw) cw.value = String(Math.round((sheet.columns[state2.column]?.width ?? 104 * 9525) / 9525));
     }
-    const summarySignature = rangeAddress() + ":" + state2.calculatedRevision;
+    const summarySignature = displayedRange + ":" + state2.calculatedRevision;
     if (summarySignature !== summaryKey) {
       const aggregate = (row:number, column:number, cell:CellSnapshot|undefined) => {
         if (!cell) return;
@@ -694,12 +703,14 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
         const [row, column] = key.split(":").map(Number);
         if (contains2(range, row, column)) aggregate(row, column, cell);
       }
-      selectedSummary.textContent = t("sheetPosition", { address: rangeAddress() }) + " \xB7 " + t("sheetSelectionSummary", { count: new Intl.NumberFormat(host.locale()).format(count), sum: new Intl.NumberFormat(host.locale(), { maximumFractionDigits: 10 }).format(sum) });
+      selectedSummary.textContent = t("sheetPosition", { address: displayedRange }) + " \xB7 " + t("sheetSelectionSummary", { count: new Intl.NumberFormat(host.locale()).format(count), sum: new Intl.NumberFormat(host.locale(), { maximumFractionDigits: 10 }).format(sum) });
       summaryKey = summarySignature;
     }
-    calcStatus.textContent = t(host.readOnly && opaque.size ? "sheetUnsupported" : state2.calculating ? "sheetCalculating" : state2.calculationError ? "sheetCalcError" : "sheetCalculated");
-    root2.dataset.calculatedRevision = String(state2.calculatedRevision ?? -1);
-    root2.dataset.calculating = String(Boolean(state2.calculating));
+    const statusText=t(host.readOnly&&opaque.size?"sheetUnsupported":state2.calculating?"sheetCalculating":state2.calculationError?"sheetCalcError":"sheetCalculated");
+    if(calcStatus.textContent!==statusText)calcStatus.textContent=statusText;
+    const revision=String(state2.calculatedRevision??-1),calculating=String(Boolean(state2.calculating));
+    if(root2.dataset.calculatedRevision!==revision)root2.dataset.calculatedRevision=revision;
+    if(root2.dataset.calculating!==calculating)root2.dataset.calculating=calculating;
     if (editing) positionEditor();
   }
   function schedule() {

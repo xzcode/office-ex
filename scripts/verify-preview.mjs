@@ -18,7 +18,7 @@ assert(manifest.schema===1&&manifest.channel==='development-preview'&&manifest.f
 assert(manifest.platform===process.platform&&manifest.arch===process.arch,'Wrong native platform');
 assert(/^Office-EX-\d+\.\d+\.\d+-dev\.\d+-[a-z0-9]+-[a-z0-9]+$/.test(basename(prefix)),'Invalid preview name');
 assert(manifest.appFolder===(process.platform==='darwin'?'Office EX.app':basename(prefix)),'Unexpected app folder');
-const expectedExecutable=process.platform==='darwin'?'Contents/MacOS/Electron':process.platform==='win32'?'Office EX.exe':'office-ex';
+const expectedExecutable=process.platform==='darwin'?'Contents/MacOS/Office EX':process.platform==='win32'?'Office EX.exe':'office-ex';
 assert(manifest.executable===expectedExecutable,'Unexpected executable');
 const hash=async path=>{const h=createHash('sha256');for await(const b of createReadStream(path))h.update(b);return h.digest('hex');};
 const sums=await readFile(prefix+'.SHA256SUMS','utf8'),seen=new Set();

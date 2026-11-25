@@ -75,6 +75,21 @@ jobs:
         run: |
           $manifest = (Get-ChildItem out/m5-preview -Filter *.manifest.json | Select-Object -First 1).FullName
           node --import tsx scripts/verify-preview.mjs "$manifest"
+      - name: Install, launch and remove Linux DEB on disposable runner
+        if: runner.os == 'Linux'
+        env: {OFFICE_EX_INSTALL_TEST: '1'}
+        run: xvfb-run -a --server-args="-screen 0 1280x900x24" node scripts/verify-preview-install.mjs "$(find out/m5-preview -maxdepth 1 -name '*.manifest.json' -print -quit)"
+      - name: Mount, copy, launch and remove macOS DMG app
+        if: runner.os == 'macOS'
+        env: {OFFICE_EX_INSTALL_TEST: '1'}
+        run: node scripts/verify-preview-install.mjs "$(find out/m5-preview -maxdepth 1 -name '*.manifest.json' -print -quit)"
+      - name: Install, launch and uninstall Windows EXE on disposable runner
+        if: runner.os == 'Windows'
+        env: {OFFICE_EX_INSTALL_TEST: '1'}
+        shell: pwsh
+        run: |
+          $manifest = (Get-ChildItem out/m5-preview -Filter *.manifest.json | Select-Object -First 1).FullName
+          node scripts/verify-preview-install.mjs "$manifest"
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: success()
         with:
@@ -86,5 +101,7 @@ jobs:
         if: failure()
         with:
           name: office-ex-preview-failure-${{ matrix.platform }}-${{ matrix.arch }}
-          path: out/m5-preview/*.verification.json
+          path: |
+            out/m5-preview/*.verification.json
+            out/m5-preview/*.installation.json
           if-no-files-found: ignore

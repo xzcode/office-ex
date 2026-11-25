@@ -63,6 +63,24 @@ try {
   evidence.checks.push('Invalid formula blocks toolbar mutations; rejected commands retain editable input and do not change history');
   await page.evaluate(()=>window.testSheets.opaquePreview());await page.waitForFunction(()=>document.querySelector('[data-address=A1]')?.textContent==='3'&&document.querySelector('[data-address=B1]')?.textContent==='4');await select('A1:B1');
   const copied=await page.locator('#sheets-scroll').evaluate(el=>{const data=new DataTransfer();el.dispatchEvent(new ClipboardEvent('copy',{bubbles:true,clipboardData:data}));return data.getData('text/plain');});assert.equal(copied,'3\t4');assert.equal(await cell('A1').getAttribute('data-calculation-state'),'unsupported');assert.equal(await page.evaluate(()=>window.testSheets.snapshot().document.sheets[0].cells['1:1']),undefined);evidence.checks.push('Opaque BIFF preview copies cached values 3/4 without inserting a fabricated source cell or recalculating dependents');
+  // Recycled cells must never retain formatting, accessibility spans or
+  // selection state belonging to the previously visible source cell.
+  await page.evaluate(()=>{
+    const model=window.testSheets.fixture(0),sheet=model.sheets[0];
+    for(let row=1;row<=30;row++)for(let column=1;column<=16;column++)sheet.cells[row+':'+column]={value:{kind:'number',value:row*100+column},style:{fontFamily:'Arial',bold:true,italic:true,underline:true,fill:{kind:'rgba',red:255,green:204,blue:68,alpha:255},wrapText:true,alignment:'center',border:{width:9525,color:{kind:'rgba',red:1,green:2,blue:3,alpha:255}}}};
+    sheet.merges=[{row:1,column:1,rowCount:2,columnCount:2}];for(const key of ['1:2','2:1','2:2'])delete sheet.cells[key];
+    sheet.cells['5000:1']={value:{kind:'number',value:5000}};
+    window.testSheets.load(model);
+  });
+  await page.waitForSelector('[data-address=A1][aria-rowspan="2"]');
+  await page.evaluate(()=>{window.previousGridNodes=Array.from(document.querySelectorAll('[role=gridcell]'));});
+  await select('A5000');await page.waitForFunction(()=>document.querySelector('[data-address=A5000]')?.textContent==='5000');
+  const recycled=await page.evaluate(()=>{
+    const nodes=Array.from(document.querySelectorAll('[role=gridcell]')),reused=nodes.filter(node=>window.previousGridNodes.includes(node));
+    return {count:nodes.length,reused:reused.length,stale:nodes.filter(node=>node.hasAttribute('aria-rowspan')||node.hasAttribute('aria-colspan')||node.style.backgroundColor||node.style.border||node.style.whiteSpace||node.style.overflowWrap||node.style.textAlign||getComputedStyle(node).fontWeight==='700'||node.classList.contains('frozen')).length,unique:new Set(nodes.map(node=>node.id)).size,active:document.querySelector('#sheets-scroll').getAttribute('aria-activedescendant'),layerHeight:document.querySelector('.sheets-cell-layer').clientHeight,viewportHeight:document.querySelector('#sheets-scroll').clientHeight};
+  });
+  assert.ok(recycled.reused>0,JSON.stringify(recycled));assert.equal(recycled.stale,0);assert.equal(recycled.unique,recycled.count);assert.equal(recycled.active,'sheet-cell-5000-1');assert.equal(recycled.layerHeight,recycled.viewportHeight);
+  evidence.checks.push('Viewport node recycling preserves identity bounds and clears old merged, styled and accessibility state');
   await page.evaluate(()=>window.testSheets.setRegion('en-US'));
   const times=[];
   for(let i=0;i<5;i++){
