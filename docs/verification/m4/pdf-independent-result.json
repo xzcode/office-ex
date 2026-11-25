@@ -1,0 +1,46 @@
+{
+  "writer": {
+    "pages": 4,
+    "pageSizesPt": [
+      [
+        594.95996,
+        841.91998
+      ],
+      [
+        594.95996,
+        841.91998
+      ],
+      [
+        594.95996,
+        841.91998
+      ],
+      [
+        594.95996,
+        841.91998
+      ]
+    ],
+    "fontCount": 18,
+    "allFontsEmbeddedWithUnicode": true,
+    "pagesWithImages": 1
+  },
+  "slides": {
+    "pages": 3,
+    "pageSizesPt": [
+      [
+        960.0,
+        540.0
+      ],
+      [
+        960.0,
+        540.0
+      ],
+      [
+        960.0,
+        540.0
+      ]
+    ],
+    "fontCount": 10,
+    "allFontsEmbeddedWithUnicode": true,
+    "pagesWithImages": 3
+  }
+}

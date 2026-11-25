@@ -1,0 +1,96 @@
+{
+  "timestamp": "2026-11-25T07:57:44.939Z",
+  "browser": "159.0.8154.6",
+  "headless": true,
+  "sandbox": true,
+  "csp": "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self' blob:; img-src 'self' data: blob:; worker-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
+  "checks": [
+    {
+      "name": "Writer final native layout exports multiple pages",
+      "pages": 4
+    },
+    {
+      "name": "Slides shared scene exports three landscape pages",
+      "pages": 3
+    },
+    {
+      "name": "Unreviewed fonts and Sheets export blocked"
+    },
+    {
+      "name": "PDF selectable Unicode text layer"
+    },
+    {
+      "name": "Full document literal search navigates to later page",
+      "page": 4
+    },
+    {
+      "name": "Page navigation and zoom"
+    },
+    {
+      "name": "Tab detach retains reader and reattaches safely"
+    },
+    {
+      "name": "Password-protected and empty-password encrypted PDFs rejected"
+    },
+    {
+      "name": "Scripts, external annotation actions and attachments have no active UI"
+    },
+    {
+      "name": "Existing PDF safe page print includes all pages"
+    },
+    {
+      "name": "Independent PDF reader verifies page sizes, images, full pagination text and embedded Unicode fonts"
+    }
+  ],
+  "externalRequests": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "writer": {
+    "pages": 4,
+    "pageSizes": [
+      {
+        "width": 793.7007874015748,
+        "height": 1122.5196850393702
+      },
+      {
+        "width": 793.7007874015748,
+        "height": 1122.5196850393702
+      },
+      {
+        "width": 793.7007874015748,
+        "height": 1122.5196850393702
+      },
+      {
+        "width": 793.7007874015748,
+        "height": 1122.5196850393702
+      }
+    ],
+    "warnings": [
+      "writer.native-browser-line-metrics"
+    ]
+  },
+  "slides": {
+    "pages": 3,
+    "pageSizes": [
+      {
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "width": 1280,
+        "height": 720
+      }
+    ],
+    "warnings": []
+  },
+  "artifacts": {
+    "writer.pdf": "e70dd238a526339f30f0b8179b396051fe1eed13d23bb9369c1cc5acb600058b",
+    "slides.pdf": "90fcdcc7fc6487c788c24bcc22337a460561ff41ae77731bf90c8d3047cb84f4",
+    "slides-print.png": "cd2874f6b7dd2815772156aec14e72fe983a5de401586585ef92859e59dd59c8",
+    "pdf-reader.png": "68ef0752bafa28e47fb6c56314551783a4ef0e6458ee0d82d6a50354a1fcb878"
+  }
+}
