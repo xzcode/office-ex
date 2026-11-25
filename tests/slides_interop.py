@@ -122,7 +122,23 @@ with tempfile.TemporaryDirectory(prefix='office-ex-slides-interop-') as temporar
     body_para=body.text_frame.paragraphs[0];body_para.space_before=Pt(0);ppr=body_para._p.get_or_add_pPr();ppr.set('marL','0');ppr.set('indent','0');ppr.append(OxmlElement('a:buNone'))
     rich.core_properties.title='External Office template';rich.core_properties.author='Fixture author';rich.save(target/'external-default.pptx')
     protected=Presentation();slide=protected.slides.add_slide(protected.slide_layouts[6]);slide.shapes.add_textbox(Inches(1),Inches(1),Inches(2),Inches(1)).text='Unsupported auto-fit';protected.save(target/'external-autofit.pptx')
-    protected=Presentation();slide=protected.slides.add_slide(protected.slide_layouts[1]);slide.shapes.title.text='Title';slide.shapes.title.text_frame.auto_size=MSO_AUTO_SIZE.NONE;slide.placeholders[1].text='Active inherited bullets';slide.placeholders[1].text_frame.auto_size=MSO_AUTO_SIZE.NONE;protected.save(target/'external-bullets.pptx')
+    lists=Presentation();slide=lists.slides.add_slide(lists.slide_layouts[1]);slide.shapes.title.text='List title'
+    body=slide.placeholders[1];body.text='First bullet'
+    para=body.text_frame.add_paragraph();para.text='Nested bullet';para.level=1
+    para=body.text_frame.add_paragraph();para.text='Second bullet';para.level=0
+    for i,value in enumerate(['Number seven','Number eight','Number nine']):
+        para=body.text_frame.add_paragraph();para.text=value
+        ppr=para._p.get_or_add_pPr();auto=OxmlElement('a:buAutoNum');auto.set('type','arabicPeriod')
+        if i==0:auto.set('startAt','7')
+        ppr.append(auto)
+    body.text_frame._bodyPr.append(OxmlElement('a:normAutofit'))
+    fit=body.text_frame._bodyPr.find('{http://schemas.openxmlformats.org/drawingml/2006/main}normAutofit')
+    fit.set('fontScale','85000');fit.set('lnSpcReduction','10000')
+    lists.save(target/'external-bullets.pptx')
+    # A currently unsupported numbering scheme must remain protected.
+    fit=Presentation(target/'external-bullets.pptx')
+    auto=fit.slides[0].placeholders[1].text_frame.paragraphs[3]._p.pPr.find('{http://schemas.openxmlformats.org/drawingml/2006/main}buAutoNum');auto.set('type','alphaUcParenBoth')
+    fit.save(target/'external-unsupported-numbering.pptx')
     subprocess.run([os.environ.get('NODE','node'),'--import','tsx','tests/slides-external-template.mjs',str(target)],cwd=ROOT,check=True)
     edited=Presentation(target/'external-default-edited.pptx')
     assert len(edited.slide_layouts)==11 and len(edited.slides)==4
@@ -137,4 +153,11 @@ with tempfile.TemporaryDirectory(prefix='office-ex-slides-interop-') as temporar
         for name in before.namelist():
             if name.startswith(('docProps/','ppt/slideMasters/','ppt/slideLayouts/','ppt/printerSettings/')) or name in ('_rels/.rels','ppt/presProps.xml','ppt/viewProps.xml','ppt/tableStyles.xml'):
                 assert before.read(name)==after.read(name),name
-    print('Independent PPT/PPTX interop passed: 9 readable/editable source and output fixtures, 2 protected external profiles.')
+    lists_after=Presentation(target/'external-bullets-edited.pptx')
+    body=lists_after.slides[0].placeholders[1];assert body.text_frame.paragraphs[1].level==1
+    assert body.text_frame.paragraphs[1].text=='Nested bullet edited'
+    assert body.text_frame.paragraphs[3].text=='Number seven'
+    ns='{http://schemas.openxmlformats.org/drawingml/2006/main}'
+    assert body.text_frame._bodyPr.find(ns+'normAutofit').get('fontScale')=='85000'
+    assert body.text_frame.paragraphs[3]._p.pPr.find(ns+'buAutoNum').get('startAt')=='7'
+    print('Independent PPT/PPTX interop passed: 11 readable/editable source and output fixtures, 2 protected external profiles.')

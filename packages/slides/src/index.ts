@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /** Presentation commands use stable IDs and one atomic patch per user action. */
 import { assert, assertId, assertUnicode, graphemeBoundaries } from '@office-ex/contracts';
-import { cloneData, patchCommand, DEFAULT_SLIDE_THEME_COLORS, validateColor, validateGeometry, validateTextStyle, validateImageResource, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type SlidesDocument, type Slide, type Shape, type Geometry, type Color, type TextRun, type TextStyle, type SlideTextFrame, type SlideTheme, type ImageResource, type PatchOperation } from '@office-ex/core';
+import { cloneData, patchCommand, DEFAULT_SLIDE_THEME_COLORS, validateColor, validateGeometry, validateTextStyle, validateSlideParagraph, resolveTextStyle, splitSlideParagraphs, firstSlideParagraphRun, validateImageResource, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type SlidesDocument, type Slide, type Shape, type Geometry, type Color, type TextRun, type TextStyle, type SlideTextFrame, type SlideParagraphFormat, type SlideTheme, type ImageResource, type PatchOperation } from '@office-ex/core';
 
 export type PresentationSnapshot = DeepReadonly<SlidesDocument>;
 export type SlideSnapshot = DeepReadonly<Slide>;
@@ -102,13 +102,14 @@ function textRange(shape:Extract<ShapeSnapshot,{type:'text'}>,start:number,end:n
 export function replaceShapeText(snapshot:DocumentSnapshot,slideId:string,shapeId:string,start:number,end:number,text:string,factory:IdFactory):DocumentCommand {
   const l=locateShape(snapshot,slideId,shapeId),shape=l.shape;assert(shape.type==='text','invalid','Expected a text shape');textRange(shape,start,end);assertUnicode(text);assert(text.length<=1_000_000,'limit','Text shape budget exceeded');
   if(start===end&&!text)return command(snapshot,[]);
-  const id=uniqueIds(snapshot,factory),before:TextRun[]=[],after:TextRun[]=[];let at=0,inherit:DeepReadonly<TextRun>|undefined;
-  for(const run of shape.runs){const stop=at+run.text.length;if(at<=start&&start<=stop)inherit??=run;if(!run.text.length)continue;
+  const id=uniqueIds(snapshot,factory),before:TextRun[]=[],after:TextRun[]=[];let at=0,inherit:DeepReadonly<TextRun>|undefined,previous:DeepReadonly<TextRun>|undefined;
+  for(const run of shape.runs){const stop=at+run.text.length;if(at<=start&&start<stop)inherit??=run;if(stop<=start)previous=run;if(!run.text.length){if(at===start)inherit??=run;continue;}
     if(stop<=start)before.push(cloneData(run) as TextRun);else if(at<start)before.push({...cloneData(run),text:run.text.slice(0,start-at)} as TextRun);
     if(at>=end)after.push(cloneData(run) as TextRun);else if(stop>end)after.push({...cloneData(run),id:id(),text:run.text.slice(end-at)} as TextRun);at=stop;
   }
+  inherit??=previous;
   const insertion:TextRun[]=[];if(text.length)insertion.push({id:id(),type:'text',text,...(inherit?.styleId?{styleId:inherit.styleId}:{}),...(inherit?.style?{style:cloneData(inherit.style) as TextStyle}:{})});
-  const runs=[...before,...insertion,...after];if(!runs.length)runs.push({id:id(),type:'text',text:''});
+  const runs=[...before,...insertion,...after];if(!runs.length)runs.push({id:id(),type:'text',text:'',...(inherit?.styleId?{styleId:inherit.styleId}:{}),...(inherit?.style?{style:cloneData(inherit.style) as TextStyle}:{})});
   return command(snapshot,[{op:'set',path:['slides',l.slideIndex,'shapes',l.index,'runs'],value:runs}]);
 }
 /** Difference boundaries expand to complete graphemes in both old and new text. */
@@ -129,6 +130,30 @@ export function formatShapeText(snapshot:DocumentSnapshot,slideId:string,shapeId
     if(last<run.text.length)runs.push({...cloneData(run),id:id(),text:run.text.slice(last)} as TextRun);at=stop;
   }
   return command(snapshot,[{op:'set',path:['slides',l.slideIndex,'shapes',l.index,'runs'],value:runs}]);
+}
+/** A selection is expanded to complete logical paragraphs. Formatting changes
+ * never insert marker characters into the document text. */
+export function formatSlideParagraphs(snapshot:DocumentSnapshot,slideId:string,shapeId:string,range:{start:number;end:number},patch:Partial<SlideParagraphFormat>,factory:IdFactory):DocumentCommand{
+ const l=locateShape(snapshot,slideId,shapeId),shape=l.shape,doc=presentation(snapshot);assert(shape.type==='text','invalid','Expected text shape');textRange(shape,range.start,range.end);
+ validateSlideParagraph(patch);
+ const paragraphs=splitSlideParagraphs(shape.runs),ids=uniqueIds(snapshot,factory),runs:TextRun[]=[];
+ let at=0;
+ const chosen=(start:number,end:number)=>range.start===range.end?range.start>=start&&range.start<=end:range.start<=end&&range.end>start;
+ for(const [i,items] of paragraphs.entries()){
+  const actual=firstSlideParagraphRun(items),effective=resolveTextStyle({...doc.defaultTextStyle,...shape.textStyle},doc.styles,actual?.styleId?[actual.styleId]:[],actual?.style??{}).style;
+  const end=at+items.reduce((sum,r)=>sum+r.text.length,0),change=chosen(at,end);
+  const format=change?{...effective.slideParagraph,...patch}:undefined;
+  if(i){const separator:TextRun={id:ids(),type:'text',text:'\n',...(actual?.styleId?{styleId:actual.styleId}:{}),...(actual?.style?{style:cloneData(actual.style) as TextStyle}:{})};if(format){separator.style={...separator.style,slideParagraph:format};if(format.beforePercent!==undefined)delete separator.style.spaceBefore;if(format.afterPercent!==undefined)delete separator.style.spaceAfter;}runs.push(separator);}
+  const kept=items.filter(r=>r.text.length);
+  if(!kept.length&&actual)kept.push({...actual,text:''});
+  for(const item of kept.length?kept:[{id:ids(),type:'text' as const,text:''}]){
+    const value=cloneData(item) as TextRun;value.id=ids();
+    if(format){const style={...value.style,slideParagraph:format};if(format.beforePercent!==undefined)delete style.spaceBefore;if(format.afterPercent!==undefined)delete style.spaceAfter;value.style=style;}
+    runs.push(value);
+  }
+  at=end+1;
+ }
+ return command(snapshot,[{op:'set',path:['slides',l.slideIndex,'shapes',l.index,'runs'],value:runs}]);
 }
 export function setShapeTextFrame(snapshot:DocumentSnapshot,slideId:string,shapeId:string,frame:SlideTextFrame):DocumentCommand {
   const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type==='text','invalid','Expected text shape');return command(snapshot,[{op:'set',path:['slides',l.slideIndex,'shapes',l.index,'textFrame'],value:{...l.shape.textFrame,...frame}}]);

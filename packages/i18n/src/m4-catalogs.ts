@@ -2,6 +2,13 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "slideParagraphList": "Paragraph list",
+    "slideListNone": "None",
+    "slideListBullets": "Bullets",
+    "slideListNumbers": "Numbering",
+    "slideListLevel": "List level",
+    "slideFitText": "Fit text to frame",
+    "slideResetFit": "Reset text fit",
     "slideAdd": "Add slide",
     "slideDuplicate": "Duplicate slide",
     "slideDelete": "Delete slide",
@@ -79,6 +86,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "slideParagraphList": "段落列表",
+    "slideListNone": "无",
+    "slideListBullets": "项目符号",
+    "slideListNumbers": "编号",
+    "slideListLevel": "列表级别",
+    "slideFitText": "缩小文字以适应文本框",
+    "slideResetFit": "重置文字适应",
     "slideAdd": "添加幻灯片",
     "slideDuplicate": "复制幻灯片",
     "slideDelete": "删除幻灯片",
@@ -156,6 +170,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "slideParagraphList": "段落清單",
+    "slideListNone": "無",
+    "slideListBullets": "項目符號",
+    "slideListNumbers": "編號",
+    "slideListLevel": "清單層級",
+    "slideFitText": "縮小文字以符合文字方塊",
+    "slideResetFit": "重設文字調整",
     "slideAdd": "新增投影片",
     "slideDuplicate": "複製投影片",
     "slideDelete": "刪除投影片",
@@ -233,6 +254,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "slideParagraphList": "段落リスト",
+    "slideListNone": "なし",
+    "slideListBullets": "箇条書き",
+    "slideListNumbers": "段落番号",
+    "slideListLevel": "リストのレベル",
+    "slideFitText": "テキストを枠に合わせる",
+    "slideResetFit": "テキスト調整をリセット",
     "slideAdd": "スライドを追加",
     "slideDuplicate": "スライドを複製",
     "slideDelete": "スライドを削除",
@@ -310,6 +338,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "slideParagraphList": "문단 목록",
+    "slideListNone": "없음",
+    "slideListBullets": "글머리 기호",
+    "slideListNumbers": "번호 매기기",
+    "slideListLevel": "목록 수준",
+    "slideFitText": "텍스트를 상자에 맞추기",
+    "slideResetFit": "텍스트 맞춤 초기화",
     "slideAdd": "슬라이드 추가",
     "slideDuplicate": "슬라이드 복제",
     "slideDelete": "슬라이드 삭제",
@@ -387,6 +422,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "slideParagraphList": "Liste de paragraphes",
+    "slideListNone": "Aucune",
+    "slideListBullets": "Puces",
+    "slideListNumbers": "Numérotation",
+    "slideListLevel": "Niveau de liste",
+    "slideFitText": "Ajuster le texte au cadre",
+    "slideResetFit": "Réinitialiser l’ajustement",
     "slideAdd": "Ajouter une diapositive",
     "slideDuplicate": "Dupliquer la diapositive",
     "slideDelete": "Supprimer la diapositive",
@@ -464,6 +506,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "slideParagraphList": "Absatzliste",
+    "slideListNone": "Keine",
+    "slideListBullets": "Aufzählungszeichen",
+    "slideListNumbers": "Nummerierung",
+    "slideListLevel": "Listenebene",
+    "slideFitText": "Text an Rahmen anpassen",
+    "slideResetFit": "Textanpassung zurücksetzen",
     "slideAdd": "Folie hinzufügen",
     "slideDuplicate": "Folie duplizieren",
     "slideDelete": "Folie löschen",
@@ -541,6 +590,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "slideParagraphList": "Lista de párrafos",
+    "slideListNone": "Ninguna",
+    "slideListBullets": "Viñetas",
+    "slideListNumbers": "Numeración",
+    "slideListLevel": "Nivel de lista",
+    "slideFitText": "Ajustar texto al cuadro",
+    "slideResetFit": "Restablecer ajuste",
     "slideAdd": "Añadir diapositiva",
     "slideDuplicate": "Duplicar diapositiva",
     "slideDelete": "Eliminar diapositiva",
@@ -618,6 +674,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "slideParagraphList": "Lista de parágrafos",
+    "slideListNone": "Nenhuma",
+    "slideListBullets": "Marcadores",
+    "slideListNumbers": "Numeração",
+    "slideListLevel": "Nível da lista",
+    "slideFitText": "Ajustar texto à caixa",
+    "slideResetFit": "Redefinir ajuste",
     "slideAdd": "Adicionar slide",
     "slideDuplicate": "Duplicar slide",
     "slideDelete": "Excluir slide",
@@ -695,6 +758,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "slideParagraphList": "Elenco di paragrafi",
+    "slideListNone": "Nessuno",
+    "slideListBullets": "Punti elenco",
+    "slideListNumbers": "Numerazione",
+    "slideListLevel": "Livello elenco",
+    "slideFitText": "Adatta testo al riquadro",
+    "slideResetFit": "Reimposta adattamento",
     "slideAdd": "Aggiungi diapositiva",
     "slideDuplicate": "Duplica diapositiva",
     "slideDelete": "Elimina diapositiva",
@@ -772,6 +842,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "slideParagraphList": "Список абзацев",
+    "slideListNone": "Нет",
+    "slideListBullets": "Маркеры",
+    "slideListNumbers": "Нумерация",
+    "slideListLevel": "Уровень списка",
+    "slideFitText": "Вписать текст в рамку",
+    "slideResetFit": "Сбросить подгонку",
     "slideAdd": "Добавить слайд",
     "slideDuplicate": "Дублировать слайд",
     "slideDelete": "Удалить слайд",
@@ -849,6 +926,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "slideParagraphList": "قائمة الفقرات",
+    "slideListNone": "بلا",
+    "slideListBullets": "تعداد نقطي",
+    "slideListNumbers": "ترقيم",
+    "slideListLevel": "مستوى القائمة",
+    "slideFitText": "ملاءمة النص للإطار",
+    "slideResetFit": "إعادة ضبط ملاءمة النص",
     "slideAdd": "إضافة شريحة",
     "slideDuplicate": "تكرار الشريحة",
     "slideDelete": "حذف الشريحة",
@@ -926,6 +1010,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "slideParagraphList": "רשימת פסקאות",
+    "slideListNone": "ללא",
+    "slideListBullets": "תבליטים",
+    "slideListNumbers": "מספור",
+    "slideListLevel": "רמת רשימה",
+    "slideFitText": "התאמת טקסט למסגרת",
+    "slideResetFit": "איפוס התאמת טקסט",
     "slideAdd": "הוספת שקופית",
     "slideDuplicate": "שכפול שקופית",
     "slideDelete": "מחיקת שקופית",
@@ -1003,6 +1094,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "slideParagraphList": "अनुच्छेद सूची",
+    "slideListNone": "कोई नहीं",
+    "slideListBullets": "बुलेट",
+    "slideListNumbers": "क्रमांकन",
+    "slideListLevel": "सूची स्तर",
+    "slideFitText": "पाठ को फ़्रेम में फ़िट करें",
+    "slideResetFit": "पाठ फ़िट रीसेट करें",
     "slideAdd": "स्लाइड जोड़ें",
     "slideDuplicate": "स्लाइड की प्रतिलिपि",
     "slideDelete": "स्लाइड हटाएँ",
@@ -1080,6 +1178,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "slideParagraphList": "รายการย่อหน้า",
+    "slideListNone": "ไม่มี",
+    "slideListBullets": "สัญลักษณ์แสดงหัวข้อย่อย",
+    "slideListNumbers": "ลำดับเลข",
+    "slideListLevel": "ระดับรายการ",
+    "slideFitText": "ปรับข้อความให้พอดีกับกรอบ",
+    "slideResetFit": "รีเซ็ตการปรับข้อความ",
     "slideAdd": "เพิ่มสไลด์",
     "slideDuplicate": "ทำสำเนาสไลด์",
     "slideDelete": "ลบสไลด์",
@@ -1157,6 +1262,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "slideParagraphList": "Danh sách đoạn",
+    "slideListNone": "Không",
+    "slideListBullets": "Dấu đầu dòng",
+    "slideListNumbers": "Đánh số",
+    "slideListLevel": "Cấp danh sách",
+    "slideFitText": "Vừa văn bản vào khung",
+    "slideResetFit": "Đặt lại điều chỉnh",
     "slideAdd": "Thêm trang chiếu",
     "slideDuplicate": "Nhân bản trang chiếu",
     "slideDelete": "Xóa trang chiếu",
@@ -1234,6 +1346,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "slideParagraphList": "Daftar paragraf",
+    "slideListNone": "Tidak ada",
+    "slideListBullets": "Poin",
+    "slideListNumbers": "Penomoran",
+    "slideListLevel": "Tingkat daftar",
+    "slideFitText": "Sesuaikan teks ke bingkai",
+    "slideResetFit": "Atur ulang penyesuaian",
     "slideAdd": "Tambah slide",
     "slideDuplicate": "Duplikasikan slide",
     "slideDelete": "Hapus slide",
@@ -1311,6 +1430,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "slideParagraphList": "Senarai perenggan",
+    "slideListNone": "Tiada",
+    "slideListBullets": "Bullet",
+    "slideListNumbers": "Penomboran",
+    "slideListLevel": "Aras senarai",
+    "slideFitText": "Muatkan teks dalam bingkai",
+    "slideResetFit": "Tetapkan semula pelarasan",
     "slideAdd": "Tambah slaid",
     "slideDuplicate": "Gandakan slaid",
     "slideDelete": "Padam slaid",
@@ -1388,6 +1514,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "slideParagraphList": "Paragraf listesi",
+    "slideListNone": "Yok",
+    "slideListBullets": "Madde işaretleri",
+    "slideListNumbers": "Numaralandırma",
+    "slideListLevel": "Liste düzeyi",
+    "slideFitText": "Metni çerçeveye sığdır",
+    "slideResetFit": "Metin sığdırmayı sıfırla",
     "slideAdd": "Slayt ekle",
     "slideDuplicate": "Slaytı çoğalt",
     "slideDelete": "Slaytı sil",
@@ -1465,6 +1598,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "slideParagraphList": "Alinealijst",
+    "slideListNone": "Geen",
+    "slideListBullets": "Opsommingstekens",
+    "slideListNumbers": "Nummering",
+    "slideListLevel": "Lijstniveau",
+    "slideFitText": "Tekst passend maken",
+    "slideResetFit": "Tekstaanpassing herstellen",
     "slideAdd": "Dia toevoegen",
     "slideDuplicate": "Dia dupliceren",
     "slideDelete": "Dia verwijderen",
@@ -1542,6 +1682,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "slideParagraphList": "Lista akapitów",
+    "slideListNone": "Brak",
+    "slideListBullets": "Punktory",
+    "slideListNumbers": "Numerowanie",
+    "slideListLevel": "Poziom listy",
+    "slideFitText": "Dopasuj tekst do ramki",
+    "slideResetFit": "Resetuj dopasowanie",
     "slideAdd": "Dodaj slajd",
     "slideDuplicate": "Duplikuj slajd",
     "slideDelete": "Usuń slajd",
@@ -1619,6 +1766,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "slideParagraphList": "Список абзаців",
+    "slideListNone": "Немає",
+    "slideListBullets": "Маркери",
+    "slideListNumbers": "Нумерація",
+    "slideListLevel": "Рівень списку",
+    "slideFitText": "Умістити текст у рамку",
+    "slideResetFit": "Скинути припасування",
     "slideAdd": "Додати слайд",
     "slideDuplicate": "Дублювати слайд",
     "slideDelete": "Видалити слайд",

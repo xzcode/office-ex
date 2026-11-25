@@ -59,7 +59,7 @@ export async function prepareDocumentPdfOutput(snapshot: DocumentSnapshot, conta
       if (block.type === 'paragraph') paragraphFonts(model, block);
       else if (block.type === 'table') for (const row of block.rows) for (const cell of row.cells) for (const paragraph of cell.blocks) { assert(paragraph.type === 'paragraph', 'unsupported', 'Nested table printing is unsupported'); paragraphFonts(model, paragraph); }
     }
-  } else for (const slide of model.slides) for (const shape of buildSlideScene(snapshot, slide.id).shapes) if (shape.type === 'text') for (const paragraph of shape.paragraphs) { fontStyle(paragraph.style); for (const run of paragraph.runs) { fontStyle(run.style); assertPdfTextCoverage(run.text); } }
+  } else for (const slide of model.slides) for (const shape of buildSlideScene(snapshot, slide.id).shapes) if (shape.type === 'text') for (const paragraph of shape.paragraphs) { fontStyle(paragraph.style); if(paragraph.marker){fontStyle(paragraph.marker.style);assertPdfTextCoverage(paragraph.marker.text);} for (const run of paragraph.runs) { fontStyle(run.style); assertPdfTextCoverage(run.text); } }
   await ensurePdfFonts();
   if (model.kind === 'writer') {
     const shaper = new BrowserParagraphShaper(), metrics = new CanvasFontMetrics(), engine = new WriterPaginationEngine();

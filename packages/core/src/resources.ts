@@ -89,6 +89,14 @@ export function resolveTextStyle(defaults: TextStyle, styles: Readonly<Record<st
   const merge=(value:TextStyle):void=>{
     if(value.lineHeight!==undefined||value.lineMultiple!==undefined||value.minLineHeight!==undefined){delete style.lineHeight;delete style.lineMultiple;delete style.minLineHeight;}
     if(value.fontFamily!==undefined){delete style.fontAscii;delete style.fontHighAnsi;delete style.fontEastAsia;delete style.fontComplex;}
+    // Paragraph spacing can switch between fixed and font-relative units.
+    if(value.slideParagraph?.beforePercent!==undefined)delete style.spaceBefore;
+    if(value.slideParagraph?.afterPercent!==undefined)delete style.spaceAfter;
+    if(value.slideParagraph===undefined&&style.slideParagraph&&(value.spaceBefore!==undefined||value.spaceAfter!==undefined)){
+      style.slideParagraph=cloneData(style.slideParagraph);
+      if(value.spaceBefore!==undefined)delete style.slideParagraph.beforePercent;
+      if(value.spaceAfter!==undefined)delete style.slideParagraph.afterPercent;
+    }
     style={...style,...cloneData(value)};
   };
   const append = (id: string, ancestors: Set<string>): void => {

@@ -23,5 +23,17 @@ model.slides[0].shapes[0].geometry.x+=914400;model.slides[0].shapes[4].geometry.
 const output=prepareSlidesSave('pptx',serializeDraft(model),model.documentId,source);const saved=openSlidesPptx(output,model.documentId);assert.equal(saved.document.slides.length,4);assert.equal(saved.document.slides[0].shapes[0].runs.map(r=>r.text).join(''),'Edited independent title');assert.equal(saved.document.slides[2].shapes[1].runs.map(r=>r.text).join(''),'Edited body');assert.deepEqual(saved.document.theme.majorFontDetails,model.theme.majorFontDetails);assert.deepEqual(saved.document.theme.colors.accent1,model.theme.colors.accent1);
 const oldParts=openOpc(source).parts,newParts=openOpc(output).parts;for(const path of [...opened.native.metadataPaths,...opened.native.auxiliaryPaths,opened.native.masterPath,...opened.native.layoutPaths,'_rels/.rels'])assert.deepEqual(newParts.get(path),oldParts.get(path),path);
 await writeFile(join(dir,'external-default-edited.pptx'),output);
-for(const file of ['external-autofit.pptx','external-bullets.pptx']){const bytes=await readFile(join(dir,file));const result=await inspectForEditor(bytes,file,'protected-external');assert.equal(result.report.readOnly,true,file);assert.throws(()=>openSlidesPptx(bytes,'protected-external'));}
-console.log('Standard template: text, title/body inheritance, picture, vector shapes, connector, soft break, theme and native source preservation; 2 unsupported profiles protected.');
+const listSource=await readFile(join(dir,'external-bullets.pptx')),listImport=openSlidesPptx(listSource,'external-bullets');
+const body=listImport.document.slides[0].shapes[1];
+assert.equal(body.type,'text');assert.deepEqual(body.textFrame.autofit,{mode:'normal',fontScale:85000,lineReduction:10000});
+let listScene=buildSlideScene(new DocumentSession(listImport.document).snapshot(),listImport.document.slides[0].id);
+assert.deepEqual(listScene.shapes[1].paragraphs.map(p=>p.marker?.text),['•','–','•','7.','8.','9.']);
+assert.equal(listScene.shapes[1].paragraphs[1].style.slideParagraph.level,1);
+assert.equal(listScene.shapes[1].paragraphs[0].style.slideParagraph.beforePercent,20000);
+body.runs.find(r=>r.text==='Nested bullet').text='Nested bullet edited';
+const listSaved=saveSlidesPptx(listSource,listImport.document);
+listScene=buildSlideScene(new DocumentSession(openSlidesPptx(listSaved,'external-bullets').document).snapshot(),'slide-1');
+assert.deepEqual(listScene.shapes[1].paragraphs.map(p=>p.marker?.text),['•','–','•','7.','8.','9.']);
+await writeFile(join(dir,'external-bullets-edited.pptx'),listSaved);
+for(const file of ['external-autofit.pptx','external-unsupported-numbering.pptx']){const bytes=await readFile(join(dir,file));const result=await inspectForEditor(bytes,file,'protected-external');assert.equal(result.report.readOnly,true,file);assert.throws(()=>openSlidesPptx(bytes,'protected-external'));}
+console.log('Standard template: text, title/body inheritance, picture, vector shapes, connector, soft break, theme and native source preservation; inherited multi-level lists, decimal numbering and cached normal autofit; 2 unsupported profiles protected.');

@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, ROTATION_UNITS_PER_DEGREE, OfficeError } from '@office-ex/contracts';
-import type { DocumentSnapshot, DocumentCommand, ImageResource, Shape, Geometry, TextStyle, Color, DeepReadonly } from '@office-ex/core';
-import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
+import type { DocumentSnapshot, DocumentCommand, ImageResource, Shape, Geometry, TextStyle, SlideParagraphFormat, Color, DeepReadonly } from '@office-ex/core';
+import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
 import { buildSlideScene, hitTest, shapeTransform, inverse, transform, type SlideScene, type Point } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
-import { createSlideSceneElement, slideCssColor, overflowingSlideText } from './slides-scene-dom.js';
+import { createSlideSceneElement, slideCssColor, overflowingSlideText, measureSlideTextFit } from './slides-scene-dom.js';
 
 export interface SlidesViewState {slideId?:string;selectedIds:string[];zoom:number;lockAspect?:boolean;flush?:()=>boolean;dispose?:()=>void}
 export interface SlidesHost {
   snapshot():DocumentSnapshot;execute(command:DocumentCommand):boolean;render():void;error(error:unknown):void;
   composing():boolean;setComposing(value:boolean):void;t(key:MessageKey,args?:Readonly<Record<string,string|number>>):string;number(value:number):string;
-  prepareImage(bytes:Uint8Array):Promise<ImageResource>;isCurrent():boolean;readOnly?:boolean;
+  prepareImage(bytes:Uint8Array):Promise<ImageResource>;isCurrent():boolean;readOnly?:boolean;legacyPresentation?:boolean;
 }
 interface Gesture {pointerId:number;revision:number;kind:'move'|'resize'|'rotate';start:Point;geometries:Record<string,Geometry>;preview:Record<string,Geometry>;shapeId?:string;corner?:string;angle?:number;frame?:number}
 let copiedShapes:{nonce:string;shapes:readonly ShapeSnapshot[];resources:Record<string,DeepReadonly<ImageResource>>}|undefined;
@@ -117,6 +117,37 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   const direction=element('select');for(const [value,key] of [['ltr','writerLtr'],['rtl','writerRtl']] as const){const option=element('option',t(key));option.value=value;direction.append(option);}field('writerParagraphDirection',direction,textGroup);direction.onchange=()=>safe(()=>{const shape=selectedText();if(shape&&flush())apply(setShapeTextFrame(snap(),state.slideId!,shape.id,{direction:direction.value as 'ltr'|'rtl'}));});
   const wrap=element('input');wrap.type='checkbox';field('sheetWrap',wrap,textGroup);wrap.onchange=()=>safe(()=>{const shape=selectedText();if(shape&&flush())apply(setShapeTextFrame(snap(),state.slideId!,shape.id,{wrap:wrap.checked}));});
   const vertical=element('select');for(const [value,key] of [['top','slideAlignTop'],['center','slideAlignMiddle'],['bottom','slideAlignBottom']] as const){const option=element('option',t(key));option.value=value;vertical.append(option);}field('slideAlignMiddle',vertical,textGroup);vertical.onchange=()=>safe(()=>{const shape=selectedText();if(shape&&flush())apply(setShapeTextFrame(snap(),state.slideId!,shape.id,{verticalAlignment:vertical.value as 'top'|'center'|'bottom'}));});
+  const listType=element('select');listType.id='slide-list-type';for(const [value,key]of [['none','slideListNone'],['char','slideListBullets'],['number','slideListNumbers']] as const){const option=element('option',t(key));option.value=value;listType.append(option);}field('slideParagraphList',listType,textGroup);
+  const listLevel=element('select');listLevel.id='slide-list-level';for(let n=1;n<=9;n++){const option=element('option',host.number(n));option.value=String(n);listLevel.append(option);}field('slideListLevel',listLevel,textGroup);
+  function paragraphFormat():DeepReadonly<SlideParagraphFormat>|undefined{
+    const shape=selectedText();if(!shape)return undefined;const at=textEditor.selectionStart;let offset=0;
+    for(const run of shape.runs){const end=offset+run.text.length;if(at<end||at===end&&run.text.length&&run.text.endsWith('\n'))return run.style?.slideParagraph??shape.textStyle?.slideParagraph;offset=end;}
+    return shape.runs.at(-1)?.style?.slideParagraph??shape.textStyle?.slideParagraph;
+  }
+  function applyList(kind:string,level:number):void{
+    if(host.legacyPresentation||!flush())return;const shape=selectedText();if(!shape)return;
+    if(!Number.isSafeInteger(level)||level<0||level>8)throw new OfficeError('invalid','Invalid paragraph list level');
+    const prior=paragraphFormat(),margin=kind==='none'?0:342900+level*457200;
+    const bullet:SlideParagraphFormat['bullet']=kind==='char'?(prior?.bullet?.kind==='char'?structuredClone(prior.bullet):{kind:'char',character:'•'}):kind==='number'?(prior?.bullet?.kind==='number'?structuredClone(prior.bullet):{kind:'number',scheme:'arabicPeriod'}):{kind:'none'};
+    apply(formatSlideParagraphs(snap(),state.slideId!,shape.id,{start:textEditor.selectionStart,end:textEditor.selectionEnd},{level:kind==='none'?0:level,marginLeft:margin,firstLineIndent:kind==='none'?0:-228600,bullet},id));
+  }
+  listType.onchange=()=>safe(()=>applyList(listType.value,Math.max(0,Number(listLevel.value)-1)));
+  listLevel.onchange=()=>safe(()=>applyList(listType.value,Number(listLevel.value)-1));
+  const fitButton=button('slideFitText',()=>{
+    const shape=selectedText();if(!shape||host.legacyPresentation)return;const revision=snap().revision,shapeId=shape.id,slideId=state.slideId!;
+    void document.fonts.ready.then(()=>safe(()=>{
+      if(disposed||!host.isCurrent()||snap().revision!==revision||state.slideId!==slideId||selectedText()?.id!==shapeId)return;
+      const candidate=buildSlideScene(snap(),slideId).shapes.find(s=>s.id===shapeId);if(candidate?.type!=='text')return;
+      const fontScale=measureSlideTextFit(candidate);if(!fontScale)throw new OfficeError('limit','Text cannot fit at the minimum supported scale');
+      apply(setShapeTextFrame(snap(),slideId,shapeId,{autofit:{mode:'normal',fontScale,lineReduction:candidate.autofit?.mode==='normal'?candidate.autofit.lineReduction:0}}));
+    }));
+  },textGroup,'slide-fit-text',true);
+  const resetFit=button('slideResetFit',()=>{const shape=selectedText();if(shape&&!host.legacyPresentation)apply(setShapeTextFrame(snap(),state.slideId!,shape.id,{autofit:{mode:'none'}}));},textGroup,'slide-reset-fit',true);
+  function syncListControls():void{
+    const style=paragraphFormat(),disabled=!!host.readOnly||!!host.legacyPresentation||!selectedText();listType.disabled=disabled;listLevel.disabled=disabled;fitButton.disabled=disabled;resetFit.disabled=disabled;
+    if(document.activeElement!==listType)listType.value=style?.bullet?.kind??'none';if(document.activeElement!==listLevel)listLevel.value=String((style?.level??0)+1);
+  }
+  textEditor.addEventListener('select',syncListControls);
   const slideGroup=element('fieldset');slideGroup.append(element('legend',t('slides')));inspector.append(slideGroup);
   const background=element('input');background.type='color';field('slideBackground',background,slideGroup);background.onchange=()=>safe(()=>{if(flush())apply(setSlideBackground(snap(),state.slideId!,rgb(background.value)));});
   const themeAccent=element('input');themeAccent.type='color';field('slideThemeAccent',themeAccent,slideGroup);themeAccent.onchange=()=>safe(()=>{if(!flush())return;const theme=doc().theme??DEFAULT_SLIDE_THEME;apply(setSlideTheme(snap(),{...theme,colors:{...theme.colors,accent1:rgb(themeAccent.value) as Extract<Color,{kind:'rgba'}>}}));});
@@ -134,6 +165,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     textGroup.disabled=!text||!!host.readOnly;
     if(text){if(editingId!==text.id||!textDirty){const focused=document.activeElement===textEditor,start=textEditor.selectionStart,end=textEditor.selectionEnd;textEditor.value=shapeText(text);if(focused)textEditor.setSelectionRange(Math.min(start,textEditor.value.length),Math.min(end,textEditor.value.length));}editingId=text.id;const style={...m.defaultTextStyle,...text.textStyle,...text.runs[0]?.style};font.value=style.fontFamily??'sans-serif';size.value=String((style.fontSize??304800)/EMU_PER_POINT);textColor.value=colorHex(style.color,'#182030');language.value=style.language??'und';direction.value=text.textFrame?.direction==='rtl'?'rtl':'ltr';wrap.checked=text.textFrame?.wrap??true;vertical.value=text.textFrame?.verticalAlignment??'top';textEditor.dir=text.textFrame?.direction??style.paragraphDirection??'auto';}
     else {editingId=undefined;textEditor.value='';textDirty=false;}
+    syncListControls();
     background.value=colorHex(current.slide.background,'#ffffff');themeAccent.value=colorHex(m.theme?.colors.accent1??DEFAULT_SLIDE_THEME.colors.accent1);slideWidth.value=String(Math.round(m.size.width/EMU_PER_POINT*100)/100);slideHeight.value=String(Math.round(m.size.height/EMU_PER_POINT*100)/100);
     position.textContent=t('slidePageNumber',{current:host.number(current.index+1),total:host.number(m.slides.length)});for(const thumb of rail.querySelectorAll<HTMLButtonElement>('[data-slide-id]')){thumb.setAttribute('aria-current',String(thumb.dataset.slideId===state.slideId));thumb.classList.toggle('is-current',thumb.dataset.slideId===state.slideId);}
   }

@@ -129,7 +129,7 @@ function documentView(tab:Tab):void{
     card.append(sheetsWorkspace({snapshot:()=>session.snapshot(),execute:command=>execute(tab,command,false),render,error:errorMessage,composing:()=>composing,setComposing:value=>{composing=value;},t,locale:regionLocale,isCurrent:()=>current()===tab,format:tab.format==='xls'||tab.format==='xlsx'?tab.format:'oex'},tab.sheetsState));
   }else{
     tab.slidesState??={selectedIds:[],zoom:0};card.classList.add('slides-workspace-card');
-    card.append(slidesWorkspace({snapshot:()=>session.snapshot(),execute:command=>execute(tab,command,false),render,error:errorMessage,composing:()=>composing,setComposing:value=>{composing=value;},t,number,prepareImage:bytes=>task<ImageResource>(tab.id+'-image','image',{bytes}),isCurrent:()=>current()===tab},tab.slidesState));
+    card.append(slidesWorkspace({snapshot:()=>session.snapshot(),execute:command=>execute(tab,command,false),render,error:errorMessage,composing:()=>composing,setComposing:value=>{composing=value;},t,number,prepareImage:bytes=>task<ImageResource>(tab.id+'-image','image',{bytes}),isCurrent:()=>current()===tab,legacyPresentation:tab.format==='ppt'},tab.slidesState));
   }
   content.append(card,text('p',t(tab.format==='docx'?'docxNote':tab.format==='doc'?'docNote':tab.format==='xls'?'xlsNote':tab.format==='xlsx'?'xlsxNote':tab.format==='pptx'||tab.format==='ppt'?'slidesFormatNote':'draftNote'),'boundary-note'));
   const details=document.createElement('div');details.className='info-row';details.append(text('span',`${t('revision')}: ${session.revision}`),text('span',`${t('history')}: ${number(session.historyUsage.items)} · ${number(Math.ceil(session.historyUsage.bytes/1024))} KB`));

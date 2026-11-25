@@ -25,7 +25,12 @@ function slides(): SlidesDocument {
     { id: 'r-' + i, type: 'rect', geometry: { x: 1000000, y: 3200000, width: 2400000, height: 1600000, rotation: i * 15 * 60000 }, fill: { kind: 'rgba', red: 44, green: 110, blue: 196, alpha: 255 } },
     { id: 'e-' + i, type: 'ellipse', geometry: { x: 3900000, y: 3200000, width: 1800000, height: 1500000, rotation: 0 }, fill: { kind: 'rgba', red: 231, green: 139, blue: 49, alpha: 255 } },
     { id: 'i-' + i, type: 'image', resourceId: asset.id, geometry: { x: 6500000, y: 3200000, width: 2400000, height: 1600000, rotation: 0 } },
-  ] })); return d;
+  ] }));
+  d.slides[0]!.shapes.push({id:'list-output',type:'text',geometry:{x:9144000,y:3000000,width:2500000,height:2200000,rotation:0},textFrame:{autofit:{mode:'normal',fontScale:75000,lineReduction:0}},runs:[
+    {id:'list-a',type:'text',text:'List alpha',style:{fontSize:228600,slideParagraph:{marginLeft:304800,firstLineIndent:-228600,bullet:{kind:'number',scheme:'arabicPeriod',startAt:3}}}},
+    {id:'list-b',type:'text',text:'\nList beta',style:{fontSize:228600,slideParagraph:{marginLeft:304800,firstLineIndent:-228600,bullet:{kind:'number',scheme:'arabicPeriod'}}}}
+  ]});
+  return d;
 }
 let state: PdfViewState | undefined;
 const errors: string[] = [];

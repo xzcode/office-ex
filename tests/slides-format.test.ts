@@ -150,3 +150,18 @@ test('DrawingML theme tint/shade and script fonts remain source-semantic across 
  d.slides[0]!.shapes=[{id:'text',type:'text',geometry:{x:0,y:0,width:9144000,height:1828800,rotation:0},fill:{kind:'theme',name:'accent1',tint:.5,tintSpace:'linear'},runs:[{id:'r1',type:'text',text:'中文',style:{fontFamily:'+mj-lt',fontEastAsia:'+mj-ea',fontComplex:'+mj-cs',fontSize:254000,language:'zh-CN'}}]}];
  const after=openSlidesPptx(writeSlidesPptx(d),d.documentId).document;assert.deepEqual(after.theme?.majorFontDetails,d.theme.majorFontDetails);const shape=after.slides[0]!.shapes[0]!;assert.deepEqual(shape.fill,d.slides[0]!.shapes[0]!.fill);assert.deepEqual(resolveSlideThemeColor(shape.fill!,after.theme),{kind:'rgba',red:188,green:255,blue:188,alpha:255});assert.equal(shape.type,'text');if(shape.type==='text')assert.equal(shape.runs[0]!.style?.fontEastAsia,'+mj-ea');assert.throws(()=>writeLegacyPpt(after),fail('unsupported'));
 });
+
+test('PPTX multilevel bullet properties, decimal numbering, percentage spacing and cached fit round trip',()=>{
+ const d=createDocument('slides','rich-lists');d.slides[0]!.shapes=[{id:'text',type:'text',geometry:{x:0,y:0,width:9144000,height:3000000,rotation:0},textFrame:{autofit:{mode:'normal',fontScale:85000,lineReduction:12000}},runs:[
+ {id:'r1',type:'text',text:'First',style:{fontSize:254000,slideParagraph:{level:0,marginLeft:342900,firstLineIndent:-228600,beforePercent:20000,bullet:{kind:'char',character:'•',font:'Arial',sizePercent:90000,color:{kind:'rgba',red:50,green:60,blue:70,alpha:255}}}}},
+ {id:'r2',type:'text',text:'\nSecond',style:{fontSize:254000,slideParagraph:{level:1,marginLeft:800100,firstLineIndent:-228600,bullet:{kind:'number',scheme:'arabicPeriod',startAt:5}}}},
+ {id:'r3',type:'text',text:'\nThird',style:{fontSize:254000,slideParagraph:{level:1,marginLeft:800100,firstLineIndent:-228600,bullet:{kind:'number',scheme:'arabicPeriod'}}}}
+ ]}];
+ const source=writeSlidesPptx(d),after=openSlidesPptx(source,d.documentId).document,shape=after.slides[0]!.shapes[0]!;assert.equal(shape.type,'text');if(shape.type!=='text')return;
+ assert.deepEqual(shape.textFrame?.autofit,{mode:'normal',fontScale:85000,lineReduction:12000});assert.equal(shape.runs.map(r=>r.text).join(''),'First\nSecond\nThird');
+ const first=shape.runs.find(r=>r.text==='First')!.style!.slideParagraph!;assert.equal(first.beforePercent,20000);assert.deepEqual(first.bullet,{kind:'char',character:'•',color:{kind:'rgba',red:50,green:60,blue:70,alpha:255},sizePercent:90000,font:'Arial'});
+ assert.equal(shape.runs.find(r=>r.text==='Second')!.style!.slideParagraph?.level,1);
+ assert.throws(()=>writeLegacyPpt(after),fail('unsupported'));
+ shape.runs.find(r=>r.text==='Third')!.text='Edited third';const reopened=openSlidesPptx(saveSlidesPptx(source,after),d.documentId).document;
+ assert.equal((reopened.slides[0]!.shapes[0] as Extract<Shape,{type:'text'}>).runs.map(r=>r.text).join(''),'First\nSecond\nEdited third');
+});

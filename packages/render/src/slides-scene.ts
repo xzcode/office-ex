@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 /** A revision-bound scene shared by editing, thumbnails, presentation and print. */
 import { assert, type Diagnostic } from '@office-ex/contracts';
-import { freezeData, resolveTextStyle, resolveSlideThemeColor, resolveSlideThemeFont, type DeepReadonly, type Color, type DocumentSnapshot, type Geometry, type ResourceRef, type Shape, type SlideTheme, type TextStyle } from '@office-ex/core';
+import { freezeData, resolveTextStyle, resolveSlideThemeColor, resolveSlideThemeFont, splitSlideParagraphs, firstSlideParagraphRun, type SlideTextFrame, type DeepReadonly, type Color, type DocumentSnapshot, type Geometry, type ResourceRef, type Shape, type SlideTheme, type TextStyle } from '@office-ex/core';
 
 type Rgba=Extract<Color,{kind:'rgba'}>;
 export interface SlideSceneRun {readonly id:string;readonly text:string;readonly style:DeepReadonly<TextStyle>}
-export interface SlideSceneParagraph {readonly runs:readonly SlideSceneRun[];readonly style:DeepReadonly<TextStyle>;readonly direction:'ltr'|'rtl'|'auto'}
+export interface SlideSceneParagraph {readonly runs:readonly SlideSceneRun[];readonly style:DeepReadonly<TextStyle>;readonly direction:'ltr'|'rtl'|'auto';readonly marker?:{readonly text:string;readonly style:DeepReadonly<TextStyle>}}
 interface SceneBase {readonly id:string;readonly geometry:DeepReadonly<Geometry>;readonly fill?:Rgba;readonly stroke?:{readonly color:Rgba;readonly width:number}}
-export type SlideSceneShape=(SceneBase&{readonly type:'rect'|'ellipse'|'line'})|(SceneBase&{readonly type:'image';readonly resourceId:string;readonly resource?:DeepReadonly<ResourceRef>})|(SceneBase&{readonly type:'text';readonly paragraphs:readonly SlideSceneParagraph[];readonly textStyle:DeepReadonly<TextStyle>;readonly wrap:boolean;readonly verticalAlignment:'top'|'center'|'bottom';readonly margins:{readonly top:number;readonly right:number;readonly bottom:number;readonly left:number};readonly direction:'ltr'|'rtl'|'auto'});
+export type SlideSceneShape=(SceneBase&{readonly type:'rect'|'ellipse'|'line'})|(SceneBase&{readonly type:'image';readonly resourceId:string;readonly resource?:DeepReadonly<ResourceRef>})|(SceneBase&{readonly type:'text';readonly paragraphs:readonly SlideSceneParagraph[];readonly textStyle:DeepReadonly<TextStyle>;readonly wrap:boolean;readonly verticalAlignment:'top'|'center'|'bottom';readonly margins:{readonly top:number;readonly right:number;readonly bottom:number;readonly left:number};readonly direction:'ltr'|'rtl'|'auto';readonly autofit?:DeepReadonly<NonNullable<SlideTextFrame['autofit']>>});
 export interface SlideScene {
   readonly documentId:string;readonly revision:number;readonly contentId:string;readonly slideId:string;readonly width:number;readonly height:number;readonly background:Rgba;readonly shapes:readonly SlideSceneShape[];readonly diagnostics:readonly Diagnostic[];
 }
@@ -26,11 +26,23 @@ export function buildSlideScene(snapshot:DocumentSnapshot,slideId:string):SlideS
       return {...base,type:'image',resourceId:shape.resourceId,...(resource?{resource}:{})};
     }
     if(shape.type!=='text')return {...base,type:shape.type};
-    const paragraphs:SlideSceneParagraph[]=[],textStyle=resolve(shape),direction=shape.textFrame?.direction??textStyle.paragraphDirection??'auto';let runs:SlideSceneRun[]=[];
-    const flush=()=>{const style=runs[0]?.style??textStyle;paragraphs.push({runs,style,direction:shape.textFrame?.direction&&shape.textFrame.direction!=='auto'?shape.textFrame.direction:style.paragraphDirection??direction});runs=[];};
-    for(const run of shape.runs){const pieces=run.text.split('\n'),style=resolve(shape,run.styleId,run.style,run.text);for(let i=0;i<pieces.length;i++){runs.push({id:run.id+':'+i,text:pieces[i]!,style});if(i<pieces.length-1)flush();}}
-    flush();
-    return {...base,type:'text',paragraphs,textStyle,wrap:shape.textFrame?.wrap??true,verticalAlignment:shape.textFrame?.verticalAlignment??'top',margins:shape.textFrame?.margins??{top:45720,right:91440,bottom:45720,left:91440},direction};
+    const textStyle=resolve(shape),direction=shape.textFrame?.direction??textStyle.paragraphDirection??'auto';
+    const counters=new Map<number,{scheme:string;value:number;start:number}>();
+    const paragraphs:SlideSceneParagraph[]=splitSlideParagraphs(shape.runs.map(run=>({id:run.id,text:run.text,style:resolve(shape,run.styleId,run.style,run.text)}))).map((source,index)=>{
+      const runs=source.map((run,i)=>({...run,id:run.id+':'+index+':'+i})),style=firstSlideParagraphRun(runs)?.style??textStyle,format=style.slideParagraph,level=format?.level??0,bullet=format?.bullet;
+      for(const key of counters.keys())if(key>level)counters.delete(key);
+      let marker:SlideSceneParagraph['marker'];
+      if(bullet&&bullet.kind!=='none'){
+        let text:string;
+        if(bullet.kind==='char'){text=bullet.character;counters.delete(level);}
+        else{const prior=counters.get(level),start=bullet.startAt??prior?.start??1;const value=prior&&prior.scheme===bullet.scheme&&prior.start===start?prior.value+1:start;counters.set(level,{scheme:bullet.scheme,value,start});text=bullet.scheme==='arabicPeriod'?value+'.':bullet.scheme==='arabicParenR'?value+')':bullet.scheme==='arabicParenBoth'?'('+value+')':String(value);}
+        const size=bullet.sizeEmu??Math.round((style.fontSize??304800)*(bullet.sizePercent??100000)/100000);
+        const markerStyle:TextStyle={fontFamily:resolveSlideThemeFont(bullet.font??style.fontFamily,doc.theme,text,style.language??'und'),fontSize:size,color:bullet.color?color(bullet.color):style.color,bold:style.bold,italic:style.italic,language:style.language};
+        marker={text,style:markerStyle};
+      }else counters.delete(level);
+      return {runs,style,direction:shape.textFrame?.direction&&shape.textFrame.direction!=='auto'?shape.textFrame.direction:style.paragraphDirection??direction,...(marker?{marker}:{})};
+    });
+    return {...base,type:'text',paragraphs,textStyle,wrap:shape.textFrame?.wrap??true,verticalAlignment:shape.textFrame?.verticalAlignment??'top',margins:shape.textFrame?.margins??{top:45720,right:91440,bottom:45720,left:91440},direction,...(shape.textFrame?.autofit?{autofit:shape.textFrame.autofit}:{})};
   });
   return freezeData({documentId:doc.documentId,revision:snapshot.revision,contentId:snapshot.contentId,slideId,width:doc.size.width,height:doc.size.height,background:color(slide.background),shapes,diagnostics});
 }

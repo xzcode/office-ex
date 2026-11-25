@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OfficeError, EMU_PER_POINT, graphemeBoundaries } from '@office-ex/contracts';
 import { createDocument, DocumentSession, makeImageResource, patchCommand, validateDocument, type SlidesDocument, type Shape } from '@office-ex/core';
-import { addSlide, duplicateSlide, deleteSlide, moveSlide, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, replaceShapeText, formatShapeText, shapeText, slideTextEditDiff, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes } from '@office-ex/slides';
+import { addSlide, duplicateSlide, deleteSlide, moveSlide, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, replaceShapeText, formatShapeText, formatSlideParagraphs, shapeText, slideTextEditDiff, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes } from '@office-ex/slides';
 import { buildSlideScene, resolveSlideColor, hitTest, shapeTransform, transform } from '@office-ex/render';
 import { PNG, JPEG } from './writer-image-fixture.js';
 const fails=(code:string)=>(error:unknown)=>error instanceof OfficeError&&error.code===code;
@@ -85,4 +85,22 @@ test('SLD-01 schema rejects invalid text-frame and cyclic theme colors without d
   const s=sample(),before=s.snapshot();assert.throws(()=>s.execute(setShapeTextFrame(s.snapshot(),'slide-1','text',{margins:{top:-1,right:0,bottom:0,left:0}})),fails('invalid'));
   assert.throws(()=>s.execute(setSlideTheme(s.snapshot(),{name:'invalid',colors:{accent1:{kind:'theme',name:'accent1'} as never}})),fails('invalid'));
   assert.deepEqual(s.snapshot(),before);assert.throws(()=>buildSlideScene(s.snapshot(),'missing'),fails('invalid'));assert.throws(()=>resolveSlideColor({kind:'theme',name:'unknown'}),fails('unsupported'));
+});
+
+test('Paragraph list commands affect only selected paragraphs, retain text and undo; numbering follows level',()=>{
+ const d=createDocument('slides','list-transaction');d.slides[0]!.shapes=[{id:'text',type:'text',geometry,runs:[{id:'r',type:'text',text:'One\nTwo\nThree\nFour'}]}];
+ const s=new DocumentSession(d,{saved:true}),ids=next();
+ s.execute(formatSlideParagraphs(s.snapshot(),'slide-1','text',{start:0,end:18},{marginLeft:342900,firstLineIndent:-228600,bullet:{kind:'number',scheme:'arabicPeriod'}},ids));
+ s.execute(formatSlideParagraphs(s.snapshot(),'slide-1','text',{start:4,end:7},{level:1,marginLeft:800100},ids));
+ const scene=buildSlideScene(s.snapshot(),'slide-1'),shape=scene.shapes[0]!;
+ assert.equal(shape.type,'text');if(shape.type!=='text')return;
+ assert.deepEqual(shape.paragraphs.map(p=>p.marker?.text),['1.','1.','2.','3.']);
+ assert.equal(shapeText(model(s).slides[0]!.shapes[0]!),'One\nTwo\nThree\nFour');
+ s.undo();s.undo();assert.deepEqual(s.snapshot().document,d);assert.equal(s.dirty,false);
+});
+
+test('Presentation validation rejects conflicting bullet size and unbounded fit scale',()=>{
+ const d=createDocument('slides','list-validation');d.slides[0]!.shapes=[{id:'text',type:'text',geometry,runs:[{id:'r',type:'text',text:'Test',style:{slideParagraph:{bullet:{kind:'char',character:'•',sizePercent:100000,sizeEmu:254000}}}}]}];
+ assert.throws(()=>validateDocument(d),fails('invalid'));
+ const shape=d.slides[0]!.shapes[0] as Extract<Shape,{type:'text'}>;shape.runs[0]!.style={};shape.textFrame={autofit:{mode:'normal',fontScale:0,lineReduction:0}};assert.throws(()=>validateDocument(d),fails('invalid'));
 });

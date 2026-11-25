@@ -61,6 +61,7 @@ def verify(output: Path):
             assert len(reader.pages)==3
             for i in range(1,4): assert f'Slide {i}' in text, text[:400]
             assert '文本' in text, text[:400]
+            assert re.search(r'3\.\s*List alpha',text) and re.search(r'4\.\s*List beta',text), text
         assert any(len(page.images) for page in reader.pages), f'{kind}: embedded images absent'
         evidence[kind] = {'pages': len(reader.pages), 'pageSizesPt': [[float(page.mediabox.width),float(page.mediabox.height)] for page in reader.pages], 'fontCount': len(rows), 'allFontsEmbeddedWithUnicode': True, 'pagesWithImages': sum(bool(len(page.images)) for page in reader.pages)}
     (output/'independent-result.json').write_text(json.dumps(evidence,indent=2)+'\n',encoding='utf-8')

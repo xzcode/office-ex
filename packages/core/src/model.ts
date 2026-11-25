@@ -2,9 +2,13 @@ import { validateImageResource } from './images.js';
 import { OfficeError, assert, assertCellAddress, assertId, assertUnicode, isRecord, type DocumentKind } from '@office-ex/contracts';
 
 export type Color = { kind: 'rgba'; red: number; green: number; blue: number; alpha: number } | { kind: 'theme'; name: string; tint?: number; tintSpace?: 'linear' };
+/** Presentation-only paragraph formatting. Values retain DrawingML units. */
+export type SlideBullet = {kind:'none'} | ({kind:'char';character:string}|{kind:'number';scheme:'arabicPeriod'|'arabicParenR'|'arabicParenBoth'|'arabicPlain';startAt?:number}) & {font?:string;color?:Color;sizePercent?:number;sizeEmu?:number};
+export interface SlideParagraphFormat {level?:number;marginLeft?:number;marginRight?:number;firstLineIndent?:number;beforePercent?:number;afterPercent?:number;bullet?:SlideBullet}
 export interface TextStyle {
   fontFamily?: string; fontAscii?:string; fontHighAnsi?:string; fontEastAsia?:string; fontComplex?:string; fontSize?: number; complexFontSize?:number; bold?: boolean; italic?: boolean; underline?: boolean;
   color?: Color; language?:string; eastAsiaLanguage?:string; bidiLanguage?:string; runDirection?:'ltr'|'rtl'; paragraphDirection?:'ltr'|'rtl'; alignment?: 'start' | 'center' | 'end' | 'justify';
+  slideParagraph?:SlideParagraphFormat;
   indent?: number; spaceBefore?: number; spaceAfter?: number; lineHeight?: number; lineMultiple?:number; minLineHeight?:number; keepNext?:boolean; keepLines?:boolean; outlineLevel?:number; widowControl?:boolean;
 }
 export interface NamedStyle { id: string; name: string; basedOn?: string; kind?: 'paragraph' | 'character'; toggles?: readonly ('bold' | 'italic')[]; properties: TextStyle }
@@ -37,7 +41,7 @@ export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSyste
 
 export interface Geometry { x: number; y: number; width: number; height: number; rotation: number }
 interface ShapeBase { id: string; geometry: Geometry; fill?: Color; stroke?: { color: Color; width: number } }
-export interface SlideTextFrame { wrap?: boolean; verticalAlignment?: 'top'|'center'|'bottom'; margins?: {top:number;right:number;bottom:number;left:number}; direction?: 'ltr'|'rtl'|'auto' }
+export interface SlideTextFrame { autofit?:{mode:'none'}|{mode:'normal';fontScale:number;lineReduction:number}; wrap?: boolean; verticalAlignment?: 'top'|'center'|'bottom'; margins?: {top:number;right:number;bottom:number;left:number}; direction?: 'ltr'|'rtl'|'auto' }
 export interface SlideThemeFontDetails { eastAsia?:string; complex?:string; scripts?:Record<string,string> }
 export interface SlideTheme { name:string; colors:Record<string,Extract<Color,{kind:'rgba'}>>; majorFont?:string; minorFont?:string; majorFontDetails?:SlideThemeFontDetails; minorFontDetails?:SlideThemeFontDetails }
 export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: 'rect' | 'ellipse' | 'line' }) | (ShapeBase & { type: 'image'; resourceId: string });
@@ -117,8 +121,27 @@ export function isDocumentLanguageTag(value:unknown):value is string{
   if(typeof value!=='string'||!value.length||value.length>128)return false;
   try{return Intl.getCanonicalLocales(value).length===1;}catch{return false;}
 }
+export function validateSlideParagraph(value:unknown):asserts value is SlideParagraphFormat{
+  const format=object(value,['level','marginLeft','marginRight','firstLineIndent','beforePercent','afterPercent','bullet']);
+  if(format.level!==undefined)integer(format.level,0,8);
+  for(const key of ['marginLeft','marginRight'])if(format[key]!==undefined)integer(format[key],0,51206400);
+  if(format.firstLineIndent!==undefined)integer(format.firstLineIndent,-51206400,51206400);
+  for(const key of ['beforePercent','afterPercent'])if(format[key]!==undefined)integer(format[key],0,1000000);
+  if(format.bullet!==undefined){
+    const bullet=object(format.bullet,['kind','character','scheme','startAt','font','color','sizePercent','sizeEmu']);
+    assert(['none','char','number'].includes(String(bullet.kind)),'invalid','Invalid slide bullet');
+    if(bullet.kind==='none'){assert(Object.keys(bullet).length===1,'invalid','Unexpected disabled bullet format');return;}
+    if(bullet.kind==='char'){assert(typeof bullet.character==='string'&&Array.from(bullet.character).length===1&&!/[\u0000-\u0020\u007f]/u.test(bullet.character),'invalid','Invalid bullet character');assert(bullet.scheme===undefined&&bullet.startAt===undefined,'invalid','Unexpected bullet numbering');}
+    else{assert(bullet.character===undefined&&['arabicPeriod','arabicParenR','arabicParenBoth','arabicPlain'].includes(String(bullet.scheme)),'invalid','Invalid slide numbering scheme');if(bullet.startAt!==undefined)integer(bullet.startAt,1,32767);}
+    if(bullet.font!==undefined)validateTextStyle({fontFamily:bullet.font});
+    if(bullet.color!==undefined)validateColor(bullet.color);
+    if(bullet.sizePercent!==undefined)integer(bullet.sizePercent,25000,400000);
+    if(bullet.sizeEmu!==undefined)integer(bullet.sizeEmu,12700,5080000);
+    assert(!(bullet.sizePercent!==undefined&&bullet.sizeEmu!==undefined),'invalid','Conflicting bullet sizes');
+  }
+}
 export function validateTextStyle(value: unknown): asserts value is TextStyle {
-  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection']);
+  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection','slideParagraph']);
   for(const key of ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex'])if(style[key]!==undefined){text(style[key],512,false);assert(!/[\x00-\x1f\x7f]/.test(style[key] as string),'invalid','Invalid font family');}
   if (style.fontSize !== undefined) integer(style.fontSize, 1, 12_700 * 1638);
   if(style.complexFontSize!==undefined)integer(style.complexFontSize,1,12_700*1638);
@@ -133,6 +156,7 @@ export function validateTextStyle(value: unknown): asserts value is TextStyle {
   for(const key of ['runDirection','paragraphDirection'])if(style[key]!==undefined)assert(style[key]==='ltr'||style[key]==='rtl','invalid','Invalid document direction');
   if (style.alignment !== undefined) assert(['start', 'center', 'end', 'justify'].includes(String(style.alignment)), 'invalid', 'Invalid text alignment');
   if (style.indent !== undefined) integer(style.indent);
+  if(style.slideParagraph!==undefined){validateSlideParagraph(style.slideParagraph);const p=style.slideParagraph as SlideParagraphFormat;assert(!(p.beforePercent!==undefined&&style.spaceBefore!==undefined)&&!(p.afterPercent!==undefined&&style.spaceAfter!==undefined),'invalid','Conflicting paragraph spacing');}
   for (const key of ['spaceBefore', 'spaceAfter', 'lineHeight']) if (style[key] !== undefined) integer(style[key], 0);
 }
 
@@ -291,7 +315,8 @@ export function validateDocument(value: unknown): OfficeDocument {
           assert(!('resourceId' in shape), 'invalid', 'Unexpected text shape fields'); list(shape.runs).forEach((item) => run(item, true));
           if(shape.textStyle!==undefined)validateTextStyle(shape.textStyle);
           if(shape.textFrame!==undefined){
-            const frame=object(shape.textFrame,['wrap','verticalAlignment','margins','direction']);
+            const frame=object(shape.textFrame,['wrap','verticalAlignment','margins','direction','autofit']);
+            if(frame.autofit!==undefined){const fit=object(frame.autofit,['mode','fontScale','lineReduction']);if(fit.mode==='none')assert(Object.keys(fit).length===1,'invalid','Unexpected fixed text fit values');else{assert(fit.mode==='normal','invalid','Unsupported text fit mode');integer(fit.fontScale,1000,100000);integer(fit.lineReduction,0,99000);}}
             if(frame.wrap!==undefined)bool(frame.wrap);
             if(frame.verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(frame.verticalAlignment)),'invalid','Invalid text frame alignment');
             if(frame.direction!==undefined)assert(['ltr','rtl','auto'].includes(String(frame.direction)),'invalid','Invalid text frame direction');
