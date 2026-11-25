@@ -153,10 +153,13 @@ export function parseFormula(source: string, options: ParseFormulaOptions = {}):
   assert(Number.isInteger(maxDepth) && maxDepth >= 1 && maxDepth <= 256, "invalid", "Invalid formula depth budget");
   const peek = (): Token => tokens[cursor] ?? { kind: "end", text: "" };
   const take = (): Token => { const token = peek(); assert(token.kind !== "end", "invalid", "Unexpected end of formula"); cursor++; return token; };
+  const symbol = (text: string): boolean => peek().kind === "symbol" && peek().text === text;
   const expect = (text2: string) => {
-    assert(take().text === text2, "invalid", "Unexpected formula token");
+    const token = take();
+    assert(token.kind === "symbol" && token.text === text2, "invalid", "Unexpected formula token");
   };
   const reference = (token: Token, sheet?: string): FormulaReference | undefined => {
+    if (token.kind !== "word") return undefined;
     const match = /^(\$?)([A-Za-z]{1,3})(\$?)([1-9]\d*)$/.exec(token.text);
     if (!match) return void 0;
     const row = Number(match[4]), column = columnNumber(match[2]);
@@ -164,13 +167,14 @@ export function parseFormula(source: string, options: ParseFormulaOptions = {}):
     return { kind: "reference", ...sheet !== void 0 ? { sheet } : {}, row, column, rowAbsolute: !!match[3], columnAbsolute: !!match[1] };
   };
   const parseReference = (first: Token, sheet?: string): FormulaReference | FormulaRange | undefined => {
+    if (first.kind !== "word" && first.kind !== "number") return undefined;
     const start = reference(first, sheet);
     if (start) {
-      if (peek().text !== ":") return start;
+      if (!symbol(":")) return start;
       take();
       let endToken2 = take();
       let endSheet = sheet;
-      if (peek().text === "!") {
+      if (symbol("!")) {
         assert(endToken2.kind === "word" || endToken2.kind === "quoted", "invalid", "Invalid range sheet");
         endSheet = endToken2.text;
         take();
@@ -181,11 +185,12 @@ export function parseFormula(source: string, options: ParseFormulaOptions = {}):
       assert((end.sheet ?? sheet) === sheet, "unsupported", "Three-dimensional range is unsupported");
       return { kind: "range", start, end };
     }
-    if (peek().text !== ":") return void 0;
+    if (!symbol(":")) return void 0;
     const col = /^(\$?)([A-Za-z]{1,3})$/.exec(first.text), row = /^(\$?)([1-9]\d*)$/.exec(first.text);
     assert(col || row, "unsupported", "Unsupported reference range");
     take();
     const endToken = take();
+    assert(endToken.kind === "word" || endToken.kind === "number", "invalid", "Invalid range endpoint token");
     if (col) {
       const other2 = /^(\$?)([A-Za-z]{1,3})$/.exec(endToken.text);
       assert(other2, "invalid", "Invalid whole column range");
@@ -203,28 +208,28 @@ export function parseFormula(source: string, options: ParseFormulaOptions = {}):
     assert(depth <= maxDepth, "limit", "Formula AST depth exceeded");
     options.cancellation?.throwIfCancelled();
     const token = take();
-    if (token.text === "+" || token.text === "-") return { kind: "unary", operator: token.text, operand: primary(depth + 1) };
-    if (token.text === "(") {
+    if (token.kind === "symbol" && (token.text === "+" || token.text === "-")) return { kind: "unary", operator: token.text, operand: primary(depth + 1) };
+    if (token.kind === "symbol" && token.text === "(") {
       const value = expression(1, depth + 1);
       expect(")");
       return value;
     }
     if (token.kind === "string") return { kind: "string", value: token.text };
     if (token.kind === "error") return { kind: "error", value: token.text as FormulaError };
-    if ((token.kind === "word" || token.kind === "quoted") && peek().text === "!") {
+    if ((token.kind === "word" || token.kind === "quoted") && symbol("!")) {
       take();
       const ref2 = parseReference(take(), token.text);
       assert(ref2, "unsupported", "Only cell and range sheet references are supported");
       return ref2;
     }
-    if (token.kind === "word" && peek().text === "(") {
+    if (token.kind === "word" && symbol("(")) {
       take();
       const args: FormulaNode[] = [];
-      if (peek().text !== ")") {
+      if (!symbol(")")) {
         while (true) {
           assert(args.length < 255, "limit", "Function argument budget exceeded");
-          args.push(peek().text === "," || peek().text === ")" ? { kind: "missing" } : expression(1, depth + 1));
-          if (peek().text !== ",") break;
+          args.push(symbol(",") || symbol(")") ? { kind: "missing" } : expression(1, depth + 1));
+          if (!symbol(",")) break;
           take();
         }
       }
@@ -242,7 +247,7 @@ export function parseFormula(source: string, options: ParseFormulaOptions = {}):
   const expression = (minimum: number, depth: number): FormulaNode => {
     assert(depth <= maxDepth, "limit", "Formula AST depth exceeded");
     let left = primary(depth);
-    while (peek().text === "%") {
+    while (symbol("%")) {
       take();
       left = { kind: "unary", operator: "%", operand: left };
     }

@@ -112,3 +112,5 @@ M2 集成第六批候选：增加图片原始字节/摘要、受限 PNG/JPEG 插
 ## M3 source recovery (2026-11-25)
 
 The previous M3 source tree was not found in the accessible workspaces or remote branches. Preserve browser output and raw measurement on recovery/m3-20261125 (b4d84c9); continue source reconstruction on m3-sheets-recovery-20261125. See [M3-RECOVERY.md](M3-RECOVERY.md) for scope, verification, and missing source. This first batch restores the typed formula lexer/parser/serializer and locale rules, not the complete calculation engine or M3. The M2 Writer and master branches are untouched.
+
+M3 recovery batch 2 (2026-11-25): restored typed formula evaluator, sparse range/dependency indexes, topological and incremental recalculation, cycle and cache isolation, cancellation/budgets. Formula parser token-kind defect corrected. Local typecheck/architecture and 21/21 targeted tests passed. See docs/M3-RECOVERY.md; next recover spreadsheet commands, formatting, virtual grid/workspace, clipboard and worker integration. M3 and compatibility/release acceptance remain incomplete.

@@ -25,3 +25,4 @@ export function renameSheet(snapshot: DocumentSnapshot, sheetId: string, name: s
 }
 
 export * from './formula.js';
+export * from './calculation.js';
