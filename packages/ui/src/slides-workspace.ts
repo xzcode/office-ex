@@ -62,7 +62,23 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   const later=button('slideLater',()=>{const current=locateSlide(snap(),state.slideId!);apply(moveSlide(snap(),state.slideId!,current.index+1));},toolbar,'slide-later');
   for(const [type,key] of [['text','slideText'],['rect','slideRectangle'],['ellipse','slideEllipse'],['line','slideLine']] as const)button(key,()=>addShape(type),toolbar,'slide-insert-'+type);
   const fileInput=element('input');fileInput.type='file';fileInput.accept='image/png,image/jpeg';fileInput.hidden=true;root.append(fileInput);
-  button('writerInsertImage',()=>fileInput.click(),toolbar,'slide-insert-image');fileInput.onchange=()=>{const file=fileInput.files?.[0];fileInput.value='';if(!file)return;const documentId=snap().document.documentId,slideId=state.slideId!,revision=snap().revision;void(async()=>{try{if(file.size>8*1024*1024)throw new OfficeError('limit','Image byte budget exceeded');const resource=await host.prepareImage(new Uint8Array(await file.arrayBuffer()));if(disposed||!host.isCurrent()||snap().document.documentId!==documentId||snap().revision!==revision)return;const m=doc(),fit=aspectFitImage(resource,m.size.width*.6,m.size.height*.6),shapeId=id(),slide=locateSlide(snap(),slideId).slide;if(apply(insertSlideImage(snap(),slideId,slide.shapes.length,shapeId,resource,{x:Math.round((m.size.width-fit.width)/2),y:Math.round((m.size.height-fit.height)/2),...fit,rotation:0})))choose([shapeId]);}catch(error){host.error(error);}})();};
+  let imageRequest=0;
+  button('writerInsertImage',()=>fileInput.click(),toolbar,'slide-insert-image');
+  fileInput.onchange=()=>safe(()=>{
+    const file=fileInput.files?.[0];fileInput.value='';if(!file||disposed||host.readOnly||!host.isCurrent())return;
+    // File selection can arrive before a pending text debounce or without the toolbar click.
+    if(!flush())throw new OfficeError('conflict','Finish the current text edit before inserting an image');
+    const request=++imageRequest,{document:{documentId},revision}=snap(),slideId=state.slideId!;
+    void(async()=>{try{
+      if(file.size>8*1024*1024)throw new OfficeError('limit','Image byte budget exceeded');
+      const resource=await host.prepareImage(new Uint8Array(await file.arrayBuffer()));
+      if(disposed||request!==imageRequest||!host.isCurrent()||snap().document.documentId!==documentId)return;
+      // Never insert into a different slide or silently overwrite newer editing state.
+      if(host.readOnly||state.slideId!==slideId||!flush()||snap().revision!==revision)throw new OfficeError('conflict','The slide changed while preparing the image; please insert it again');
+      const m=doc(),fit=aspectFitImage(resource,m.size.width*.6,m.size.height*.6),shapeId=id(),slide=locateSlide(snap(),slideId).slide;
+      if(apply(insertSlideImage(snap(),slideId,slide.shapes.length,shapeId,resource,{x:Math.round((m.size.width-fit.width)/2),y:Math.round((m.size.height-fit.height)/2),...fit,rotation:0})))choose([shapeId]);
+    }catch(error){if(!disposed&&request===imageRequest&&host.isCurrent())host.error(error);}})();
+  });
   button('slidePresent',()=>present(),toolbar,'slide-present',false,false);
   button('menuZoomOut',()=>{state.zoom=Math.max(.1,zoom/1.25);resize();},toolbar,'slide-zoom-out',false,false);
   button('menuResetZoom',()=>{state.zoom=0;resize();},toolbar,'slide-zoom-fit',false,false);

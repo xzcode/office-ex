@@ -34,7 +34,7 @@ try{
   for(const name of ['savePpt','savePptx','exportPdf']){const result=await page.evaluate(method=>window.office[method]({documentId:'forged',revision:0,contentId:'forged:content:0',title:'forged',saveAs:false,bytes:new Uint8Array([1,2])}),name);assert.equal(result.ok,false);}
   const raw=await page.evaluate(()=>window.office.print({kind:'pdf',documentId:'forged',revision:0,sourceToken:'forged',bytes:new Uint8Array([1,2])}));assert.equal(raw.ok,false);record('Forged native presentation/export capabilities and caller PDF bytes rejected');
   await page.locator('#new-pptx').click();await page.locator('#slide-insert-rect').click();await page.locator('#slide-insert-text').click();await page.locator('#slide-text-editor').fill('Native presentation 中文 العربية עברית हिन्दी ไทย');
-  await page.locator('#slides-workspace input[type=file]').setInputFiles(pngPath);await page.waitForFunction(()=>document.querySelectorAll('#slide-canvas [data-shape-type=image]').length===1);
+  const [chooser]=await Promise.all([page.waitForEvent('filechooser'),page.locator('#slide-insert-image').click()]);await chooser.setFiles(pngPath);await page.waitForFunction(()=>document.querySelectorAll('#slide-canvas [data-shape-type=image]').length===1);
   // Use the real layer command: the default inserted image overlaps the text box.
   await page.locator('#slide-layer-back').click();
   await page.locator('#slide-duplicate').click();await page.locator('#slide-duplicate').click();assert.equal(await page.locator('.slides-thumbnail').count(),3);

@@ -40,10 +40,22 @@ jobs:
       - run: npm run setup:fonts
       - run: npm run setup:desktop
       - run: node --import tsx --test tests/file-service.test.ts tests/recovery.test.ts tests/ipc-policy.test.ts tests/settings.test.ts
+      - name: Install independent PDF inspection tools (macOS)
+        run: brew install poppler
+      - name: Native M4 Slides and PDF smoke (macOS)
+        run: npm run smoke:m4
+      - name: Focused PDF cancellation regression (macOS)
+        run: node scripts/smoke-pdf-cancel.mjs
       - run: npm run smoke:desktop
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
-        with: {name: m4-native-macos-arm64, path: out/native, if-no-files-found: warn}
+        with:
+          name: m4-native-macos-arm64
+          path: |
+            out/native
+            out/m4-native
+            out/pdf-cancel
+          if-no-files-found: warn
   native-other:
     needs: verify-m4
     strategy:
@@ -70,15 +82,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core poppler-utils
       - run: node --import tsx --test tests/file-service.test.ts tests/recovery.test.ts tests/ipc-policy.test.ts tests/settings.test.ts
-      - name: Native Linux smoke with sandbox enabled
-        if: runner.os == 'Linux'
-        run: xvfb-run -a --server-args="-screen 0 1280x900x24" npm run smoke:desktop
+      - name: Install independent PDF inspection tools (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install poppler --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Command pdfinfo, pdftotext -ErrorAction Stop
       - name: Native M4 Slides and PDF smoke (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a --server-args="-screen 0 1280x900x24" npm run smoke:m4
+      - name: Native M4 Slides and PDF smoke (Windows)
+        if: runner.os == 'Windows'
+        run: npm run smoke:m4
       - name: Focused PDF cancellation regression (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a --server-args="-screen 0 1280x900x24" node scripts/smoke-pdf-cancel.mjs
+      - name: Focused PDF cancellation regression (Windows)
+        if: runner.os == 'Windows'
+        run: node scripts/smoke-pdf-cancel.mjs
+      - name: Native Linux smoke with sandbox enabled
+        if: runner.os == 'Linux'
+        run: xvfb-run -a --server-args="-screen 0 1280x900x24" npm run smoke:desktop
       - name: Native Windows smoke
         if: runner.os == 'Windows'
         run: npm run smoke:desktop
