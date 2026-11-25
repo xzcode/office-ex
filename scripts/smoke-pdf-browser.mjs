@@ -57,6 +57,11 @@ await page.route('**/*', route => { const target = route.request().url(); if (!t
 try {
   await page.goto(url); await page.waitForFunction(() => !!window.pdfSmoke);
   const writer = await page.evaluate(() => window.pdfSmoke.output('writer'));
+  const rule=page.locator('.writer-paragraph-bottom-rule');
+  assert.equal(await rule.count(),1);
+  const ruleBox=await rule.evaluate(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,color:getComputedStyle(el).backgroundColor}));
+  assert.ok(ruleBox.width>100&&ruleBox.height>0);assert.equal(ruleBox.color,'rgb(79, 129, 189)');
+  checks.push({name:'Writer paragraph rule and hanging indentation are rendered in shared print projection'});
   const writerBytes = await exportPdf(join(output, 'writer.pdf'));
   assert(writer.pages >= 3); checks.push({ name: 'Writer final native layout exports multiple pages', pages: writer.pages });
   const slides = await page.evaluate(() => window.pdfSmoke.output('slides'));

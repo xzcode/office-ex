@@ -54,3 +54,29 @@ test('WRT-02 bounded layout cancels and rejects unsupported bidi, split grapheme
   const d=document('');d.sections[0]!.blocks=[{id:'p',type:'paragraph',runs:[{id:'r1',type:'text',text:'e'},{id:'r2',type:'text',text:'\u0301'}]}];
   assert.throws(()=>layoutWriter(new DocumentSession(d).snapshot(),font),fails('unsupported'));
 });
+
+test('M5 contextual spacing and paragraph bottom rules use adjacent style identity and exclude decoration from caret height',()=>{
+ const d=document('');d.sections[0]!.page={width:2000000,height:5000000,margins:{top:100000,bottom:100000,left:100000,right:100000}};
+ const rule={color:{kind:'rgba' as const,red:79,green:129,blue:189,alpha:255},width:12700,space:50800};
+ d.styles={Title:{id:'Title',name:'Title',kind:'paragraph',properties:{fontSize:152400,spaceBefore:63500,spaceAfter:127000,contextualSpacing:true,paragraphBottomBorder:rule,indent:127000,rightIndent:127000,firstLineIndent:-63500}}};
+ d.sections[0]!.blocks=[
+ {id:'p1',type:'paragraph',styleId:'Title',runs:[{id:'r1',type:'text',text:'A'}]},
+ {id:'p2',type:'paragraph',styleId:'Title',runs:[{id:'r2',type:'text',text:'B'}]},
+ {id:'p3',type:'paragraph',runs:[{id:'r3',type:'text',text:'C'}]}
+ ];
+ const result=layoutWriter(new DocumentSession(d).snapshot(),font),[first,second,third]=result.pages[0]!.lines;
+ assert.equal(first!.x,163500);assert.equal(first!.y,163500);assert.equal(first!.bottomBorder,undefined);
+ assert.equal(second!.y,first!.y+first!.height);assert.equal(second!.bottomBorder!.x,227000);
+ assert.equal(second!.bottomBorder!.width,1546000);assert.equal(second!.height-second!.contentHeight!,63500);
+ assert.equal(third!.y,second!.y+second!.height+127000);
+ const caret=writerCaretBox(result,{paragraphId:'p2',offset:1});assert.equal(caret?.height,second!.contentHeight);
+ assert.equal(writerSelectionBoxes(result,'p2',0,1)[0]?.height,second!.contentHeight);
+});
+
+test('M5 right and first-line indent constrain wrapping and preserve hanging-line coordinates',()=>{
+ const d=document('abcdef');const p=d.sections[0]!.blocks[0]!;if(p.type!=='paragraph')throw Error();
+ p.style={indent:100,rightIndent:100,firstLineIndent:-50};
+ const lines=layoutWriter(new DocumentSession(d).snapshot(),font).pages.flatMap(page=>page.lines);
+ assert.equal(lines[0]!.x,100);assert.equal(lines[1]!.x,150);assert.equal(lines[0]!.fragments.map(f=>f.text).join(''),'ab');assert.ok(lines.every(line=>line.x+line.width<=350));
+ p.style={indent:0,rightIndent:0,firstLineIndent:-100};assert.throws(()=>layoutWriter(new DocumentSession(d).snapshot(),font),fails('unsupported'));
+});

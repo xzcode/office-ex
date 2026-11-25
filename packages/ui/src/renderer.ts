@@ -122,7 +122,7 @@ function documentView(tab:Tab):void{
   if(model.kind==='writer'){
     tab.writerState??={start:0,end:0,pageIndex:0};
     card.classList.add('writer-workspace-card');
-    card.append(writerWorkspace({snapshot:()=>session.snapshot(),execute:command=>execute(tab,command,false),render,error:errorMessage,composing:()=>composing,setComposing:value=>{composing=value;},t,number,prepareImage:bytes=>task<ImageResource>(tab.id+'-image','image',{bytes}),isCurrent:()=>current()===tab},tab.writerState));
+    card.append(writerWorkspace({snapshot:()=>session.snapshot(),execute:command=>execute(tab,command,false),render,error:errorMessage,composing:()=>composing,setComposing:value=>{composing=value;},t,number,prepareImage:bytes=>task<ImageResource>(tab.id+'-image','image',{bytes}),isCurrent:()=>current()===tab,legacyWriter:tab.format==='doc'},tab.writerState));
   }else if(model.kind==='sheets'){
     tab.sheetsState??={row:1,column:1,anchorRow:1,anchorColumn:1,scrollTop:0,scrollLeft:0,inputMode:'canonical',cachedValues:tab.inspection?.sheetsCachedValues};
     card.classList.add('sheets-workspace-card');

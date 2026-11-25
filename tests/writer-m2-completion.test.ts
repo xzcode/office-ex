@@ -108,3 +108,23 @@ test('M5 empty DOC paragraphs retain paragraph-mark character styles and native 
  }
  assert.deepEqual(saveLegacyDoc(reopened,reopened.document),bytes);
 });
+
+test('M5 paragraph rules, indent, spacing and kerning roundtrip with DOCX and remain protected in legacy DOC',()=>{
+ const d=createDocument('writer','word-m5','Word formatting');
+ const color={kind:'rgba' as const,red:79,green:129,blue:189,alpha:255},border={color,width:12700,space:50800};
+ d.sections[0]!.blocks=[{id:'p1',type:'paragraph',style:{indent:457200,rightIndent:228600,firstLineIndent:-228600,contextualSpacing:true,paragraphBottomBorder:border},runs:[{id:'r1',type:'text',text:'Spacing example',style:{characterSpacing:3175,kerningThreshold:177800,fontSize:330200}}]},
+ {id:'p2',type:'paragraph',style:{firstLineIndent:228600,paragraphBottomBorder:null},runs:[{id:'r2',type:'text',text:'Second paragraph'}]}];
+ const bytes=writeWriterDocx(d),opened=openWriterDocx(bytes,d.documentId,d.title),p=opened.document.sections[0]!.blocks[0]!;
+ assert.equal(p.type,'paragraph');if(p.type!=='paragraph')return;
+ const expected=d.sections[0]!.blocks[0]!;assert.equal(expected.type,'paragraph');if(expected.type==='paragraph')assert.deepEqual(p.style,expected.style);
+ assert.equal(p.runs[0]?.type,'text');if(p.runs[0]?.type==='text'){assert.equal(p.runs[0].style?.characterSpacing,3175);assert.equal(p.runs[0].style?.kerningThreshold,177800);}
+ const session=new DocumentSession(opened.document,{saved:true}),baseline=session.snapshot().document;
+ session.execute(formatParagraphRange(session.snapshot(),p.id,0,7,{characterSpacing:6350,kerningThreshold:127000},'m5-format'));
+ const formatted=locateParagraph(session.snapshot(),p.id).paragraph;
+ assert.equal(formatted.runs[0]?.type,'text');if(formatted.runs[0]?.type==='text')assert.equal(formatted.runs[0].style?.characterSpacing,6350);
+ const copied=copyWriterFragment(session.snapshot(),range(p.id,0,7)),fragment=JSON.parse(copied.rich);
+ assert.equal(fragment.paragraphs[0].style.firstLineIndent,-228600);assert.deepEqual(fragment.paragraphs[0].style.paragraphBottomBorder,border);
+ assert.equal(fragment.paragraphs[0].runs[0].style.characterSpacing,6350);
+ assert.throws(()=>writeLegacyDoc(d),fails('unsupported'));
+ session.undo();assert.deepEqual(session.snapshot().document,baseline);
+});

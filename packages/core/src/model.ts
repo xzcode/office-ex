@@ -5,10 +5,15 @@ export type Color = { kind: 'rgba'; red: number; green: number; blue: number; al
 /** Presentation-only paragraph formatting. Values retain DrawingML units. */
 export type SlideBullet = {kind:'none'} | ({kind:'char';character:string}|{kind:'number';scheme:'arabicPeriod'|'arabicParenR'|'arabicParenBoth'|'arabicPlain';startAt?:number}) & {font?:string;color?:Color;sizePercent?:number;sizeEmu?:number};
 export interface SlideParagraphFormat {level?:number;marginLeft?:number;marginRight?:number;firstLineIndent?:number;beforePercent?:number;afterPercent?:number;bullet?:SlideBullet}
+/** Writer paragraph bottom rule. Null explicitly suppresses an inherited rule. */
+export interface WriterParagraphRule {color:Color;width:number;space:number}
 export interface TextStyle {
   fontFamily?: string; fontAscii?:string; fontHighAnsi?:string; fontEastAsia?:string; fontComplex?:string; fontSize?: number; complexFontSize?:number; bold?: boolean; italic?: boolean; underline?: boolean;
   color?: Color; language?:string; eastAsiaLanguage?:string; bidiLanguage?:string; runDirection?:'ltr'|'rtl'; paragraphDirection?:'ltr'|'rtl'; alignment?: 'start' | 'center' | 'end' | 'justify';
   slideParagraph?:SlideParagraphFormat;
+  characterSpacing?:number; kerningThreshold?:number;
+  rightIndent?:number; firstLineIndent?:number; contextualSpacing?:boolean;
+  paragraphBottomBorder?:WriterParagraphRule|null;
   indent?: number; spaceBefore?: number; spaceAfter?: number; lineHeight?: number; lineMultiple?:number; minLineHeight?:number; keepNext?:boolean; keepLines?:boolean; outlineLevel?:number; widowControl?:boolean;
 }
 export interface NamedStyle { id: string; name: string; basedOn?: string; kind?: 'paragraph' | 'character'; toggles?: readonly ('bold' | 'italic')[]; properties: TextStyle }
@@ -150,7 +155,7 @@ export function validateSlideParagraph(value:unknown):asserts value is SlidePara
   }
 }
 export function validateTextStyle(value: unknown): asserts value is TextStyle {
-  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection','slideParagraph']);
+  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection','slideParagraph','characterSpacing','kerningThreshold','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder']);
   for(const key of ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex'])if(style[key]!==undefined){text(style[key],512,false);assert(!/[\x00-\x1f\x7f]/.test(style[key] as string),'invalid','Invalid font family');}
   if (style.fontSize !== undefined) integer(style.fontSize, 1, 12_700 * 1638);
   if(style.complexFontSize!==undefined)integer(style.complexFontSize,1,12_700*1638);
@@ -165,6 +170,14 @@ export function validateTextStyle(value: unknown): asserts value is TextStyle {
   for(const key of ['runDirection','paragraphDirection'])if(style[key]!==undefined)assert(style[key]==='ltr'||style[key]==='rtl','invalid','Invalid document direction');
   if (style.alignment !== undefined) assert(['start', 'center', 'end', 'justify'].includes(String(style.alignment)), 'invalid', 'Invalid text alignment');
   if (style.indent !== undefined) integer(style.indent);
+  if(style.characterSpacing!==undefined)integer(style.characterSpacing,-31680*635,31680*635);
+  if(style.kerningThreshold!==undefined)integer(style.kerningThreshold,0,3276*6350);
+  if(style.rightIndent!==undefined)integer(style.rightIndent,0,31680*635);
+  if(style.firstLineIndent!==undefined)integer(style.firstLineIndent,-31680*635,31680*635);
+  if(style.contextualSpacing!==undefined)bool(style.contextualSpacing);
+  if(style.paragraphBottomBorder!==undefined&&style.paragraphBottomBorder!==null){
+    const border=object(style.paragraphBottomBorder,['color','width','space']);validateColor(border.color);integer(border.width,2*1587,96*1588);integer(border.space,0,31*12700);
+  }
   if(style.slideParagraph!==undefined){validateSlideParagraph(style.slideParagraph);const p=style.slideParagraph as SlideParagraphFormat;assert(!(p.beforePercent!==undefined&&style.spaceBefore!==undefined)&&!(p.afterPercent!==undefined&&style.spaceAfter!==undefined),'invalid','Conflicting paragraph spacing');}
   for (const key of ['spaceBefore', 'spaceAfter', 'lineHeight']) if (style[key] !== undefined) integer(style[key], 0);
 }

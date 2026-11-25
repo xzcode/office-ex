@@ -7,6 +7,7 @@ import { locateParagraph } from '@office-ex/writer';
 import { WriterPaginationEngine, buildSlideScene, walkSlideScene, type WriterLine } from '@office-ex/render';
 import { PdfReader, PDF_EMBEDDABLE_FONT_FAMILIES, PDF_LIMITS, assertPdfFontFamily, assertPdfTextCoverage } from '@office-ex/pdf';
 import { BrowserParagraphShaper } from './native-writer-shaper.js';
+import {writerParagraphRule} from './writer-paragraph-decoration.js';
 import { CanvasFontMetrics } from './font-metrics.js';
 import { createSlideSceneElement, overflowingSlideText } from './slides-scene-dom.js';
 
@@ -78,10 +79,11 @@ export async function prepareDocumentPdfOutput(snapshot: DocumentSnapshot, conta
         for (let i = 0; i < lines.length;) {
           const first = lines[i]!, native = first.native!; let j = i + 1;
           while (j < lines.length && lines[j]!.native!.originX === native.originX && Math.abs(lines[j]!.y - lines[j - 1]!.y - lines[j - 1]!.height) <= 1 && Math.abs(lines[j]!.native!.sourceTop - lines[j - 1]!.native!.sourceTop - lines[j - 1]!.height) <= 1) j++;
-          const last = lines[j - 1]!, clip = document.createElement('div'); at(clip, native.originX, first.y, native.boxWidth, last.y + last.height - first.y); clip.style.overflow = 'hidden';
+          const last = lines[j - 1]!, clip = document.createElement('div'); at(clip, native.originX, first.y, native.boxWidth, last.y + (last.contentHeight??last.height) - first.y); clip.style.overflow = 'hidden';
           const projection = shaper.render(model, paragraph, native.paragraphWidth); projection.style.position = 'absolute'; projection.style.top = css(-native.sourceTop); projection.style.left = '0'; clip.append(projection); page.append(clip); i = j;
         }
       }
+      for(const line of source.lines){const rule=writerParagraphRule(line);if(rule)page.append(rule);}
     }
   } else {
     assert(model.slides.length <= PDF_LIMITS.pages, 'limit', 'PDF slide budget exceeded');

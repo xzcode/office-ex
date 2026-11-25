@@ -4,10 +4,13 @@ from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 import os, shutil, subprocess
 from docx import Document
+from docx.shared import Pt
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 import olefile
 ROOT=Path(__file__).resolve().parents[1]
 def run(*args):
-    subprocess.run(['node','--import','tsx','tests/writer-m2-completion-fixture.mjs',*map(str,args)],cwd=ROOT,check=True)
+    subprocess.run([os.environ.get('NODE','node'),'--import','tsx','tests/writer-m2-completion-fixture.mjs',*map(str,args)],cwd=ROOT,check=True)
 def main():
     with TemporaryDirectory() as tmp:
         ordinary,edited,legacy,legacy_edit,modern=(Path(tmp)/n for n in ['ordinary.docx','edited.docx','legacy.doc','legacy-edit.doc','modern.docx'])
@@ -19,6 +22,22 @@ def main():
             for name in a.namelist():
                 if name!='word/document.xml':assert a.read(name)==b.read(name),name
         print('PASS: independent default-template DOCX with heading, styles, theme, settings, numbering and ancillary parts; edited reopen and byte preservation.')
+        title_source,title_edited,protected=(Path(tmp)/n for n in ['title.docx','title-edited.docx','title-protected.docx'])
+        sample=Document();sample.add_heading('Original Title',0);sample.add_heading('Second Title',0)
+        paragraph=sample.add_paragraph('Hanging indentation example');paragraph.paragraph_format.left_indent=Pt(36);paragraph.paragraph_format.right_indent=Pt(18);paragraph.paragraph_format.first_line_indent=Pt(-18)
+        run_style=paragraph.runs[0]._r.get_or_add_rPr();spacing=OxmlElement('w:spacing');spacing.set(qn('w:val'),'5');run_style.append(spacing)
+        kern=OxmlElement('w:kern');kern.set(qn('w:val'),'28');run_style.append(kern)
+        sample.save(title_source)
+        invalid=Document(title_source);ppr=invalid.paragraphs[2]._p.get_or_add_pPr();borders=OxmlElement('w:pBdr');left=OxmlElement('w:left');left.set(qn('w:val'),'single');left.set(qn('w:sz'),'8');left.set(qn('w:color'),'000000');borders.append(left);ppr.append(borders);invalid.save(protected)
+        run('title',title_source,title_edited,protected)
+        checked=Document(title_edited);assert checked.paragraphs[0].text=='Modified Title' and checked.paragraphs[0].style.name=='Title';assert checked.paragraphs[1].style.name=='Title'
+        assert checked.paragraphs[2].paragraph_format.first_line_indent==Pt(-18) and checked.paragraphs[2].paragraph_format.right_indent==Pt(18)
+        assert checked.paragraphs[2].runs[0]._r.rPr.find(qn('w:spacing')).get(qn('w:val'))=='5'
+        with ZipFile(title_source) as a, ZipFile(title_edited) as b:
+            assert set(a.namelist())==set(b.namelist())
+            for name in a.namelist():
+                if name!='word/document.xml':assert a.read(name)==b.read(name),name
+        print('PASS: independent Word Title, hanging indentation, character spacing and kerning, source styles unchanged, unsupported side rule protected.')
         run('legacy',legacy,legacy_edit,modern)
         antiword=os.environ.get('ANTIWORD') or shutil.which('antiword')
         if not antiword:

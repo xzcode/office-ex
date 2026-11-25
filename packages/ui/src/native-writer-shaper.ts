@@ -7,6 +7,7 @@ import { bundledFontFamily } from '@office-ex/pdf';
 import {assert,EMU_PER_CSS_PIXEL,OfficeError} from '@office-ex/contracts';
 import {paragraphBoundaries,inlineText,resolveTextStyle,type DeepReadonly,type Paragraph,type WriterDocument,type TextStyle,type Inline} from '@office-ex/core';
 import type {WriterParagraphShaper,NativeParagraphShape,WriterLine,WriterCaret,WriterImageBox,WriterVisualCluster} from '@office-ex/render';
+import {writerParagraphGeometry} from '@office-ex/render';
 const PX=EMU_PER_CSS_PIXEL;
 const emu=(value:number)=>Math.round(value*PX);
 const px=(value:number)=>value/PX+'px';
@@ -16,19 +17,20 @@ function styleText(el:HTMLElement,style:DeepReadonly<TextStyle>):void{
   el.style.fontFamily=[...new Set([style.fontAscii??style.fontFamily,style.fontHighAnsi,style.fontEastAsia,style.fontComplex].filter((v):v is string=>!!v))].map(v=>bundledFontFamily(v,style.language)).concat(bundledFontFamily(undefined,style.language)).join(', ');el.style.fontSize=px(style.fontSize??152400);
   el.style.fontWeight=style.bold?'700':'400';el.style.fontStyle=style.italic?'italic':'normal';
   el.style.textDecoration=style.underline?'underline':'none';
+  if(style.characterSpacing!==undefined)el.style.letterSpacing=px(style.characterSpacing);
+  if(style.kerningThreshold!==undefined)el.style.fontKerning=(style.fontSize??152400)>=style.kerningThreshold?'normal':'none';
   const c=style.color;el.style.color=c?.kind==='rgba'?'rgba('+[c.red,c.green,c.blue,c.alpha/255].join(',')+')':'#20242c';
   if(style.language)el.lang=style.language;
   if(style.runDirection){el.dir=style.runDirection;el.style.unicodeBidi='embed';}
 }
 type Piece={start:number;end:number;node:Text|HTMLImageElement;image?:DeepReadonly<Extract<Inline,{type:'image'}>>};
-interface Projection {element:HTMLDivElement;pieces:Piece[];pitch:number;indent:number;style:DeepReadonly<TextStyle>;warnings:string[];length:number}
+interface Projection {element:HTMLDivElement;pieces:Piece[];pitch:number;indent:number;boxWidth:number;style:DeepReadonly<TextStyle>;warnings:string[];length:number}
 function projection(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>,width:number):Projection{
   const warnings=new Set<string>(),named=p.styleId??model.defaultParagraphStyleId;
   const para=resolveTextStyle(model.defaultTextStyle,model.styles,named?[named]:[],p.style??{});
   for(const d of para.diagnostics)warnings.add(d.code);
   const style=para.style;
-  const indent=Math.max(0,style.indent??0);if(style.indent!==undefined&&style.indent<0)warnings.add('writer.negative-indent-limited');
-  assert(width>indent,'unsupported','Paragraph indent consumes width');
+  const geometry=writerParagraphGeometry(style,width),indent=geometry.origin;if(style.indent!==undefined&&style.indent<0)warnings.add('writer.negative-indent-limited');
   const resolved=p.runs.map(run=>{
     if(run.type!=='text')return style;
     const result=resolveTextStyle(style,model.styles,run.styleId?[run.styleId]:[],run.style??{});
@@ -47,17 +49,17 @@ function projection(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>
   warnings.add('writer.native-browser-line-metrics');
   if(style.lineHeight!==undefined&&style.lineHeight<natural)warnings.add('writer.exact-lineheight-limited');
   const element=document.createElement('div');element.className='writer-native-paragraph';
-  styleText(element,style);element.style.boxSizing='border-box';element.style.width=px(width-indent);
-  element.style.lineHeight=pitch+'px';element.style.margin='0';element.style.padding='0';element.style.border='0';
+  styleText(element,style);element.style.boxSizing='border-box';element.style.width=px(geometry.boxWidth);
+  element.style.lineHeight=pitch+'px';element.style.margin='0';element.style.padding='0';element.style.paddingLeft=px(geometry.padLeft);element.style.paddingRight=px(geometry.padRight);element.style.textIndent=px(geometry.first);element.style.border='0';
   element.style.whiteSpace='pre-wrap';element.style.overflowWrap='anywhere';element.style.wordBreak='normal';element.style.lineBreak='strict';
-  element.style.tabSize='4';element.style.unicodeBidi='normal';element.dir=style.paragraphDirection??'auto';
+  element.style.tabSize='4';element.style.unicodeBidi='normal';element.dir=style.paragraphDirection??(style.firstLineIndent!==undefined?'ltr':'auto');
   element.style.textAlign=style.alignment??'start';
   const pieces:Piece[]=[];let offset=0;
   for(let i=0;i<p.runs.length;i++){
     const run=p.runs[i]!,content=inlineText(run);
     if(run.type==='image'){
       const resource=model.resources[run.resourceId];assert(resource?.dataBase64&&(resource.mimeType==='image/png'||resource.mimeType==='image/jpeg'),'unsupported','Missing image bytes');
-      assert(run.width<=width-indent,'unsupported','Image exceeds paragraph width');
+      assert(run.width<=geometry.bodyWidth-Math.max(0,geometry.first),'unsupported','Image exceeds paragraph width');
       const img=document.createElement('img');img.alt='';img.draggable=false;img.style.width=px(run.width);img.style.height=px(run.height);img.style.verticalAlign='top';img.style.objectFit='fill';img.style.display='inline-block';img.src='data:'+resource.mimeType+';base64,'+resource.dataBase64;
       element.append(img);pieces.push({start:offset,end:offset+1,node:img,image:run});offset++;
     }else if(content.length){
@@ -71,7 +73,7 @@ function projection(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>
     // part of the text projection, source model, clipboard or DOCX.
     const sentinel=document.createElement('span');sentinel.textContent='\u200b';sentinel.dataset.writerSentinel='true';element.append(sentinel);
   }
-  return {element,pieces,pitch,indent,style,warnings:[...warnings],length:offset};
+  return {element,pieces,pitch,indent,boxWidth:geometry.boxWidth,style,warnings:[...warnings],length:offset};
 }
 function endpoint(piece:Piece,offset:number):{node:Node;offset:number}{
   if(piece.node.nodeType===Node.TEXT_NODE)return {node:piece.node,offset:offset-piece.start};
@@ -106,7 +108,7 @@ export class BrowserParagraphShaper implements WriterParagraphShaper{
       const rows=Math.max(1,Math.round(height/pitch));
       assert(rows<=10000&&Math.abs(rows*pitch-height)<Math.max(0.5,rows*0.02),'unsupported','Native line height requires a variable line-box adapter');
       const rowOf=(y:number)=>Math.max(0,Math.min(rows-1,Math.floor((y-box.top)/pitch)));
-      const lines:WriterLine[]=Array.from({length:rows},(_,i)=>({paragraphId:p.id,start:0,end:0,x:q.indent,y:0,width:width-q.indent,height:emu(pitch),baseline:emu(pitch*0.8),carets:[],fragments:[],images:[],visualClusters:[],native:{originX:q.indent,boxWidth:width-q.indent,sourceTop:emu(i*pitch),paragraphWidth:width}}));
+      const lines:WriterLine[]=Array.from({length:rows},(_,i)=>({paragraphId:p.id,start:0,end:0,x:q.indent,y:0,width:q.boxWidth,height:emu(pitch),baseline:emu(pitch*0.8),carets:[],fragments:[],images:[],visualClusters:[],native:{originX:q.indent,boxWidth:q.boxWidth,sourceTop:emu(i*pitch),paragraphWidth:width}}));
       let pieceIndex=0,lastOffset=0,lastRow=0;
       const range=document.createRange();
       const collapse=(pos:{node:Node;offset:number}):DOMRect|undefined=>{range.setStart(pos.node,pos.offset);range.collapse(true);return Array.from(range.getClientRects()).find(r=>r.height>0);};

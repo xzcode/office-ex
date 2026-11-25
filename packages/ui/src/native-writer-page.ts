@@ -10,6 +10,7 @@ import {locateParagraph,resolveWriterRange,replaceWriterRange,replaceParagraphRa
 import {WriterPaginationEngine,hitTestWriterPage,writerCaretBox,writerSelectionBoxes,type WriterLayout,type WriterLine} from '@office-ex/render';
 import {CanvasFontMetrics} from './font-metrics.js';
 import {BrowserParagraphShaper} from './native-writer-shaper.js';
+import {writerParagraphRule} from './writer-paragraph-decoration.js';
 import type {WriterHost,WriterViewState} from './writer-workspace.js';
 
 const PX=EMU_PER_CSS_PIXEL,css=(n:number)=>n/PX+'px';
@@ -127,10 +128,11 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState):HTMLElem
       while(i<lines.length){
         const a=lines[i]!,native=a.native!;let j=i+1;
         while(j<lines.length&&lines[j]!.native!.originX===native.originX&&Math.abs(lines[j]!.y-(lines[j-1]!.y+lines[j-1]!.height))<=1&&Math.abs(lines[j]!.native!.sourceTop-(lines[j-1]!.native!.sourceTop+lines[j-1]!.height))<=1)j++;
-        const last=lines[j-1]!,clip=node('div','','writer-native-slice');at(clip,native.originX,a.y,native.boxWidth,last.y+last.height-a.y);
+        const last=lines[j-1]!,clip=node('div','','writer-native-slice');at(clip,native.originX,a.y,native.boxWidth,last.y+(last.contentHeight??last.height)-a.y);
         clip.style.overflow='hidden';const projection=cache.shaper.render(model,p,native.paragraphWidth);projection.style.position='absolute';projection.style.top=css(-native.sourceTop);projection.style.left='0';clip.append(projection);content.push(clip);i=j;
       }
     }
+    for(const line of page.lines){const rule=writerParagraphRule(line);if(rule)content.push(rule);}
     paper.replaceChildren(...content,overlays,input);
     pageNumber.textContent=t('writerPageNumber',{current:host.number(state.pageIndex+1),total:host.number(layout.pages.length)});
     previous.disabled=state.pageIndex===0;next.disabled=state.pageIndex===layout.pages.length-1;

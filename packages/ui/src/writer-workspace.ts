@@ -20,6 +20,7 @@ export interface WriterHost{
   number(value:number):string;
   prepareImage(bytes:Uint8Array):Promise<ImageResource>;
   isCurrent():boolean;
+  legacyWriter?:boolean;
 }
 function node<K extends keyof HTMLElementTagNameMap>(tag:K,value='',className?:string):HTMLElementTagNameMap[K]{
   const n=document.createElement(tag);n.textContent=value;if(className)n.className=className;return n;
@@ -111,9 +112,10 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     for(const line of page.lines)for(const fragment of line.fragments){
       const r=fragment.request,family=/^(sans-serif|serif|monospace|system-ui)$/.test(r.family)?r.family:JSON.stringify(r.family);
       ctx.font=(r.italic?'italic ':'')+(r.bold?'bold ':'')+px(r.size)+'px '+family;
-      ctx.fillStyle=safeColor(fragment.style);ctx.fillText(fragment.text,px(fragment.x),px(line.baseline));
+      ctx.letterSpacing=px(r.characterSpacing??0)+'px';ctx.fontKerning=r.kerning??'auto';ctx.fillStyle=safeColor(fragment.style);ctx.fillText(fragment.text,px(fragment.x),px(line.baseline));
       if(fragment.style.underline){ctx.fillRect(px(fragment.x),px(line.baseline+r.size*0.06),px(fragment.width),Math.max(0.5,px(r.size*0.05)));}
     }
+    for(const line of page.lines)if(line.bottomBorder){const b=line.bottomBorder;ctx.fillStyle=safeColor({color:b.rule.color});ctx.fillRect(px(b.x),px(line.y+line.height-b.rule.width),px(b.width),px(b.rule.width));}
     if(state.paragraphId&&state.start===state.end){
       const caret=writerCaretBox(layout,{paragraphId:state.paragraphId,offset:state.end},state.pageIndex);
       if(caret?.pageIndex===state.pageIndex){ctx.fillStyle='#245bca';ctx.fillRect(px(caret.x),px(caret.y),Math.max(1,px(page.width/canvas.width*1.5)),px(caret.height));}
@@ -193,15 +195,22 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     for(const input of tableInputs)input.disabled=host.composing()||!selection||(input.id==='writer-table-width'?!tableContext:!!tableContext);
     const width=root.querySelector<HTMLInputElement>('#writer-table-width');if(width&&document.activeElement!==width)width.value=tableContext?String(tableContext.table.columnWidths[tableContext.column]!/EMU_PER_POINT):'';
     const border=root.querySelector<HTMLButtonElement>('#writer-table-border');if(border)border.setAttribute('aria-pressed',String(!!tableContext?.table.border));
-    for(const field of formatFields)field.element.disabled=!selection||host.composing()||field.range&&selection.start===selection.end;
+    for(const field of formatFields)field.element.disabled=!selection||host.composing()||field.range&&selection.start===selection.end||!!host.legacyWriter&&field.element.dataset.modernOnly==='true';
     const style=effectiveSelectedStyle(),p=selectedParagraph();
-    for(const field of metricFields){field.disabled=!selection||host.composing();const key=field.dataset.metric as 'indent'|'spaceBefore'|'spaceAfter'|'lineHeight';if(document.activeElement!==field)field.value=String((style?.[key]??0)/EMU_PER_POINT);}
+    for(const field of metricFields){field.disabled=!selection||host.composing()||!!host.legacyWriter&&field.dataset.modernOnly==='true';const key=field.dataset.metric as 'indent'|'rightIndent'|'firstLineIndent'|'spaceBefore'|'spaceAfter'|'lineHeight';if(document.activeElement!==field)field.value=String((style?.[key]??0)/EMU_PER_POINT);}
     // The first selected run supplies the displayed value; mixed selections are
     // not represented as uniform. A field change applies only that one property.
     if(style){
       const family=root.querySelector<HTMLInputElement>('#writer-font-family');
       const size=root.querySelector<HTMLInputElement>('#writer-font-size');
       const color=root.querySelector<HTMLInputElement>('#writer-text-color');
+      for(const [id,key]of [['writer-character-spacing','characterSpacing'],['writer-kerning-threshold','kerningThreshold']] as const){const f=root.querySelector<HTMLInputElement>('#'+id);if(f&&document.activeElement!==f)f.value=String((style[key]??0)/EMU_PER_POINT);}
+      const contextual=root.querySelector<HTMLInputElement>('#writer-contextual-spacing');if(contextual)contextual.checked=!!style.contextualSpacing;
+      const rule=root.querySelector<HTMLInputElement>('#writer-bottom-rule');if(rule)rule.checked=!!style.paragraphBottomBorder;
+      const ruleColor=root.querySelector<HTMLInputElement>('#writer-rule-color'),ruleWidth=root.querySelector<HTMLInputElement>('#writer-rule-width'),ruleSpace=root.querySelector<HTMLInputElement>('#writer-rule-space'),border=style.paragraphBottomBorder;
+      if(ruleColor&&document.activeElement!==ruleColor){const c=border?.color;ruleColor.value=c?.kind==='rgba'?'#'+[c.red,c.green,c.blue].map(n=>n.toString(16).padStart(2,'0')).join(''):'#4f81bd';}
+      if(ruleWidth&&document.activeElement!==ruleWidth)ruleWidth.value=String(border?Math.round(border.width*8/EMU_PER_POINT)/8:1);
+      if(ruleSpace&&document.activeElement!==ruleSpace)ruleSpace.value=String((border?.space??50800)/EMU_PER_POINT);
       if(family&&document.activeElement!==family)family.value=style.fontFamily??'sans-serif';
       if(size&&document.activeElement!==size)size.value=String((style.fontSize??152400)/EMU_PER_POINT);
       if(color&&document.activeElement!==color){
@@ -243,6 +252,10 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   family.onchange=()=>safe(()=>{const value=family.value.trim();if(!value||/[\x00-\x1f\x7f]/.test(value))throw new OfficeError('invalid','Invalid font family');applyDirectStyle({fontFamily:value});});
   const size=field('writerFontSize',node('input'));size.id='writer-font-size';size.type='number';size.min='1';size.max='1638';size.step='0.5';
   size.onchange=()=>safe(()=>{const n=size.valueAsNumber;if(!Number.isFinite(n)||n<1||n>1638||!Number.isInteger(n*2))throw new OfficeError('invalid','Font size must use half-point increments');applyDirectStyle({fontSize:n*EMU_PER_POINT});});
+  for(const [key,label,minimum,maximum,step,fieldId]of [['characterSpacing','writerCharacterSpacing',-1584,1584,.05,'writer-character-spacing'],['kerningThreshold','writerKerningThreshold',0,1638,.5,'writer-kerning-threshold']] as const){
+    const input=field(label,node('input'));input.id=fieldId;input.type='number';input.min=String(minimum);input.max=String(maximum);input.step=String(step);input.dataset.modernOnly='true';
+    input.onchange=()=>safe(()=>{const v=input.valueAsNumber;if(!Number.isFinite(v)||v<minimum||v>maximum||Math.abs(v/step-Math.round(v/step))>1e-6)throw new OfficeError('invalid','Invalid character spacing or kerning threshold');applyDirectStyle({[key]:Math.round(v*EMU_PER_POINT)});});
+  }
   const color=field('writerTextColor',node('input'));color.id='writer-text-color';color.type='color';
   color.onchange=()=>safe(()=>{const v=color.value;if(!/^#[a-f0-9]{6}$/i.test(v))throw new OfficeError('invalid','Invalid text color');applyDirectStyle({color:{kind:'rgba',red:parseInt(v.slice(1,3),16),green:parseInt(v.slice(3,5),16),blue:parseInt(v.slice(5,7),16),alpha:255}});});
   const lang=field('writerTextLanguage',node('input'));lang.id='writer-text-language';lang.type='text';lang.maxLength=128;lang.placeholder='en-US';
@@ -361,11 +374,27 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   }),'writer-apply-page');pageBarControls.append(apply);
   root.insertBefore(pageBarControls,note);
   const metricsBar=node('div','','writer-table-controls');
-  for(const [key,label] of [['indent','writerIndent'],['spaceBefore','writerSpaceBefore'],['spaceAfter','writerSpaceAfter'],['lineHeight','writerLineHeight']] as const){
-    const wrapper=node('label','','writer-format-field'),input=node('input');input.type='number';input.min=key==='indent'?'-1584':'0';input.max='1584';input.step='0.05';input.dataset.metric=key;input.id='writer-'+key;input.setAttribute('aria-label',t(label));
+  for(const [key,label] of [['indent','writerIndent'],['rightIndent','writerRightIndent'],['firstLineIndent','writerFirstLineIndent'],['spaceBefore','writerSpaceBefore'],['spaceAfter','writerSpaceAfter'],['lineHeight','writerLineHeight']] as const){
+    const wrapper=node('label','','writer-format-field'),input=node('input');input.type='number';input.min=key==='indent'||key==='firstLineIndent'?'-1584':'0';if(key==='rightIndent'||key==='firstLineIndent')input.dataset.modernOnly='true';input.max='1584';input.step='0.05';input.dataset.metric=key;input.id='writer-'+key;input.setAttribute('aria-label',t(label));
     wrapper.append(node('span',t(label)),input);metricsBar.append(wrapper);metricFields.push(input);
     input.onchange=()=>safe(()=>{const sel=currentSelection();if(sel&&!host.composing()&&host.execute(setParagraphMetrics(host.snapshot(),sel.id,{[key]:emu(input)}))){select(sel.id,sel.start,sel.end,true);scheduleLayout();}});
   }
+  function applyParagraphMetrics(value:Parameters<typeof setParagraphMetrics>[2]):void{
+    const sel=currentSelection();if(sel&&!host.legacyWriter&&!host.composing()&&host.execute(setParagraphMetrics(host.snapshot(),sel.id,value))){select(sel.id,sel.start,sel.end,true);scheduleLayout();}
+  }
+  const advancedField=(label:MessageKey,id:string,type:string)=>{
+    const wrapper=node('label','','writer-format-field'),input=node('input');input.id=id;input.type=type;input.dataset.modernOnly='true';input.setAttribute('aria-label',t(label));wrapper.append(node('span',t(label)),input);metricsBar.append(wrapper);formatFields.push({element:input,range:false});return input;
+  };
+  const contextual=advancedField('writerContextualSpacing','writer-contextual-spacing','checkbox');contextual.onchange=()=>safe(()=>applyParagraphMetrics({contextualSpacing:contextual.checked}));
+  const rule=advancedField('writerBottomRule','writer-bottom-rule','checkbox'),ruleColor=advancedField('writerRuleColor','writer-rule-color','color'),ruleWidth=advancedField('writerRuleWidth','writer-rule-width','number'),ruleSpace=advancedField('writerRuleSpace','writer-rule-space','number');
+  ruleWidth.min='.25';ruleWidth.max='12';ruleWidth.step='.125';ruleWidth.value='1';ruleSpace.min='0';ruleSpace.max='31';ruleSpace.step='1';ruleSpace.value='4';ruleColor.value='#4f81bd';
+  const applyRule=()=>safe(()=>{
+    if(!rule.checked){applyParagraphMetrics({paragraphBottomBorder:null});return;}
+    const width=ruleWidth.valueAsNumber,space=ruleSpace.valueAsNumber,c=ruleColor.value;
+    if(!Number.isFinite(width)||width<.25||width>12||!Number.isInteger(width*8)||!Number.isInteger(space)||space<0||space>31||!/^#[a-f0-9]{6}$/i.test(c))throw new OfficeError('invalid','Invalid paragraph rule');
+    applyParagraphMetrics({paragraphBottomBorder:{width:Math.round(width*EMU_PER_POINT),space:space*EMU_PER_POINT,color:{kind:'rgba',red:parseInt(c.slice(1,3),16),green:parseInt(c.slice(3,5),16),blue:parseInt(c.slice(5,7),16),alpha:255}}});
+  });
+  rule.onchange=applyRule;ruleColor.onchange=ruleWidth.onchange=ruleSpace.onchange=()=>{if(rule.checked)applyRule();};
   root.insertBefore(metricsBar,note);
   function join(id:string,direction:'previous'|'next'):void{
     const d=modelOf(host.snapshot());

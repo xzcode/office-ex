@@ -71,7 +71,7 @@ export function hitTest(shapes: readonly DeepReadonly<Shape>[], point: Point, to
   return undefined;
 }
 
-export interface FontRequest { readonly family: string; readonly size: number; readonly bold: boolean; readonly italic: boolean; readonly direction: 'ltr' | 'rtl' }
+export interface FontRequest { readonly family: string; readonly size: number; readonly bold: boolean; readonly italic: boolean; readonly direction: 'ltr' | 'rtl'; readonly characterSpacing?:number; readonly kerning?:'normal'|'none' }
 export interface TextCluster { readonly start: number; readonly end: number; readonly left: number; readonly right: number }
 export interface FontMeasurement {
   readonly advance: number; readonly ascent: number; readonly descent: number;
@@ -88,7 +88,7 @@ export interface MeasuredText { readonly text: string; readonly request: FontReq
 export function measureText(metrics: FontMetrics, text: string, style: TextStyle, direction: 'ltr' | 'rtl' = 'ltr'): MeasuredText {
   validateTextStyle(style); assert(text.length <= 1_000_000, 'limit', 'Text measurement budget exceeded');
   const boundaries = new Set(graphemeBoundaries(text));
-  const request: FontRequest = { family: style.fontFamily ?? 'sans-serif', size: style.fontSize ?? 152_400, bold: style.bold ?? false, italic: style.italic ?? false, direction };
+  const request: FontRequest = { family: style.fontFamily ?? 'sans-serif', size: style.fontSize ?? 152_400, bold: style.bold ?? false, italic: style.italic ?? false, direction,...(style.characterSpacing!==undefined?{characterSpacing:style.characterSpacing}:{}),...(style.kerningThreshold!==undefined?{kerning:(style.fontSize??152400)>=style.kerningThreshold?'normal' as const:'none' as const}:{}) };
   const measured = metrics.measure(text, request);
   finite([measured.advance, measured.ascent, measured.descent]);
   assert(measured.advance >= 0 && measured.ascent >= 0 && measured.descent >= 0 && typeof measured.actualFamily === 'string' && measured.actualFamily.length > 0, 'invalid', 'Invalid font measurement');

@@ -29,6 +29,8 @@ export class CanvasFontMetrics implements FontMetrics {
     const actualFamily = this.resolvedFamily(request);
     this.context.font = this.font(request,bundledFontFamily(actualFamily));
     this.context.direction = request.direction;
+    this.context.letterSpacing=(request.characterSpacing??0)/EMU_PER_CSS_PIXEL+'px';
+    this.context.fontKerning=request.kerning??'auto';
     // All layout coordinates use the left edge and alphabetic baseline, even in RTL runs.
     this.context.textAlign = 'left';
     this.context.textBaseline = 'alphabetic';

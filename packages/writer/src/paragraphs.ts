@@ -104,7 +104,7 @@ export function replaceParagraphRange(snapshot:DocumentSnapshot,paragraphId:stri
   const right=sliceRuns(p.runs,end,p.text.length,used,allocate);
   return runPatch(snapshot,p,nonEmpty([...left,...(replacement?[inserted(template,replacement,allocate)]:[]),...right],template,allocate));
 }
-const CHARACTER_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection'];
+const CHARACTER_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'];
 /** Split affected runs at grapheme-safe range endpoints and apply direct character style. */
 export function formatParagraphRange(snapshot:DocumentSnapshot,paragraphId:string,start:number,end:number,style:TextStyle,operationId:string):DocumentCommand{
   const p=locate(snapshot,paragraphId);assertParagraphRange(p.paragraph,start,end);assertPlainData(style);validateTextStyle(style);
@@ -164,9 +164,9 @@ export function setCharacterNamedStyle(snapshot:DocumentSnapshot,paragraphId:str
   const right=sliceRuns(p.runs,end,p.text.length,used,allocate);
   return runPatch(snapshot,p,[...left,...middle,...right]);
 }
-export function setParagraphMetrics(snapshot:DocumentSnapshot,paragraphId:string,metrics:Pick<TextStyle,'indent'|'spaceBefore'|'spaceAfter'|'lineHeight'>):DocumentCommand{
+export function setParagraphMetrics(snapshot:DocumentSnapshot,paragraphId:string,metrics:Pick<TextStyle,'indent'|'spaceBefore'|'spaceAfter'|'lineHeight'|'rightIndent'|'firstLineIndent'|'contextualSpacing'|'paragraphBottomBorder'>):DocumentCommand{
   const p=locate(snapshot,paragraphId);assertPlainData(metrics);validateTextStyle(metrics);
-  assert(Object.keys(metrics).every(k=>['indent','spaceBefore','spaceAfter','lineHeight'].includes(k)),'invalid','Unexpected paragraph property');
+  assert(Object.keys(metrics).every(k=>['indent','spaceBefore','spaceAfter','lineHeight','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder'].includes(k)),'invalid','Unexpected paragraph property');
   const style={...p.paragraph.style,...cloneData(metrics)};
   if(metrics.lineHeight!==undefined){delete style.lineMultiple;delete style.minLineHeight;}
   if(style.lineHeight===0)delete style.lineHeight;

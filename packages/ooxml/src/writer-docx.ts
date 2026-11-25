@@ -19,8 +19,8 @@ const XMLNS='http://www.w3.org/2000/xmlns/';
 const ROOT_REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument';
 const MAIN_TYPE='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml';
 const DECL='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const CHAR_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection'];
-const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','paragraphDirection'];
+const CHAR_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'];
+const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','paragraphDirection','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder'];
 const MAX_BLOCKS=10000;
 const MAX_RUNS=50000;
 const MAX_TEXT=4*1024*1024;
@@ -69,6 +69,8 @@ export function readRunStyle(el:Element,reference?:(id:string)=>void,theme?:Them
       case 'b':{const value=toggled(child);if(named){if(value)toggles?.push('bold');}else style.bold=value;break;}
       case 'i':{const value=toggled(child);if(named){if(value)toggles?.push('italic');}else style.italic=value;break;}
       case 'u':{attrs(child,['w:val']);empty(child);const value=prop(child,'val');valid(value==='single'||value==='none','Unsupported underline');style.underline=value==='single';break;}
+      case 'spacing':attrs(child,['w:val']);empty(child);style.characterSpacing=numberProp(child,'val',-31680,31680)*EMU_PER_TWIP;break;
+      case 'kern':attrs(child,['w:val']);empty(child);style.kerningThreshold=numberProp(child,'val',0,3276)*6350;break;
       case 'sz':attrs(child,['w:val']);empty(child);style.fontSize=numberProp(child,'val',1,3276)*6350;break;
       case 'szCs':attrs(child,['w:val']);empty(child);style.complexFontSize=numberProp(child,'val',1,3276)*6350;break;
       case 'bCs':case 'iCs':{valid(named||theme,'Independent complex-script toggle requires preserved source style');const value=toggled(child);const corresponding=child.localName==='bCs'?'bold':'italic';const direct=elements(el).find(e=>isW(e,corresponding==='bold'?'b':'i'));valid(direct&&toggled(direct)===value,'Independent complex-script toggle needs a later adapter');break;}
@@ -83,7 +85,7 @@ export function readRunStyle(el:Element,reference?:(id:string)=>void,theme?:Them
   }
   return style;
 }
-export function readParagraphStyle(el:Element,reference?:(id:string)=>void,sectionEnd?:Element):TextStyle{
+export function readParagraphStyle(el:Element,reference?:(id:string)=>void,sectionEnd?:Element,theme?:ThemeProfile):TextStyle{
   requireElement(el,'pPr');attrs(el);const style:TextStyle={},seen=new Set<string>();
   for(const child of elements(el)){
     valid(child.namespaceURI===W&&child.localName!==null&&!seen.has(child.localName),'Duplicate or foreign paragraph property');seen.add(child.localName);
@@ -96,7 +98,30 @@ export function readParagraphStyle(el:Element,reference?:(id:string)=>void,secti
       case 'sectPr':{valid(child===sectionEnd,'Unexpected section properties inside paragraph');break;}
       case 'pStyle':{valid(reference,'Unexpected paragraph style reference');attrs(child,['w:val']);empty(child);const id=prop(child,'val');valid(id,'Missing paragraph style reference');reference(id);break;}
       case 'jc':{attrs(child,['w:val']);empty(child);const v=prop(child,'val');valid(v==='left'||v==='center'||v==='right'||v==='both','Unsupported alignment');style.alignment=v==='left'?'start':v==='right'?'end':v==='both'?'justify':v;break;}
-      case 'ind':attrs(child,['w:left']);empty(child);style.indent=numberProp(child,'left',-31680,31680)*EMU_PER_TWIP;break;
+      case 'ind':{
+        attrs(child,['w:left','w:right','w:firstLine','w:hanging']);empty(child);
+        valid(!(prop(child,'firstLine')!==undefined&&prop(child,'hanging')!==undefined),'Conflicting first-line and hanging indent');
+        if(prop(child,'left')!==undefined)style.indent=numberProp(child,'left',-31680,31680)*EMU_PER_TWIP;
+        if(prop(child,'right')!==undefined)style.rightIndent=numberProp(child,'right',0,31680)*EMU_PER_TWIP;
+        if(prop(child,'firstLine')!==undefined)style.firstLineIndent=numberProp(child,'firstLine',0,31680)*EMU_PER_TWIP;
+        if(prop(child,'hanging')!==undefined)style.firstLineIndent=-numberProp(child,'hanging',0,31680)*EMU_PER_TWIP;
+        valid((style.indent!==undefined||style.rightIndent!==undefined||style.firstLineIndent!==undefined),'Empty indentation property');
+        break;
+      }
+      case 'contextualSpacing':style.contextualSpacing=toggled(child);break;
+      case 'pBdr':{
+        attrs(child);const edges=elements(child);valid(edges.length===1&&isW(edges[0]!,'bottom'),'Only a single bottom paragraph border is supported');
+        const border=edges[0]!;attrs(border,theme?['w:val','w:sz','w:space','w:color','w:themeColor','w:themeTint','w:themeShade']:['w:val','w:sz','w:space','w:color']);empty(border);
+        const kind=prop(border,'val');
+        if(kind==='none'||kind==='nil'){valid(['sz','space','color','themeColor','themeTint','themeShade'].every(k=>prop(border,k)===undefined),'Unexpected disabled border attributes');style.paragraphBottomBorder=null;break;}
+        valid(kind==='single','Unsupported paragraph border style');
+        const key=prop(border,'themeColor'),tint=prop(border,'themeTint'),shade=prop(border,'themeShade');
+        valid(!(shade&&tint)&&(!shade||/^[0-9a-fA-F]{2}$/.test(shade))&&(!tint||/^[0-9a-fA-F]{2}$/.test(tint))&&(!(shade||tint)||key&&theme?.colors[key]),'Invalid border color transform');
+        const hex=shade||tint?prop(border,'color'):key?theme?.colors[key]:prop(border,'color');
+        valid(hex&&/^[0-9a-f]{6}$/i.test(hex),'Unsupported paragraph border color');
+        const color={kind:'rgba' as const,red:parseInt(hex.slice(0,2),16),green:parseInt(hex.slice(2,4),16),blue:parseInt(hex.slice(4,6),16),alpha:255};
+        style.paragraphBottomBorder={color,width:Math.round(numberProp(border,'sz',2,96)*12700/8),space:prop(border,'space')===undefined?0:numberProp(border,'space',0,31)*12700};break;
+      }
       case 'spacing':{
         attrs(child,['w:before','w:after','w:line','w:lineRule']);empty(child);
         if(prop(child,'before')!==undefined)style.spaceBefore=numberProp(child,'before',0,31680)*EMU_PER_TWIP;
@@ -310,6 +335,8 @@ function writeRunStyle(style:DeepReadonly<TextStyle>,styleId?:string):string{
     valid(style.color.kind==='rgba'&&style.color.alpha===255,'Theme or translucent text color unsupported');
     const v=[style.color.red,style.color.green,style.color.blue].map(n=>n.toString(16).padStart(2,'0')).join('').toUpperCase();r+=tag('color',{val:v});
   }
+  if(style.characterSpacing!==undefined)r+=tag('spacing',{val:twip(style.characterSpacing,-31680,31680)});
+  if(style.kerningThreshold!==undefined){valid(style.kerningThreshold%6350===0,'Kerning threshold must be a half-point value');r+=tag('kern',{val:style.kerningThreshold/6350});}
   if(style.fontSize!==undefined){const n=Math.round(style.fontSize/6350);valid(n>=1&&n<=3276,'Font size outside DOCX limits');r+=tag('sz',{val:n});}
   if(style.complexFontSize!==undefined){const n=Math.round(style.complexFontSize/6350);valid(n>=1&&n<=3276,'Complex font size outside DOCX limits');r+=tag('szCs',{val:n});}
   if(style.underline!==undefined)r+=tag('u',{val:style.underline?'single':'none'});
@@ -326,8 +353,18 @@ function writeParagraphStyle(style:DeepReadonly<TextStyle>,styleId?:string,secti
   if(style.lineHeight!==undefined){spacing.line=twip(style.lineHeight,1,31680);spacing.lineRule='exact';}
   if(style.lineMultiple!==undefined){spacing.line=style.lineMultiple;spacing.lineRule='auto';}
   if(style.minLineHeight!==undefined){spacing.line=twip(style.minLineHeight,1,31680);spacing.lineRule='atLeast';}
+  if(style.paragraphBottomBorder!==undefined){
+    const b=style.paragraphBottomBorder;
+    if(b===null)p+='<w:pBdr>'+tag('bottom',{val:'nil'})+'</w:pBdr>';
+    else{valid(b.color.kind==='rgba'&&b.color.alpha===255,'Paragraph border requires opaque RGB');const size=Math.round(b.width*8/12700);valid(size>=2&&size<=96&&Math.round(size*12700/8)===b.width&&b.space%12700===0,'Paragraph border precision');const rgb=[b.color.red,b.color.green,b.color.blue].map(n=>n.toString(16).padStart(2,'0')).join('').toUpperCase();p+='<w:pBdr>'+tag('bottom',{val:'single',sz:size,space:b.space/12700,color:rgb})+'</w:pBdr>';}
+  }
   if(Object.keys(spacing).length)p+=tag('spacing',spacing);
-  if(style.indent!==undefined)p+=tag('ind',{left:twip(style.indent,-31680,31680)});
+  const indentation:Record<string,number>={};
+  if(style.indent!==undefined)indentation.left=twip(style.indent,-31680,31680);
+  if(style.rightIndent!==undefined)indentation.right=twip(style.rightIndent,0,31680);
+  if(style.firstLineIndent!==undefined)indentation[style.firstLineIndent<0?'hanging':'firstLine']=twip(Math.abs(style.firstLineIndent),0,31680);
+  if(Object.keys(indentation).length)p+=tag('ind',indentation);
+  if(style.contextualSpacing!==undefined)p+=tag('contextualSpacing',{val:style.contextualSpacing?1:0});
   if(style.alignment!==undefined)p+=tag('jc',{val:({start:'left',center:'center',end:'right',justify:'both'})[style.alignment]});
   if(style.outlineLevel!==undefined)p+=tag('outlineLvl',{val:style.outlineLevel});
   return p||sectionEnd?'<w:pPr>'+p+sectionEnd+'</w:pPr>':'';

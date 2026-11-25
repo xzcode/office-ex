@@ -27,7 +27,7 @@ export interface DocxStyleProfile{
   tableDefaultsSafe:boolean;
 }
 type RunReader=(el:Element,reference?:((id:string)=>void),theme?:ThemeProfile,named?:boolean,toggles?:('bold'|'italic')[])=>TextStyle;
-type ParagraphReader=(el:Element,reference?:((id:string)=>void))=>TextStyle;
+type ParagraphReader=(el:Element,reference?:((id:string)=>void),sectionEnd?:Element,theme?:ThemeProfile)=>TextStyle;
 function allowed(value:unknown,reason:string):asserts value{if(!value)throw new OfficeError('unsupported','DOCX style profile: '+reason);}
 function name(el:Element,ns:string,n:string):boolean{return el.namespaceURI===ns&&el.localName===n;}
 function children(el:Element):Element[]{
@@ -110,7 +110,7 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,
         attrs(item,W,[]);const inner=children(item);
         allowed(inner.length<=1,'Unexpected default style payload');
         if(n==='rPrDefault'){if(inner.length)Object.assign(defaults,readRun(inner[0]!,undefined,theme));}
-        else if(n==='pPrDefault'){if(inner.length)Object.assign(defaults,readParagraph(inner[0]!));}
+        else if(n==='pPrDefault'){if(inner.length)Object.assign(defaults,readParagraph(inner[0]!,undefined,undefined,theme));}
         else allowed(false,'Unsupported document defaults');
       }
     }else if(name(child,W,'latentStyles')){
@@ -140,7 +140,7 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,
         const n=child.localName;allowed(child.namespaceURI===W&&n!==null&&!seen.has(n),'Duplicate or foreign style property');seen.add(n);
         if(n==='name')label=value(child);
         else if(n==='basedOn')basedOn=value(child);
-        else if(n==='pPr'){allowed(entry.kind==='paragraph','Character style with paragraph properties');Object.assign(properties,readParagraph(child));}
+        else if(n==='pPr'){allowed(entry.kind==='paragraph','Character style with paragraph properties');Object.assign(properties,readParagraph(child,undefined,undefined,theme));}
         else if(n==='rPr')Object.assign(properties,readRun(child,undefined,theme,true,toggles));
         else if(n==='rsid'){allowed(/^[0-9a-fA-F]{8}$/.test(value(child)),'Invalid style revision metadata');}
         else if(n==='next'||n==='link'||n==='aliases'||n==='uiPriority'){value(child);/* Preserved metadata; explicit style application only. */}

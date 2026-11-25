@@ -433,6 +433,33 @@ try{
   await page.locator('.tab[aria-selected=true] .tab-close').click();
   check('Native page surface shapes multilingual text and commits input to DOCX');
 
+  // Exercise the new format controls, native line projection and source save.
+  const wordM5Path=join(work,'word-m5.docx');
+  await page.locator('#home').click();await page.locator('#new-docx').click();
+  const advancedText='Character spacing and hanging indent';
+  const draft=page.locator('#draft-text');await draft.fill(advancedText);
+  const chooseText=()=>draft.evaluate(el=>{el.focus();el.setSelectionRange(0,9);el.dispatchEvent(new Event('select'));});
+  await chooseText();await page.locator('#writer-character-spacing').fill('0.25');await page.locator('#writer-character-spacing').press('Tab');
+  await chooseText();await page.locator('#writer-kerning-threshold').fill('14');await page.locator('#writer-kerning-threshold').press('Tab');
+  await page.locator('#writer-indent').fill('36');await page.locator('#writer-indent').press('Tab');
+  await page.locator('#writer-rightIndent').fill('18');await page.locator('#writer-rightIndent').press('Tab');
+  await page.locator('#writer-firstLineIndent').fill('-18');await page.locator('#writer-firstLineIndent').press('Tab');
+  await page.locator('#writer-contextual-spacing').check();
+  await page.locator('#writer-bottom-rule').check();
+  await page.locator('#writer-page-edit').click();
+  const rule=page.locator('#writer-native-page .writer-paragraph-bottom-rule');
+  await rule.waitFor();
+  assert.equal(await rule.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(79, 129, 189)');
+  const rendered=await page.locator('#writer-native-page .writer-native-paragraph').first().evaluate(el=>({indent:parseFloat(getComputedStyle(el).textIndent),pad:parseFloat(getComputedStyle(el).paddingLeft),text:el.textContent,spacing:getComputedStyle(el.querySelector('span')).letterSpacing}));
+  assert.equal(rendered.indent,-24);assert.equal(rendered.pad,24);assert.ok(rendered.text.includes(advancedText));assert.ok(parseFloat(rendered.spacing)>0);
+  await dialogSave(wordM5Path);await page.locator('#save').click();
+  await waitFor(async()=>{try{
+   const p=openWriterDocx(await readFile(wordM5Path),'m5-word-ui','M5 Word').document.sections[0].blocks[0];
+   assert.equal(p.style.indent,457200);assert.equal(p.style.rightIndent,228600);assert.equal(p.style.firstLineIndent,-228600);assert.equal(p.style.contextualSpacing,true);assert.equal(p.style.paragraphBottomBorder.width,12700);assert.equal(p.runs[0].style.characterSpacing,3175);assert.equal(p.runs[0].style.kerningThreshold,177800);return true;
+  }catch{return false;}},'M5 Writer native formatting save',30000);
+  await page.waitForFunction(()=>document.querySelector('#document-status').textContent.includes('已保存'));await page.locator('.tab[aria-selected=true] .tab-close').click();
+  check('Writer advanced spacing, kerning, hanging indentation and bottom rule controls persist to native DOCX');
+
   // Native DOC save uses the same isolated verifier and commit capability.
   const legacyPath=join(work,'writer-legacy.doc'),convertedPath=join(work,'writer-converted.docx');
   await page.locator('#home').click();

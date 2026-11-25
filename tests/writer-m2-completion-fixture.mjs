@@ -13,6 +13,16 @@ if(mode==='ordinary'){
   const s=new DocumentSession(source.document,{saved:true});
   s.execute(replaceParagraphRange(s.snapshot(),paragraphs[0].id,0,11,'Office EX','ordinary-edit'));
   writeFileSync(output,saveWriterDocx(source,s.snapshot().document));
+ }else if(mode==='title'){
+  const bytes=readFileSync(input),source=openWriterDocx(bytes,'title-source','Title source');
+  const p=source.document.sections[0].blocks;assert.equal(p[0].styleId,'Title');assert.equal(p[1].styleId,'Title');
+  const title=source.document.styles.Title.properties;assert.equal(title.characterSpacing,3175);assert.equal(title.kerningThreshold,177800);assert.equal(title.paragraphBottomBorder.width,12700);assert.equal(title.contextualSpacing,true);
+  assert.equal(p[2].style.firstLineIndent,-228600);assert.equal(p[2].style.rightIndent,228600);
+  assert.deepEqual(Uint8Array.from(saveWriterDocx(source,source.document)),Uint8Array.from(bytes));
+  const session=new DocumentSession(source.document,{saved:true});session.execute(replaceParagraphRange(session.snapshot(),p[0].id,0,8,'Modified','m5-title-edit'));
+  writeFileSync(output,saveWriterDocx(source,session.snapshot().document));
+  assert.equal(openWriterDocx(readFileSync(output),'title-read','Title').document.sections[0].blocks[0].styleId,'Title');
+  const protectedBytes=readFileSync(extra);assert.equal((await inspectForEditor(protectedBytes,'protected.docx','protected')).report.readOnly,true);
 }else if(mode==='legacy'){
   const model=createDocument('writer','legacy-fixture','Legacy fixture');
   model.defaultTextStyle={fontFamily:'Arial',fontSize:152400,language:'zh-CN'};
