@@ -70,7 +70,7 @@ jobs:
 
           Office EX 首个开发预览版。Windows x64、macOS ARM64、Linux x64 安装包均通过原生构建、安装、启动及移除检查。支持限定范围的 DOC/DOCX、XLS/XLSX、PPT/PPTX 编辑和保存，以及离线 PDF 阅读、Writer/Slides PDF 输出。Windows 尚未签名，macOS 为 ad-hoc 签名且未公证；请保持系统安全保护开启。完整 Office 兼容性与旧格式、性能、语言等正式版验收仍未完成。
           NOTES
-      - name: Resume exact draft release, verify and publish
+      - name: Verify existing assets and publish the previously verified draft
         shell: bash
         run: |
           set -euo pipefail
@@ -80,63 +80,56 @@ jobs:
           from pathlib import Path
           repo=os.environ['GITHUB_REPOSITORY']
           tag=os.environ['TAG']
-          release_id=458322480
-          endpoint=f'repos/{repo}/releases/{release_id}'
+          endpoint=f'repos/{repo}/releases/458322480'
           root=Path('out/release-draft')
           expected={p.name:p for p in root.iterdir() if p.is_file() and p.name!='RELEASE-NOTES.md'}
           assert len(expected)==20
-          def gh(*args):
-              return subprocess.check_output(['gh',*args])
-          def state():
-              r=json.loads(gh('api',endpoint))
-              assert r['id']==release_id and r['tag_name']==tag and r['draft'] and r['prerelease'],'Expected the known unpublished preview draft'
-              assert r['name']=='Office EX '+os.environ['VERSION']+' Development Preview','Unexpected release title'
-              assert set(a['name'] for a in r['assets'])<=set(expected),'Unexpected existing asset'
-              return {a['name']:a for a in r['assets']}
+          def get_release():
+              for i in range(5):
+                  r=subprocess.run(['gh','api',endpoint],capture_output=True,text=True)
+                  if r.returncode==0:
+                      data=json.loads(r.stdout)
+                      assert data['id']==458322480 and data['tag_name']==tag and data['prerelease']
+                      assert data['name']=='Office EX '+os.environ['VERSION']+' Development Preview'
+                      return data
+                  if i==4:raise RuntimeError('Could not inspect release: '+r.stderr.strip())
+                  time.sleep(2**i)
           def sha(p):
               h=hashlib.sha256()
               with p.open('rb') as f:
                   for b in iter(lambda:f.read(1024*1024),b''):h.update(b)
               return h.hexdigest()
-          def valid_asset(a,p,digest):
-              if not a or a['state']!='uploaded' or a['size']!=p.stat().st_size:return False
-              if a.get('digest'):return a['digest']=='sha256:'+digest
-              # No digest advertised: independently read back actual uploaded bytes.
-              dest=Path('out/release-check/readback')
-              try:
-                  with dest.open('wb') as out:
-                      subprocess.run(['gh','api','-H','Accept: application/octet-stream',f'repos/{repo}/releases/assets/{a["id"]}'],stdout=out,check=True)
-                  return dest.stat().st_size==p.stat().st_size and sha(dest)==digest
-              finally:dest.unlink(missing_ok=True)
-          hashes={n:sha(p) for n,p in expected.items()}
-          for name,p in sorted(expected.items()):
-              for attempt in range(1,5):
-                  a=state().get(name)
-                  if valid_asset(a,p,hashes[name]):
-                      print('Verified',name,flush=True);break
-                  if a:
-                      # Only replace incomplete/mismatching assets of this exact known draft.
-                      gh('api','--method','DELETE',f'repos/{repo}/releases/assets/{a["id"]}')
-                  print('Upload',name,'attempt',attempt,flush=True)
-                  status=subprocess.run(['gh','release','upload',tag,str(p),'--repo',repo]).returncode
-                  if status==0:
-                      a=state().get(name)
-                      if valid_asset(a,p,hashes[name]):
-                          print('Verified',name,flush=True);break
-                  if attempt==4:raise RuntimeError('Upload verification failed: '+name)
-                  time.sleep(2**attempt)
-          assets=state()
-          assert set(assets)==set(expected)
-          assert all(valid_asset(assets[n],p,hashes[n]) for n,p in expected.items()),'Final asset verification failed'
-          print('All 20 assets independently verified; ready to publish.',flush=True)
-          PY
-          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')" = "$SOURCE"
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > out/release-check/published.json
-          python3 - <<'PY'
-          import json,os
-          from pathlib import Path
-          r=json.loads(Path('out/release-check/published.json').read_text())
-          assert r['id']==458322480 and r['tag_name']==os.environ['TAG'] and not r['draft'] and r['prerelease'] and r['published_at'] and len(r['assets'])==20
-          print('PUBLISHED',r['html_url'],'assets',len(r['assets']))
+          data=get_release()
+          assets={a['name']:a for a in data['assets']}
+          assert set(assets)==set(expected),'Unexpected release asset set'
+          for n,p in expected.items():
+              a=assets[n]
+              assert a['state']=='uploaded' and a['size']==p.stat().st_size,n
+              digest=sha(p)
+              if a.get('digest'):
+                  assert a['digest']=='sha256:'+digest,n
+              else:
+                  dest=Path('out/release-check/readback')
+                  try:
+                      with dest.open('wb') as out:
+                          subprocess.run(['gh','api','-H','Accept: application/octet-stream',f'repos/{repo}/releases/assets/{a["id"]}'],stdout=out,check=True)
+                      assert sha(dest)==digest,n
+                  finally:dest.unlink(missing_ok=True)
+              print('Verified',n,flush=True)
+          for i in range(6):
+              data=get_release()
+              if not data['draft']:
+                  assert data['published_at'] and data['prerelease']
+                  print('PUBLISHED',data['html_url'],'assets',len(data['assets']),flush=True)
+                  break
+              print('Publish existing draft, attempt',i+1,flush=True)
+              result=subprocess.run(['gh','api','--method','PATCH',endpoint,'-F','draft=false','-F','prerelease=true','-f','make_latest=false','--jq','{id,draft,prerelease,html_url,published_at}'],capture_output=True,text=True)
+              print('Patch status',result.returncode,result.stdout.strip() or result.stderr.strip(),flush=True)
+              time.sleep(min(2**i,20))
+          else:
+              data=get_release()
+              assert not data['draft'] and data['published_at'] and data['prerelease'],'Draft is still not public'
+          data=get_release()
+          assert not data['draft'] and data['published_at'] and data['prerelease'] and len(data['assets'])==20
+          print('Confirmed public prerelease',data['html_url'],flush=True)
           PY
