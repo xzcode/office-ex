@@ -212,3 +212,7 @@ Numeric conditional rules and three native chart types with source-backed preser
 ## 2026-11-26 — M6.7–M6.10 candidate
 
 Native rectangular PPTX table and distribution commands, shared scene/ribbon, double-click/Enter interaction and unchanged relationship preservation. Focused slides 46/46; independent external table and full Office corpus passed; final Linux sandboxed native 3/3. See M6-COMPATIBILITY.md and native-ppt-table.json. Prepare dev.3 version/lock without third-party dependency changes. Exact dev.3 CI, publication and broader acceptance remain pending; dev.2 release and master unchanged.
+
+## 2026-11-26 — dev.3 exact-source acceptance
+
+Candidate bf1d87b passed CI 45803738626: 293/293 core, independent corpus, architecture/licenses and Windows x64/macOS ARM64/Linux x64 extracted app and native installer lifecycle. Publication workflow 45804738034 started on release/office-ex-v0.1.0-dev.3 with fixed source/artifact identities. See docs/releases/v0.1.0-dev.3.md. Public release and exact tag pending confirmation. Continue only after checking actual workflow and release state; master and prior releases remain unchanged.

@@ -144,3 +144,15 @@ M6.5 B baseline `4c11eaa1a0adcc8ba38d8db102c1beb462efa435` passed exact-source C
 ## M6.10 — development preview candidate
 
 Prepare `0.1.0-dev.3` across root/14 workspace manifests and internal dependencies, npm lock and audited lock digest, preserving all third-party lock entries. Previous public dev.2 remains unchanged. This is a candidate, not a published release or declaration of formal compatibility. Required remaining acceptance: exact candidate full core and independent corpus, three native package/install/remove jobs, review source-correlated artifacts/checksums, matching explicit tag, release assembly, verified publication. Complex Office features outside the bounded profiles remain protected; reference Office layout, human locale review, performance, publisher trust, physical IME/printing, full legacy acceptance remain open. M6.9 interaction work is limited to the implemented controls; broader UX acceptance is open.
+
+## 2026-11-26 — exact candidate acceptance
+
+Exact source `bf1d87b1301c1a8c4c5d86a5428628f94c89f64e` (tree `c36fc4033324897326cb722444d5ee64b52bb697`) passed [CI 45803738626](https://github.com/xzcode/office-ex/actions/runs/45803738626). The verify job logs report 293/293 tests, zero failures/cancellations/skips, 14 workspaces and 96 source files, full independent interoperability suite, release-readiness check and dependency audit (79 locked packages, 29 notices). All three native package jobs passed six-format create/save/parse/reopen, sandboxed launch and installer lifecycle. These are bounded-profile development-preview checks, not a complete reference Office conformance claim.
+
+| Platform | Verified CI artifact ID | Artifact SHA-256 |
+|---|---:|---|
+| macOS ARM64 | 15108562576 | d193492c5d8662631a92143b8ddd04d37cc9b41d1b2ea2af962200d8e3abde6c |
+| Linux x64 | 15108458490 | 85abf817e88d7987689167adb02cf52c9020b0980d1ca28f389c488df6d7e480 |
+| Windows x64 | 15108139684 | 2724ffd30df27e24f6c7df439512b00a151368d7cc5507ce9290e0d938fc3bbb |
+
+Publication workflow [45804738034](https://github.com/xzcode/office-ex/actions/runs/45804738034) on isolated `release/office-ex-v0.1.0-dev.3` reuses these verified artifacts, checks their provenance and assembled asset hashes, creates the exact matching tag, and publishes only a fully verified prerelease. At this checkpoint publication is in progress; tag and public release have not yet been confirmed. Do not replace existing dev.1/dev.2 assets. The publication workflow commit is not the source tag target. The development branch's documentation-only follow-up does not change the verified source tree used for installers.
