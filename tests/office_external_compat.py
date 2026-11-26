@@ -33,6 +33,11 @@ def generate(p):
     for i,row in enumerate([['产品','数量'],['办公软件','12']]):
         for j,value in enumerate(row):t.cell(i,j).text=value
     d.save(p/'ordinary-table.docx')
+    d=Document();t=d.add_table(rows=2,cols=2)
+    t.cell(0,0).text='Normal table';t.cell(0,1).text='ordinary'
+    d.save(p/'normal-table.docx')
+    d=Document();t=d.add_table(rows=2,cols=2);t.style='Table Grid'
+    t.cell(0,0).merge(t.cell(0,1)).text='Merged cell';d.save(p/'merged-table.docx')
     d.sections[0].header.paragraphs[0].text='Report Header';d.sections[0].footer.paragraphs[0].text='Footer';d.add_paragraph('Read-only content');d.save(p/'advanced.docx')
     d=Document();d.add_picture(str(p/'sample.png'),width=Inches(1));d.save(p/'ordinary-image.docx')
     r=Presentation();s=r.slides.add_slide(r.slide_layouts[0]);s.shapes.title.text='项目报告';s.placeholders[1].text='Office EX'
@@ -50,6 +55,16 @@ def verify(p):
     with ZipFile(p/'ordinary-image.docx') as before,ZipFile(p/'image-edited.docx') as after:
         for name in before.namelist():
             if name!='word/document.xml':assert before.read(name)==after.read(name),name
+    from docx.oxml.ns import qn
+    d=Document(p/'table-edited.docx');t=d.tables[0]
+    assert t.style.style_id=='TableGrid' and t.autofit and len(t.rows)==3 and len(t.columns)==2
+    assert t.cell(1,0).text=='办公软件已编辑' and t.cell(2,0).text=='新增行'
+    assert t._tbl.tblPr.find(qn('w:tblW')).get(qn('w:type'))=='auto'
+    assert t._tbl.tblPr.find(qn('w:tblLook')).get(qn('w:val'))=='04A0'
+    with ZipFile(p/'ordinary-table.docx') as before,ZipFile(p/'table-edited.docx') as after:
+        for name in before.namelist():
+            if name!='word/document.xml':assert before.read(name)==after.read(name),name
+    d=Document(p/'normal-table-edited.docx');assert d.tables[0].cell(0,0).text=='Normal edited' and d.tables[0].autofit
     r=Presentation(p/'shapes-edited.pptx');assert r.slides[0].shapes[0].text=='编辑普通文本框'
     assert r.slides[0].shapes[0].text_frame.auto_size==MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT and len(r.slides[0].shapes)==2
     print('Independent Excel, Word and PowerPoint readback of edited files passed')

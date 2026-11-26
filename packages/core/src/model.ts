@@ -32,7 +32,7 @@ export interface TextRun { id: string; type: 'text'; text: string; styleId?: str
 export type Inline = TextRun | { id: string; type: 'tab' | 'line-break' } | { id: string; type: 'image'; resourceId: string; width: number; height: number; drawingName?:string; pictureName?:string };
 export interface Paragraph { id: string; type: 'paragraph'; styleId?: string; style?: TextStyle; runs: Inline[] }
 export interface TableCell { id: string; blocks: WriterBlock[] }
-export interface Table { id: string; type: 'table'; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[]; cellPadding?: {top:number;right:number;bottom:number;left:number}; border?: {width:number;color:Color} }
+export interface Table { id: string; type: 'table'; nativeTable?: {styleId?:'TableNormal'|'TableGrid'; autoWidth?:true; autoLayout?:true; directPadding?:true; directBorder?:true; look?:number}; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[]; cellPadding?: {top:number;right:number;bottom:number;left:number}; border?: {width:number;color:Color} }
 export type WriterBlock = Paragraph | Table | { id: string; type: 'page-break' };
 export interface WriterSection { id: string; pageExtras?: {headerDistance?:number;footerDistance?:number;columnSpace?:number;docGridLinePitch?:number}; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
 export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string; numbering?:WriterNumbering }
@@ -290,13 +290,14 @@ export function validateDocument(value: unknown): OfficeDocument {
   };
   const block = (candidate: unknown, depth = 0): void => {
     assert(depth <= 64, 'limit', 'Table nesting budget exceeded');
-    const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows', 'cellPadding', 'border']); id(value.id);
+    const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows', 'cellPadding', 'border', 'nativeTable']); id(value.id);
     if (value.type === 'paragraph') {
-      assert(!['rows','columnWidths','cellPadding','border'].some(k=>k in value), 'invalid', 'Unexpected paragraph fields');
+      assert(!['rows','columnWidths','cellPadding','border','nativeTable'].some(k=>k in value), 'invalid', 'Unexpected paragraph fields');
       optionalId(value.styleId, styles); if(value.styleId!==undefined){const ref=styles[String(value.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='paragraph'),'invalid','Paragraph requires a paragraph style');} if (value.style !== undefined){validateTextStyle(value.style);listReference(value.style,true);}
       list(value.runs).forEach((item) => run(item));
     } else if (value.type === 'table') {
       assert(!['runs', 'style', 'styleId'].some((key) => key in value), 'invalid', 'Unexpected table fields');
+      if(value.nativeTable!==undefined){const n=object(value.nativeTable,['styleId','autoWidth','autoLayout','directPadding','directBorder','look']);assert(Object.keys(n).length>0,'invalid','Empty native table metadata');if(n.styleId!==undefined)assert(n.styleId==='TableNormal'||n.styleId==='TableGrid','invalid','Unsupported native table style');for(const key of ['autoWidth','autoLayout','directPadding','directBorder'])if(n[key]!==undefined)assert(n[key]===true,'invalid','Invalid native table flag');if(n.look!==undefined){integer(n.look,0,0x7e0);assert((Number(n.look)&~0x7e0)===0,'invalid','Invalid table look mask');}}
       const widths = list(value.columnWidths, 1); widths.forEach((width) => integer(width, 1));
       assert(widths.length<=64&&widths.reduce<number>((sum,w)=>sum+Number(w),0)<=Number.MAX_SAFE_INTEGER,'limit','Table width budget exceeded');
       if(value.cellPadding!==undefined){const pad=object(value.cellPadding,['top','right','bottom','left']);for(const key of ['top','right','bottom','left'])integer(pad[key],0,12_700*144);}

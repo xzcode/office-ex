@@ -26,6 +26,7 @@ export interface DocxStyleProfile{
   defaults:TextStyle;
   defaultParagraph?:string;
   tableDefaultsSafe:boolean;
+  builtinTableStyles?:ReadonlySet<'TableNormal'|'TableGrid'>;
   numbering?:NumberingSource;
 }
 type RunReader=(el:Element,reference?:((id:string)=>void),theme?:ThemeProfile,named?:boolean,toggles?:('bold'|'italic')[])=>TextStyle;
@@ -96,6 +97,33 @@ function readTheme(bytes:Uint8Array,options:ContainerOptions):ThemeProfile{
 export function requireStyleReference(profile:DocxStyleProfile|undefined,id:string,kind:StyleKind):string{
   allowed(profile&&stableId(id)&&Object.hasOwn(profile.styles,id)&&profile.styles[id]?.kind===kind,'Missing or unsupported '+kind+' style '+id);
   return id;
+}
+/** Recognize the actual default-template definitions, not merely their names.
+ * Conditional formatting, shading, custom inheritance and any other style
+ * payload remain outside the editable profile.
+ */
+function builtinTableStyle(node:Element,id:'TableNormal'|'TableGrid'):boolean{
+ try{
+  const grid=id==='TableGrid';
+  attrs(node,W,['styleId','type','default']);
+  allowed(attribute(node,'styleId')===id&&attribute(node,'type')==='table'&&(grid?attribute(node,'default')===undefined:attribute(node,'default')==='1'),'Unexpected built-in table style identity');
+  const items=new Map<string,Element>();
+  for(const child of children(node)){const n=child.localName;allowed(child.namespaceURI===W&&n&&!items.has(n),'Invalid built-in table style child');items.set(n,child);}
+  const take=(key:string)=>{const item=items.get(key);allowed(item,'Missing table style '+key);items.delete(key);return item;};
+  value(take('name'));
+  if(grid)allowed(value(take('basedOn'))==='TableNormal','Unexpected table ancestor');
+  for(const key of ['uiPriority','rsid'])if(items.has(key)){const v=value(take(key));allowed(key==='rsid'?/^[0-9a-f]{8}$/i.test(v):/^\d+$/.test(v),'Unexpected table style metadata');}
+  for(const key of ['semiHidden','unhideWhenUsed'])if(items.has(key)){const n=take(key);attrs(n,W,['val']);allowed(!children(n).length,'Nested table style flag');flag(attribute(n,'val'));}
+  if(grid){const p=take('pPr');attrs(p,W,[]);const a=children(p);allowed(a.length===1&&name(a[0]!,W,'spacing'),'Unexpected Grid paragraph properties');const s=a[0]!;attrs(s,W,['after','line','lineRule']);allowed(!children(s).length&&attribute(s,'after')==='0'&&attribute(s,'line')==='240'&&attribute(s,'lineRule')==='auto','Unexpected Grid spacing');}
+  const tbl=take('tblPr');attrs(tbl,W,[]);const props=children(tbl);
+  allowed(props.length===(grid?3:2),'Unexpected built-in table property count');
+  const ind=only(tbl,W,'tblInd');attrs(ind,W,['w','type']);allowed(!children(ind).length&&attribute(ind,'w')==='0'&&attribute(ind,'type')==='dxa','Unsupported table style indent');
+  const pad=only(tbl,W,'tblCellMar');attrs(pad,W,[]);allowed(children(pad).length===4,'Unexpected table style margins');
+  for(const edge of ['top','left','bottom','right']){const n=only(pad,W,edge);attrs(n,W,['w','type']);allowed(!children(n).length&&attribute(n,'type')==='dxa'&&attribute(n,'w')===(edge==='left'||edge==='right'?'108':'0'),'Unexpected table style margin');}
+  if(grid){const b=only(tbl,W,'tblBorders');attrs(b,W,[]);allowed(children(b).length===6,'Unexpected Grid border');for(const edge of ['top','left','bottom','right','insideH','insideV']){const n=only(b,W,edge);attrs(n,W,['val','sz','space','color']);allowed(!children(n).length&&attribute(n,'val')==='single'&&attribute(n,'sz')==='4'&&attribute(n,'space')==='0'&&attribute(n,'color')==='auto','Unexpected Grid border style');}}
+  allowed(items.size===0,'Unsupported built-in table style property');
+  return true;
+ }catch(error){if(error instanceof OfficeError&&error.code==='unsupported')return false;throw error;}
 }
 function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,readParagraph:ParagraphReader,theme?:ThemeProfile,numbering?:NumberingSource):DocxStyleProfile{
   const root=parseXml(bytes,options).documentElement!;
@@ -174,7 +202,14 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,
     const style=styles[defaultCharacter];allowed(style&&!style.basedOn&&!style.toggles?.length&&!Object.keys(style.properties).length,'Default character style must be empty');
   }
   allowed(supportsNumberingReference(defaults.writerList,numbering?.numbering),'Unsupported default numbering');
-  return {styles,defaults,...(defaultParagraph?{defaultParagraph}:{}),tableDefaultsSafe:![...entries.values()].some(e=>e.kind==='table'&&e.isDefault)};
+  const tables=[...entries.values()].filter(e=>e.kind==='table'&&e.isDefault);
+  const builtinTableStyles=new Set<'TableNormal'|'TableGrid'>();
+  const normal=entries.get('TableNormal'),grid=entries.get('TableGrid');
+  if(normal&&tables.length===1&&tables[0]===normal&&builtinTableStyle(normal.node,'TableNormal')){
+    builtinTableStyles.add('TableNormal');
+    if(grid&&builtinTableStyle(grid.node,'TableGrid'))builtinTableStyles.add('TableGrid');
+  }
+  return {styles,defaults,...(defaultParagraph?{defaultParagraph}:{}),tableDefaultsSafe:tables.length===0||builtinTableStyles.has('TableNormal'),builtinTableStyles};
 }
 function relationPath(main:string):string{
   const i=main.lastIndexOf('/');return main.slice(0,i+1)+'_rels/'+main.slice(i+1)+'.rels';

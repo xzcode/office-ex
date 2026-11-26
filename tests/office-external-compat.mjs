@@ -2,9 +2,10 @@
 import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
-import {cloneData} from '@office-ex/core';
+import {cloneData,DocumentSession,writerEffectiveStyle} from '@office-ex/core';
+import {insertTableRow,replaceParagraphRange,setTableBorder} from '@office-ex/writer';
 import {inspectForEditor,serializeDraft,prepareWriterDocxSave,prepareSlidesSave,prepareSheetsSave,writeLegacyPpt} from '@office-ex/format-service';
-import {openOpc} from '@office-ex/ooxml';
+import {openOpc,openWriterDocx,saveWriterDocx,writeZip} from '@office-ex/ooxml';
 const folder=process.argv[2],read=name=>readFile(join(folder,name)),write=(name,bytes)=>writeFile(join(folder,name),bytes);
 async function inspect(name){const bytes=await read(name);return {bytes,result:await inspectForEditor(bytes,name,'compat-corpus')};}
 const excel=await inspect('standard.xlsx');assert.equal(excel.result.report.readOnly,false);const workbook=cloneData(excel.result.editableSheets);
@@ -21,13 +22,64 @@ for(const name of ['ordinary-text.docx','ordinary.pptx'])assert.equal((await ins
 const word=await inspect('ordinary-image.docx');assert.equal(word.result.report.readOnly,false);const doc=cloneData(word.result.editableWriter);
 doc.sections[0].blocks[0].runs[0].width=457200;doc.sections[0].blocks[0].runs[0].height=320040;
 await write('image-edited.docx',prepareWriterDocxSave(serializeDraft(doc),'compat-corpus',word.bytes));
+const tableFile=await inspect('ordinary-table.docx');assert.equal(tableFile.result.report.readOnly,false,tableFile.result.semanticFailure?.detail);
+const sourceTable=openWriterDocx(tableFile.bytes,'compat-corpus','Table');
+assert.deepEqual(saveWriterDocx(sourceTable,sourceTable.document),tableFile.bytes);
+const tableSession=new DocumentSession(sourceTable.document,{saved:true});
+const tableOf=d=>d.sections[0].blocks.find(b=>b.type==='table');
+const t=tableOf(tableSession.snapshot().document);
+assert.deepEqual({...t.nativeTable},{styleId:'TableGrid',autoWidth:true,autoLayout:true,look:0x4a0});
+assert.equal(t.border.width,6350);assert.deepEqual({...t.cellPadding},{top:0,right:68580,bottom:0,left:68580});
+const cell=t.rows[1].cells[0].blocks[0];assert.equal(writerEffectiveStyle(tableSession.snapshot().document,cell).spaceAfter,0);assert.equal(writerEffectiveStyle(tableSession.snapshot().document,cell).lineMultiple,240);
+tableSession.execute(replaceParagraphRange(tableSession.snapshot(),cell.id,0,'办公软件'.length,'办公软件已编辑','m6-cell'));
+tableSession.execute(insertTableRow(tableSession.snapshot(),t.id,2,'m6-row'));
+const added=tableOf(tableSession.snapshot().document).rows[2].cells[0].blocks[0];
+tableSession.execute(replaceParagraphRange(tableSession.snapshot(),added.id,0,0,'新增行','m6-added'));
+const edited=prepareWriterDocxSave(serializeDraft(tableSession.snapshot().document),'compat-corpus',tableFile.bytes);
+await write('table-edited.docx',edited);
+const reopenedTable=tableOf(openWriterDocx(edited,'compat-corpus','Table').document);
+assert.deepEqual({...reopenedTable.nativeTable},{...t.nativeTable});assert.equal(reopenedTable.rows.length,3);
+const partsBefore=openOpc(tableFile.bytes),partsAfter=openOpc(edited);
+for(const [name,data] of partsBefore.parts)if(name!==partsBefore.mainPart)assert.deepEqual(partsAfter.parts.get(name),data,name);
+tableSession.execute(setTableBorder(tableSession.snapshot(),t.id,null));
+const borderless=saveWriterDocx(sourceTable,tableSession.snapshot().document);
+assert.equal(tableOf(openWriterDocx(borderless,'compat-corpus','Table').document).border,undefined);
+assert.match(new TextDecoder().decode(openOpc(borderless).parts.get(partsBefore.mainPart)),/w:val="nil"/);
+tableSession.undo();assert.ok(tableOf(tableSession.snapshot().document).border);
+// Style names alone are not a compatibility guarantee. A changed built-in
+// style or conditional style must keep the source protected.
+for(const mutate of [
+ x=>x.replace('w:styleId="TableGrid"','w:styleId="TableGrid" w:customStyle="1"'),
+ x=>x.replace(/(<w:style w:type="table" w:styleId="TableGrid">[\s\S]*?)(<\/w:style>)/,'$1<w:tblStylePr w:type="firstRow"><w:rPr><w:b/></w:rPr></w:tblStylePr>$2')
+]){
+ const parts=new Map(partsBefore.parts),styleName='word/styles.xml',xml=new TextDecoder().decode(parts.get(styleName)),changed=mutate(xml);
+ assert.notEqual(changed,xml,'negative fixture must actually change');
+ parts.set(styleName,new TextEncoder().encode(changed));const bytes=writeZip(parts);
+ assert.equal((await inspectForEditor(bytes,'protected-style.docx','compat-corpus')).report.readOnly,true);
+}
+// Even an explicit RGB black border / equal-to-style padding is a direct
+// override, not an inherited automatic-color border.
+{
+ const parts=new Map(partsBefore.parts),main=partsBefore.mainPart,xml=new TextDecoder().decode(parts.get(main));
+ const border='<w:tblBorders>'+['top','left','bottom','right','insideH','insideV'].map(e=>'<w:'+e+' w:val="single" w:sz="4" w:space="0" w:color="000000"/>').join('')+'</w:tblBorders>';
+ const pad='<w:tblCellMar>'+['top','left','bottom','right'].map(e=>'<w:'+e+' w:w="'+(['left','right'].includes(e)?108:0)+'" w:type="dxa"/>').join('')+'</w:tblCellMar>';
+ const changed=xml.replace('<w:tblLook ',border+pad+'<w:tblLook ');assert.notEqual(changed,xml);
+ parts.set(main,new TextEncoder().encode(changed));const bytes=writeZip(parts),source=openWriterDocx(bytes,'compat-corpus','Override'),model=cloneData(source.document),table=tableOf(model);
+ assert.equal(table.nativeTable.directBorder,true);assert.equal(table.nativeTable.directPadding,true);
+ table.rows[0].cells[0].blocks[0].runs[0].text='Direct override';
+ const saved=saveWriterDocx(source,model),after=new TextDecoder().decode(openOpc(saved).parts.get(main));
+ assert.match(after,/w:color="000000"/);assert.match(after,/<w:tblCellMar>/);
+}
+const normal=await inspect('normal-table.docx');assert.equal(normal.result.report.readOnly,false,normal.result.semanticFailure?.detail);
+const normalDoc=cloneData(normal.result.editableWriter);tableOf(normalDoc).rows[0].cells[0].blocks[0].runs[0].text='Normal edited';
+await write('normal-table-edited.docx',prepareWriterDocxSave(serializeDraft(normalDoc),'compat-corpus',normal.bytes));
 const ppt=await inspect('ordinary-shapes.pptx');assert.equal(ppt.result.report.readOnly,false,ppt.result.semanticFailure?.detail);
 const slides=cloneData(ppt.result.editableSlides);
 assert.equal(slides.slides[0].shapes[0].textFrame.autofit.mode,'shape');
 slides.slides[0].shapes[0].runs[0].text='编辑普通文本框';
 await write('shapes-edited.pptx',prepareSlidesSave('pptx',serializeDraft(slides),'compat-corpus',ppt.bytes));
 assert.throws(()=>writeLegacyPpt(slides));
-for(const [name,kind,expected]of [['ordinary-table.docx','word','办公软件'],['advanced.docx','word','Read-only content'],['advanced.pptx','slides','文件']]){
+for(const [name,kind,expected]of [['merged-table.docx','word','Merged cell'],['advanced.docx','word','Read-only content'],['advanced.pptx','slides','文件']]){
  const {bytes,result}=await inspect(name);assert.equal(result.report.readOnly,true,name);assert.equal(result.editableWriter,undefined);assert.equal(result.editableSlides,undefined);
  assert.ok(result.semanticFailure?.detail,name);assert.equal(result.officeTextPreview.kind,kind);
  const paragraphs=result.officeTextPreview.pages.flatMap(p=>p.blocks.flatMap(b=>b.kind==='paragraph'?[b.text]:b.rows.flat()));
