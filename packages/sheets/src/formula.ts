@@ -26,7 +26,7 @@ type TokenKind = 'number' | 'word' | 'quoted' | 'string' | 'symbol' | 'error' | 
 interface Token { kind: TokenKind; text: string }
 interface Separators { readonly decimal: string; readonly argument: string }
 
-export const SUPPORTED_FUNCTIONS = Object.freeze(["SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNTA", "IF", "AND", "OR", "NOT", "ROUND", "ABS"]);
+export const SUPPORTED_FUNCTIONS = Object.freeze(["SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNTA", "IF", "AND", "OR", "NOT", "ROUND", "ABS", "IFERROR", "ISNUMBER", "ISTEXT", "ISLOGICAL", "ISBLANK", "ISERROR", "ISERR", "ISNA", "PRODUCT", "INT", "MOD", "ROUNDUP", "ROUNDDOWN", "TRUNC", "SIGN", "SQRT", "POWER", "LEN", "LEFT", "RIGHT", "MID", "UPPER", "LOWER", "TRIM", "CONCATENATE", "COUNTBLANK"]);
 var functions = new Set(SUPPORTED_FUNCTIONS);
 export function isSupportedFunction(name: string): boolean {
   return functions.has(name.toUpperCase());

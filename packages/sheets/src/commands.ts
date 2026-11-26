@@ -258,7 +258,10 @@ export function formatCells(snapshot:DocumentSnapshot, sheetId:string, range:Cel
   const index = sheetIndex(snapshot, sheetId), sheet = book(snapshot).sheets[index], cells = { ...sheet.cells };
   for (let r = range.row; r < range.row + range.rowCount; r++) for (let c = range.column; c < range.column + range.columnCount; c++) {
     const key = cellKey(r, c), before = cells[key] ?? { value: { kind: "blank" } };
-    cells[key] = { ...before, ...format.style !== void 0 ? { style: { ...before.style, ...format.style } } : {}, ...format.numberFormat !== void 0 ? { numberFormat: format.numberFormat } : {} };
+    const style=format.style!==undefined?{...before.style,...format.style}:undefined;
+    if(style&&format.style?.border!==undefined)delete style.borderEdges;
+    if(style&&format.style?.borderEdges!==undefined)delete style.border;
+    cells[key] = { ...before, ...(style?{style}:{}), ...format.numberFormat !== void 0 ? { numberFormat: format.numberFormat } : {} };
   }
   return cellsCommand(snapshot, index, cells);
 }

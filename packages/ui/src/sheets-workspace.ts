@@ -281,7 +281,8 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
     input.max = "2000";
     input.step = "1";
     const current:{height?:number;width?:number}|undefined = axis === "rows" ? sheet.rows[state2.row] : sheet.columns[state2.column];
-    input.value = String(Math.round((current?.[size] ?? defaultPx * 9525) / 9525));
+    const sourceDefault=axis==='rows'?sheet.defaultGeometry?.rowHeight:sheet.defaultGeometry?.columnWidth;
+    input.value = String(Math.round((current?.[size] ?? sourceDefault ?? defaultPx * 9525) / 9525));
     input.disabled = Boolean(host.readOnly);
     input.onchange = () => guard(() => {
       const range = selectionRange();
@@ -337,7 +338,7 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
   const plane = make("div", "", "sheets-plane");
   scroll.append(plane);
   root2.append(scroll);
-  const rows = new GridAxis(limits.rows, 24, sheet.rows, "height"), columns = new GridAxis(limits.columns, 104, sheet.columns, "width");
+  const rows = new GridAxis(limits.rows, (sheet.defaultGeometry?.rowHeight??24*9525)/9525, sheet.rows, "height"), columns = new GridAxis(limits.columns, (sheet.defaultGeometry?.columnWidth??104*9525)/9525, sheet.columns, "width");
   const headerWidth = 46, headerHeight = 26;
   const totalHeight = Math.min(3e7, rows.total + headerHeight), totalWidth = Math.min(3e7, columns.total + headerWidth);
   plane.style.height = totalHeight + "px";
@@ -545,6 +546,14 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
     if(style.alignment)css.textAlign=style.alignment;
     if(style.wrapText){css.whiteSpace="pre-wrap";css.overflowWrap="anywhere";}
     if(style.border)css.border=Math.max(.5,style.border.width/9525)+"px solid "+styleColor(style.border.color);
+    if(style.borderEdges)for(const [side,property]of [['left','borderLeft'],['right','borderRight'],['top','borderTop'],['bottom','borderBottom']] as const){
+      const edge=style.borderEdges[side];if(!edge)continue;
+      const width=edge.line==='hair'?.5:edge.line==='double'?3:edge.line==='thick'?4:edge.line.startsWith('medium')?2.67:1;
+      // CSS approximates dash-dot strokes; the actual XLSX line type
+      // and color are retained in the semantic model on save.
+      const line=edge.line==='double'?'double':edge.line==='dotted'?'dotted':/dash/i.test(edge.line)?'dashed':'solid';
+      css[property]=width+'px '+line+' '+styleColor(edge.color);
+    }
     css.alignContent=style.verticalAlignment==="top"?"start":style.verticalAlignment==="center"?"center":"end";
     const result=css.cssText;cache.set(named,result);return result;
   }
@@ -685,8 +694,8 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
       }
       formats.value = custom.value;
       const rh = root2.querySelector<HTMLInputElement>("#sheet-row-height"), cw = root2.querySelector<HTMLInputElement>("#sheet-column-width");
-      if (rh) rh.value = String(Math.round((sheet.rows[state2.row]?.height ?? 24 * 9525) / 9525));
-      if (cw) cw.value = String(Math.round((sheet.columns[state2.column]?.width ?? 104 * 9525) / 9525));
+      if (rh) rh.value = String(Math.round((sheet.rows[state2.row]?.height ?? sheet.defaultGeometry?.rowHeight ?? 24 * 9525) / 9525));
+      if (cw) cw.value = String(Math.round((sheet.columns[state2.column]?.width ?? sheet.defaultGeometry?.columnWidth ?? 104 * 9525) / 9525));
     }
     const summarySignature = displayedRange + ":" + state2.calculatedRevision;
     if (summarySignature !== summaryKey) {

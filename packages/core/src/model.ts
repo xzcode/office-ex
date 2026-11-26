@@ -43,7 +43,10 @@ export interface WriterSection { id: string; storyRefs?:{header?:string;footer?:
 export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string; numbering?:WriterNumbering; pageStories?:Record<string,WriterPageStory> }
 
 export type CellValue = { kind: 'blank' } | { kind: 'string'; value: string } | { kind: 'number'; value: number } | { kind: 'boolean'; value: boolean } | { kind: 'error'; value: '#NULL!' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#NAME?' | '#NUM!' | '#N/A' } | { kind: 'formula'; source: string };
-export interface CellStyle extends TextStyle { fill?: Color; border?: {color:Color;width:number}; verticalAlignment?: 'top'|'center'|'bottom'; wrapText?: boolean }
+export type CellBorderSide='left'|'right'|'top'|'bottom';
+export type CellBorderLine='hair'|'thin'|'medium'|'thick'|'dotted'|'dashed'|'mediumDashed'|'double'|'dashDot'|'mediumDashDot'|'dashDotDot'|'mediumDashDotDot'|'slantDashDot';
+export interface CellBorderEdge {line:CellBorderLine;color:Color}
+export interface CellStyle extends TextStyle { fill?: Color; border?: {color:Color;width:number}; borderEdges?:Partial<Record<CellBorderSide,CellBorderEdge>>; verticalAlignment?: 'top'|'center'|'bottom'; wrapText?: boolean }
 export interface SheetView { rightToLeft?:boolean; frozenRows?:number; frozenColumns?:number; showGridLines?:boolean }
 export interface Cell { value: CellValue; styleId?: string; numberFormat?: string; style?: CellStyle }
 export interface Sheet {
@@ -52,6 +55,7 @@ export interface Sheet {
   columns: Record<string, { width?: number; hidden?: boolean }>;
   merges: { row: number; column: number; rowCount: number; columnCount: number }[];
   view?: SheetView;
+  defaultGeometry?:{rowHeight:number;columnWidth?:number};
 }
 export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSystem: '1900' | '1904'; sheets: Sheet[] }
 
@@ -369,8 +373,9 @@ export function validateDocument(value: unknown): OfficeDocument {
     assert(model.dateSystem === '1900' || model.dateSystem === '1904', 'invalid', 'Invalid workbook date system');
     const names = new Set<string>();
     list(model.sheets, 1).forEach((candidate) => {
-      const sheet = object(candidate, ['id', 'name', 'cells', 'rows', 'columns', 'merges', 'view']); id(sheet.id); text(sheet.name, 31, false);
+      const sheet = object(candidate, ['id', 'name', 'cells', 'rows', 'columns', 'merges', 'view','defaultGeometry']); id(sheet.id); text(sheet.name, 31, false);
       if(sheet.view!==undefined){const view=object(sheet.view,['rightToLeft','frozenRows','frozenColumns','showGridLines']);for(const field of ['rightToLeft','showGridLines'])if(view[field]!==undefined)bool(view[field]);if(view.frozenRows!==undefined)integer(view.frozenRows,0,1048575);if(view.frozenColumns!==undefined)integer(view.frozenColumns,0,16383);}
+      if(sheet.defaultGeometry!==undefined){const g=object(sheet.defaultGeometry,['rowHeight','columnWidth']);integer(g.rowHeight,1,409*12700);if(g.columnWidth!==undefined)integer(g.columnWidth,1,255*9525*7);}
       assert(!/[\[\]:*?/\\\x00-\x1f]/.test(sheet.name) && !sheet.name.startsWith("'") && !sheet.name.endsWith("'"), 'invalid', 'Invalid sheet name');
       const name = sheet.name.toLowerCase(); assert(!names.has(name), 'invalid', 'Duplicate sheet name'); names.add(name);
       assert(isRecord(sheet.cells), 'invalid', 'Invalid sparse cell map');
@@ -472,7 +477,11 @@ export function validateDocument(value: unknown): OfficeDocument {
 
 export function validateCell(value: unknown, styles: Record<string, unknown> = {}): asserts value is Cell {
   const cell = object(value, ['value', 'styleId', 'numberFormat', 'style']); optionalId(cell.styleId, styles);
-  if(cell.style!==undefined){assert(isRecord(cell.style),'invalid','Invalid cell style');const {fill,border,verticalAlignment,wrapText,...font}=cell.style;validateTextStyle(font);if(fill!==undefined)validateColor(fill);if(border!==undefined){const edge=object(border,['color','width']);validateColor(edge.color);integer(edge.width,1,12700*12);}if(verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(verticalAlignment)),'invalid','Invalid vertical cell alignment');if(wrapText!==undefined)bool(wrapText);}
+  if(cell.style!==undefined){assert(isRecord(cell.style),'invalid','Invalid cell style');const {fill,border,borderEdges,verticalAlignment,wrapText,...font}=cell.style;validateTextStyle(font);if(fill!==undefined)validateColor(fill);if(border!==undefined){const edge=object(border,['color','width']);validateColor(edge.color);integer(edge.width,1,12700*12);}if(borderEdges!==undefined){
+      assert(border===undefined,'invalid','Conflicting uniform and per-edge cell borders');
+      const edges=object(borderEdges,['left','right','top','bottom']);assert(Object.keys(edges).length>0,'invalid','Empty cell edge set');
+      for(const item of Object.values(edges)){const edge=object(item,['line','color']);assert(['hair','thin','medium','thick','dotted','dashed','mediumDashed','double','dashDot','mediumDashDot','dashDotDot','mediumDashDotDot','slantDashDot'].includes(String(edge.line)),'invalid','Unsupported cell border line');validateColor(edge.color);}
+    }if(verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(verticalAlignment)),'invalid','Invalid vertical cell alignment');if(wrapText!==undefined)bool(wrapText);}
   if (cell.numberFormat !== undefined) text(cell.numberFormat, 1024);
   const item = object(cell.value, ['kind', 'value', 'source']);
   if (item.kind === 'blank') assert(Object.keys(item).length === 1, 'invalid', 'Blank cell has a payload');

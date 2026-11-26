@@ -162,17 +162,18 @@ function comparison(a: CalculatedValue, b: CalculatedValue): number {
   const bv = b.kind === "string" ? b.value.toUpperCase() : "value" in b ? b.value : 0;
   return av === bv ? 0 : av < bv ? -1 : 1;
 }
-function decimalRound(value: number, digits: number): NumberValue | ErrorValue {
+function decimalRound(value: number, digits: number, mode:'nearest'|'up'|'down'='nearest'): NumberValue | ErrorValue {
   const precision = Math.trunc(digits);
   if (precision > 308) return num(value);
-  if (precision < -308) return num(0);
+  if (precision < -308) return mode==='up'&&value!==0?error('#NUM!'):num(0);
   const shift = (n: number, exponent: number): number => {
     const [base, exp = "0"] = String(n).split("e");
     return Number(`${base}e${Number(exp) + exponent}`);
   };
   const shifted = shift(Math.abs(value), precision);
   if (!Number.isFinite(shifted)) return num(value);
-  return num(Math.sign(value) * shift(Math.floor(shifted + 0.5), -precision));
+  const rounded=mode==='up'?Math.ceil(shifted)||Number(value!==0):mode==='down'?Math.floor(shifted):Math.floor(shifted+0.5);
+  return num(Math.sign(value) * shift(rounded, -precision));
 }
 function sameValue(a: CellValue | undefined, b: CellValue | undefined): boolean {
   if (a === b) return true;
@@ -379,6 +380,83 @@ export class WorkbookCalculator {
         const chosen = logicalValue ? node.args[1] : node.args[2];
         return chosen ? evaluate(chosen, sheetId, owner, depth + 1) : bool(false);
       }
+      // Conditional error handling must not turn unsupported/stale source
+      // formulas into valid values. Only an actual calculated error is caught.
+      if(name==='IFERROR'){
+        if(node.args.length!==2)return error('#VALUE!');
+        const value=scalar(evaluate(node.args[0],sheetId,owner,depth+1));
+        if(value.kind==='pending')return value;
+        if(value.kind==='error')return scalar(evaluate(node.args[1],sheetId,owner,depth+1));
+        return value;
+      }
+      if(['ISNUMBER','ISTEXT','ISLOGICAL','ISBLANK','ISERROR','ISERR','ISNA'].includes(name)){
+        if(node.args.length!==1)return error('#VALUE!');
+        const value=scalar(evaluate(node.args[0],sheetId,owner,depth+1));
+        if(value.kind==='pending')return value;
+        return bool(name==='ISNUMBER'?value.kind==='number':name==='ISTEXT'?value.kind==='string':name==='ISLOGICAL'?value.kind==='boolean':name==='ISBLANK'?value.kind==='blank':name==='ISERROR'?value.kind==='error':name==='ISNA'?value.kind==='error'&&value.value==='#N/A':value.kind==='error'&&value.value!=='#N/A');
+      }
+      if(name==='COUNTBLANK'){
+        if(node.args.length!==1||!['reference','range'].includes(node.args[0]!.kind))return error('#VALUE!');
+        const value=evaluate(node.args[0],sheetId,owner,depth+1);
+        if(value.kind==='pending')return value;
+        if(value.kind!=='range-value'){
+          const arg=node.args[0]!;
+          if(arg.kind==='range'||arg.kind==='reference'&&!resolve(arg,sheetId))return error('#REF!');
+          return num(value.kind==='blank'||value.kind==='string'&&value.value===''?1:0);
+        }
+        const r=value.range;
+        let count=(r.row2-r.row1+1)*(r.column2-r.column1+1);
+        // Count implicit empty cells arithmetically; even an entire worksheet
+        // is sparse and never expanded into millions of blank allocations.
+        for(const entry of indexes.get(r.sheetId)!.range(r.row1,r.column1,r.row2,r.column2)){
+          tick();const v=getCell(r.sheetId,entry.row,entry.column,depth+1);
+          if(v.kind==='pending')return v;
+          if(v.kind!=='blank'&&!(v.kind==='string'&&v.value===''))count--;
+        }
+        return num(count);
+      }
+      if(['INT','MOD','ROUNDUP','ROUNDDOWN','TRUNC','SIGN','SQRT','POWER'].includes(name)){
+        const two=['MOD','ROUNDUP','ROUNDDOWN','POWER'].includes(name);
+        if(name==='TRUNC'?node.args.length<1||node.args.length>2:node.args.length!==(two?2:1))return error('#VALUE!');
+        const first=scalar(evaluate(node.args[0],sheetId,owner,depth+1));
+        if(first.kind==='pending')return first;const a=numeric(first);if(typeof a!=='number')return a;
+        if(name==='INT')return num(Math.floor(a));
+        if(name==='SIGN')return num(Math.sign(a));
+        if(name==='SQRT')return a<0?error('#NUM!'):num(Math.sqrt(a));
+        let b=0;
+        if(node.args.length===2){const second=scalar(evaluate(node.args[1],sheetId,owner,depth+1));if(second.kind==='pending')return second;const n=numeric(second);if(typeof n!=='number')return n;b=n;}
+        if(name==='MOD'){
+          if(b===0)return error('#DIV/0!');
+          // Remainder with the divisor's sign, without an overflowing
+          // quotient for very different magnitudes.
+          const r=a%b;return num(r!==0&&(r<0)!==(b<0)?r+b:r);
+        }
+        if(name==='POWER'){if(a===0&&b<0)return error('#DIV/0!');if(a===0&&b===0)return error('#NUM!');return num(a**b);}
+        return decimalRound(a,b,name==='ROUNDUP'?'up':'down');
+      }
+      if(['LEN','LEFT','RIGHT','MID','UPPER','LOWER','TRIM','CONCATENATE'].includes(name)){
+        const count=node.args.length;
+        if(name==='CONCATENATE'?count<1:name==='MID'?count!==3:name==='LEFT'||name==='RIGHT'?count<1||count>2:count!==1)return error('#VALUE!');
+        const values:CalculatedValue[]=[];
+        for(const arg of node.args){const v=scalar(evaluate(arg,sheetId,owner,depth+1));if(v.kind==='pending'||v.kind==='error')return v;values.push(v);}
+        const out=(text:string):CalculatedValue=>text.length>32767?error('#VALUE!'):{kind:'string',value:text};
+        const text=textValue(values[0]!);
+        if(name==='UPPER')return out(text.toUpperCase());
+        if(name==='LOWER')return out(text.toLowerCase());
+        if(name==='TRIM')return out(text.replace(/^ +| +$/g,'').replace(/ +/g,' '));
+        if(name==='CONCATENATE'){
+          let joined='';for(const v of values){tick();joined+=textValue(v);if(joined.length>32767)return error('#VALUE!');}return out(joined);
+        }
+        // Unicode code-point boundaries avoid manufacturing invalid
+        // surrogate halves. Exact legacy Excel compatibility modes vary.
+        const chars=Array.from(text);
+        if(name==='LEN')return num(chars.length);
+        const readInt=(index:number,defaultValue=1)=>{const v=values[index];if(!v)return defaultValue;const n=numeric(v);return typeof n==='number'?Math.trunc(n):n;};
+        const n=readInt(1);if(typeof n!=='number')return n;
+        if(name==='MID'){const size=readInt(2,0);if(typeof size!=='number')return size;return n<1||size<0?error('#VALUE!'):out(chars.slice(n-1,n-1+size).join(''));}
+        if(n<0)return error('#VALUE!');
+        return out((name==='LEFT'?chars.slice(0,n):chars.slice(Math.max(0,chars.length-n))).join(''));
+      }
       if (name === "ABS" || name === "ROUND" || name === "NOT") {
         if (node.args.length !== (name === "ROUND" ? 2 : 1)) return error("#VALUE!");
         const first = scalar(evaluate(node.args[0], sheetId, owner, depth + 1));
@@ -395,7 +473,7 @@ export class WorkbookCalculator {
         const places = numeric(second);
         return typeof places === "number" ? decimalRound(n, places) : places;
       }
-      let count = 0, sum = 0, minimum = Infinity, maximumValue = -Infinity, logicalCount = 0, and = true, or = false;
+      let count = 0, sum = 0, product = 1, minimum = Infinity, maximumValue = -Infinity, logicalCount = 0, and = true, or = false;
       const accept = (value: CalculatedValue | PendingValue, reference: boolean): ErrorValue | PendingValue | undefined => {
         tick();
         if (value.kind === "pending") return value;
@@ -422,6 +500,7 @@ export class WorkbookCalculator {
         if (typeof n !== "number") return n;
         count++;
         sum += n;
+        if(name==='PRODUCT')product*=n;
         minimum = Math.min(minimum, n);
         maximumValue = Math.max(maximumValue, n);
         return;
@@ -444,6 +523,7 @@ export class WorkbookCalculator {
       if (name === "AVERAGE") return count ? num(sum / count) : error("#DIV/0!");
       if (name === "MIN") return num(count ? minimum : 0);
       if (name === "MAX") return num(count ? maximumValue : 0);
+      if(name==='PRODUCT')return num(count?product:0);
       return num(sum);
     };
     const calculateCell = (key: string, depth = 0): CalculationCell => {

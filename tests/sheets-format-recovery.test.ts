@@ -56,3 +56,30 @@ test('XLSX noncanonical main URI survives native save and structural sheet chang
  assert.ok(after.cachedValues.some(([key,value])=>key==='sheet-1!1:1'&&value.kind==='number'&&value.value===34));
  assert.deepEqual(after.native.opc.parts.get('_rels/.rels'),parts.get('_rels/.rels'));
 });
+
+test('M6.4 partial and mixed cell borders, explicit default geometry, and source-backed edit roundtrip',async()=>{
+ const {formatCells}=await import('@office-ex/sheets');
+ const d=createDocument('sheets','edge-profile');
+ const sheet=d.sheets[0]!,black={kind:'rgba' as const,red:0,green:0,blue:0,alpha:255},red={...black,red:255};
+ sheet.defaultGeometry={rowHeight:25*12700,columnWidth:18*9525*7};
+ sheet.cells['1:1']={value:{kind:'string',value:'Report'},style:{borderEdges:{bottom:{line:'double',color:black},left:{line:'mediumDashed',color:red}}}};
+ sheet.cells['1:2']={value:{kind:'number',value:5}};sheet.cells['2:2']={value:{kind:'formula',source:'=IFERROR(PRODUCT(B1,2),0)'}};
+ const bytes=writeSheetsXlsx(d),original=openSheetsXlsx(bytes,d.documentId,d.title);
+ assert.deepEqual(original.document.sheets[0]!.defaultGeometry,sheet.defaultGeometry);
+ assert.deepEqual(original.document.sheets[0]!.cells['1:1']!.style?.borderEdges,sheet.cells['1:1']!.style?.borderEdges);
+ assert.deepEqual(saveSheetsXlsx(bytes,original.document),bytes);
+ original.document.sheets[0]!.cells['1:2']!.value={kind:'number',value:8};
+ const edited=saveSheetsXlsx(bytes,original.document),reopened=openSheetsXlsx(edited,d.documentId,d.title);
+ assert.deepEqual(reopened.document.sheets[0]!.defaultGeometry,sheet.defaultGeometry);
+ assert.deepEqual(reopened.document.sheets[0]!.cells['1:1']!.style?.borderEdges,sheet.cells['1:1']!.style?.borderEdges);
+ assert.deepEqual(openOpc(edited).parts.get('xl/styles.xml'),openOpc(bytes).parts.get('xl/styles.xml'));
+ assert.ok(reopened.cachedValues.some(([k,v])=>k==='sheet-1!2:2'&&v.kind==='number'&&v.value===16));
+ const session=new DocumentSession(reopened.document);
+ session.execute(formatCells(session.snapshot(),'sheet-1',{row:1,column:1,rowCount:1,columnCount:1},{style:{border:{width:9525,color:black}}}));
+ const updated=session.snapshot().document as SheetsDocument;
+ assert.equal(updated.sheets[0]!.cells['1:1']!.style?.borderEdges,undefined);
+ assert.deepEqual(updated.sheets[0]!.cells['1:1']!.style?.border,{width:9525,color:black});
+ const back=openSheetsXlsx(saveSheetsXlsx(edited,updated),d.documentId,d.title);
+ assert.deepEqual(back.document.sheets[0]!.cells['1:1']!.style?.border,{width:9525,color:black});
+ assert.throws(()=>writeLegacyXls(d),OfficeError);
+});

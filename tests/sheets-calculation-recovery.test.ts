@@ -135,3 +135,34 @@ test('SHT-03 string tokens cannot be mistaken for operators or references', () =
   assert.throws(()=>parseFormula('=A1:"B2"'),code('unsupported'));
   assert.equal(parseFormula('=IF(TRUE,")",",")').kind,'call');
 });
+
+test('M6.5 common scalar, text and predicate functions calculate with explicit error semantics',()=>{
+ const cases:[string,CellValue][]=[
+  ['=IFERROR(1/0,42)',number(42)],['=IFERROR(3,1/0)',number(3)],['=ISNUMBER(3)',boolean(true)],['=ISTEXT("3")',boolean(true)],['=ISLOGICAL(TRUE)',boolean(true)],
+  ['=ISBLANK(Z99)',boolean(true)],['=ISBLANK("")',boolean(false)],['=ISERROR(#N/A)',boolean(true)],['=ISERR(#N/A)',boolean(false)],['=ISNA(#N/A)',boolean(true)],
+  ['=PRODUCT(2,3,4)',number(24)],['=INT(-2.4)',number(-3)],['=MOD(-5,3)',number(1)],['=MOD(5,-3)',number(-1)],['=MOD(1,0)',err('#DIV/0!')],
+  ['=ROUNDUP(-1.21,1)',number(-1.3)],['=ROUNDDOWN(-1.29,1)',number(-1.2)],['=TRUNC(-12.98,1)',number(-12.9)],['=TRUNC(-12.98)',number(-12)],
+  ['=SIGN(-7)',number(-1)],['=SQRT(81)',number(9)],['=SQRT(-1)',err('#NUM!')],['=POWER(3,2)',number(9)],['=POWER(0,-1)',err('#DIV/0!')],
+  ['=LEN("中文😀")',number(3)],['=LEFT("中文",1)',string('中')],['=RIGHT("abcd",2)',string('cd')],['=RIGHT("abcd",0)',string('')],['=MID("abcdef",2,3)',string('bcd')],['=MID("abc",0,2)',err('#VALUE!')],
+  ['=UPPER("abc")',string('ABC')],['=LOWER("ABC")',string('abc')],['=TRIM("  A   B  ")',string('A B')],['=CONCATENATE("A",2,TRUE)',string('A2TRUE')]
+ ];
+ const d=book(Object.fromEntries(cases.map(([source],i)=>[(i+1)+':1',formula(source)])));
+ const result=new WorkbookCalculator().calculate(d);
+ cases.forEach(([,expected],i)=>assert.deepEqual(result.get(sid,i+1,1).value,expected,cases[i]![0]));
+});
+test('M6.5 COUNTBLANK uses sparse implicit cells, distinguishes empty strings and errors',()=>{
+ const d=book({'1:1':number(2),'2:1':string(''),'3:1':err('#REF!'),'4:1':formula('=""'),'1:2':formula('=COUNTBLANK(A:A)'),'2:2':formula('=COUNTBLANK(A3)'),'3:2':formula('=COUNTBLANK(A4)')});
+ const r=new WorkbookCalculator().calculate(d,{maxSteps:500});
+ assert.deepEqual(r.get(sid,1,2).value,number(1048574));
+ assert.deepEqual(r.get(sid,2,2).value,number(0));assert.deepEqual(r.get(sid,3,2).value,number(1));
+ assert.ok(r.steps<500);
+});
+test('M6.5 IFERROR is lazy, does not promote unsupported caches or hide cycles, and recalculates dependencies',()=>{
+ const s=new DocumentSession(book({'1:1':number(0),'1:2':formula('=IFERROR(10/A1,99)'),'2:2':formula('=IFERROR(1,UNSUPPORTED(1))'),'3:2':formula('=IFERROR(UNSUPPORTED(1),42)'),'4:2':formula('=IFERROR(B4,5)')}));
+ const calc=new WorkbookCalculator(),r=calc.calculate(snapshot(s));
+ assert.deepEqual(r.get(sid,1,2).value,number(99));assert.deepEqual(r.get(sid,2,2).value,number(1));
+ assert.equal(r.get(sid,3,2).state,'unsupported');assert.deepEqual(r.get(sid,4,2),{state:'error',value:err('#REF!'),reason:'cycle'});
+ s.execute(setCells(s.snapshot(),sid,[{row:1,column:1,cell:{value:number(2)}}]));
+ assert.deepEqual(calc.calculate(snapshot(s)).get(sid,1,2).value,number(5));
+ s.undo();assert.deepEqual(calc.calculate(snapshot(s)).get(sid,1,2).value,number(99));
+});

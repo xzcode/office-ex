@@ -11,7 +11,8 @@ from pptx import Presentation
 from pptx.util import Inches as I
 from pptx.enum.text import MSO_AUTO_SIZE
 from PIL import Image
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Border, Side
 ROOT=Path(__file__).resolve().parents[1]
 def generate(p):
     p.mkdir(parents=True,exist_ok=True)
@@ -28,6 +29,15 @@ def generate(p):
     s.conditional_format('B1:B20',{'type':'cell','criteria':'>','value':100,'format':w.add_format({'bg_color':'#FFDDAA'})})
     w.add_worksheet('汇总').write('A1','第二张表')
     hidden=w.add_worksheet('隐藏');hidden.hide();hidden.write('A1','隐藏数据');w.close()
+    b=Workbook();s=b.active;s.title='Report'
+    s.sheet_format.defaultRowHeight=26;s.sheet_format.defaultColWidth=18;s.sheet_format.customHeight=True
+    s['A1']='业务报表';s['A1'].border=Border(bottom=Side(style='double',color='FF118844'),left=Side(style='mediumDashed',color='FFCC2233'))
+    s['B1']=12;s['B2']='=IFERROR(PRODUCT(B1,2),0)';s['B3']='=COUNTBLANK(A1:A5)';s['B4']='=LEFT("Office EX",6)';s['B5']='=MOD(-5,3)'
+    s['A2']='保留格式';s['A2'].border=Border(right=Side(style='dashDot',color='FF0000FF'))
+    s.row_dimensions[3].height=31;s.column_dimensions['C'].width=25
+    b.create_sheet('Other')['A1']='=Report!B1+3'
+    b.save(p/'m6-sheet.xlsx')
+    s['A1'].border=Border(diagonal=Side(style='thin',color='FF000000'),diagonalUp=True);b.save(p/'m6-unsupported-diagonal.xlsx')
     d=Document();d.add_heading('标题',0);d.add_paragraph('中文正文');d.add_paragraph('First item',style='List Number');d.save(p/'ordinary-text.docx')
     d=Document();t=d.add_table(rows=2,cols=2);t.style='Table Grid'
     for i,row in enumerate([['产品','数量'],['办公软件','12']]):
@@ -97,6 +107,16 @@ def generate(p):
 def verify(p):
     subprocess.run([os.environ.get('NODE','node'),'--import','tsx','tests/office-external-compat.mjs',str(p)],cwd=ROOT,check=True)
     a=load_workbook(p/'standard-edited.xlsx',data_only=True);assert a['销售']['B1'].value==300 and a['销售']['B2'].value==600
+    b=load_workbook(p/'m6-sheet-edited.xlsx');s=b['Report'];cache=load_workbook(p/'m6-sheet-edited.xlsx',data_only=True)
+    assert s['B1'].value==21 and cache['Report']['B2'].value==42 and cache['Report']['B3'].value==3 and cache['Report']['B4'].value=='Office' and cache['Report']['B5'].value==1
+    assert cache['Other']['A1'].value==24
+    assert s['A1'].border.bottom.style=='double' and s['A1'].border.bottom.color.rgb=='FF118844'
+    assert s['A1'].border.left.style=='mediumDashed' and s['A1'].border.left.color.rgb=='FFCC2233'
+    assert s['A2'].border.right.style=='dashDot' and s['A2'].border.right.color.rgb=='FF0000FF'
+    assert s.sheet_format.defaultRowHeight==26 and s.sheet_format.defaultColWidth==18 and s.row_dimensions[3].height==31 and s.column_dimensions['C'].width==25
+    with ZipFile(p/'m6-sheet.xlsx') as before,ZipFile(p/'m6-sheet-edited.xlsx') as after:
+        for name in ['xl/styles.xml','xl/theme/theme1.xml','docProps/core.xml','docProps/app.xml']:
+            assert before.read(name)==after.read(name),name
     d=Document(p/'image-edited.docx');assert len(d.inline_shapes)==1 and d.inline_shapes[0].width==457200
     with ZipFile(p/'ordinary-image.docx') as before,ZipFile(p/'image-edited.docx') as after:
         for name in before.namelist():

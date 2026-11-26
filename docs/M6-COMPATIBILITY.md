@@ -84,3 +84,24 @@ Previous source `587a44c447e0613cffe6a04964a20225bc49051f` passed verification a
 - Reproduce after building with `node --import tsx scripts/smoke-m6-pagination.mjs`, using a Python interpreter with pinned test-only pypdf 5.4.0 via `OFFICE_EX_PDF_PYTHON`. Exact new-source CI still required. No runtime dependency changes, new preview tag, release or master merge.
 
 Next: M6.4 spreadsheet external compatibility and editing fidelity, then M6.5 formulas and M6.6 charts. More Word pagination profiles, exact reference Office comparison, complex running stories and formal acceptance remain open.
+
+
+## M6.4 / M6.5 batch A — Excel source fidelity and common functions
+
+Baseline `a205f36de26f374d75e97d8292102fdb967cc87f` is the M6.3 pagination source. At this checkpoint [CI 45791133537](https://github.com/xzcode/office-ex/actions/runs/45791133537) verify, Windows x64 and macOS ARM64 passed; Linux packaging was still in progress. Do not treat it as complete evidence for the new source.
+
+### Implementation
+
+- Extend the bounded XLSX cell style profile with independent left/right/top/bottom edges and native SpreadsheetML line types: hair, thin, medium, thick, dotted, dashed, mediumDashed, double, dashDot, mediumDashDot, dashDotDot, mediumDashDotDot, slantDashDot. Mixed/partial borders retain their original color/style; the original uniform border model remains compatible. Applying the existing all-edge border command deliberately replaces mixed edges. Renderer maps each edge separately; CSS approximates dash-dot variants, not exact Excel drawing metrics. Unsupported diagonal/non-outline borders remain protected.
+- Admit explicit default row height and column width in `sheetFormatPr`, retain per-row/column overrides, project sparse grid geometry and inspector values, and preserve the source default geometry part when unchanged. Default column display uses the existing seven-pixel character-width approximation, not reference Excel font-dependent width metrics. Hidden default rows, nonstandard outlines and unsupported dimensions remain protected.
+- Source-backed saves still retain original native style indices, theme, metadata, unchanged parts and formula source; independently read back both new values and cross-sheet caches. Conversion to the old XLS profile explicitly rejects unsupported per-edge/default geometry rather than silently dropping it.
+- Formula engine expands from 12 to **38** registered functions (26 additions): IFERROR, ISNUMBER, ISTEXT, ISLOGICAL, ISBLANK, ISERROR, ISERR, ISNA, PRODUCT, INT, MOD, ROUNDUP, ROUNDDOWN, TRUNC, SIGN, SQRT, POWER, LEN, LEFT, RIGHT, MID, UPPER, LOWER, TRIM, CONCATENATE, COUNTBLANK. COUNTBLANK counts implicit blanks arithmetically over sparse ranges; IFERROR catches real calculated errors without disguising unsupported/stale dependencies or cycles. Text slicing operates on Unicode code points to avoid invalid surrogate halves; exact legacy Excel compatibility modes are not claimed. New functions are not thereby enabled in BIFF8 serialization. Existing dependency/cancellation/budget guards remain in effect.
+
+### Verification
+
+- Final local `npm run check`: 284/284, no failures/skips; targeted Excel formula/calculation/format tests 34/34; TypeScript, architecture, build and dependency audit passed (79 locked packages, 29 notices).
+- Independent openpyxl report with a double bottom border, medium dashed left border, distinct dash-dot right edge, default 26-point row height and 18-character column width, explicit overrides, IFERROR/PRODUCT/COUNTBLANK/LEFT/MOD and cross-sheet formulas. The entire existing independent Excel/Word/PPT corpus passed, including independent readback of changed XLSX caches, exact original style/theme/core/app metadata bytes, and protected diagonal/conditional samples.
+- Sandboxed Linux desktop 3/3: editable external workbook and CSS geometry (126 px column, 34.65625 px row), double-click edit/recalculation/undo/redo, source-backed save/reopen and cross-sheet caches. [Native evidence](verification/m6/native-sheets.json). Reproduce with `python tests/office_external_compat.py .work/m6-sheet-corpus`, build, then `node --import tsx scripts/smoke-m6-sheets.mjs .work/m6-sheet-corpus`.
+- New-source CI required. No runtime dependency additions, new release, tag or master merge.
+
+Next: continue M6.4 rich text/named style and other common XLSX profiles; M6.5 conditional aggregates and lookup functions; M6.6 charts/conditional formatting. These latter items remain unimplemented. Formal reference Excel fidelity and full legacy XLS acceptance remain open.

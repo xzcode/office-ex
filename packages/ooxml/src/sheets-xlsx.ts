@@ -5,7 +5,7 @@
  */
 import { XMLSerializer, type Element, type Document } from '@xmldom/xmldom';
 import { assert, assertCellAddress, OfficeError } from '@office-ex/contracts';
-import { createDocument, validateDocument, type SheetsDocument, type Sheet, type Cell, type CellStyle, type Color, type TextStyle } from '@office-ex/core';
+import { createDocument, validateDocument, type SheetsDocument, type Sheet, type Cell, type CellStyle, type CellBorderSide,type CellBorderLine,type Color, type TextStyle } from '@office-ex/core';
 import { columnName, columnNumber, parseFormula, formulaIsSupported, WorkbookCalculator, calculationKey, type CalculatedValue, type WorkbookSnapshot } from '@office-ex/sheets';
 import { openOpc, type OpcPackage, type OpcRelationship } from './opc.js';
 import { parseXml, childElements } from './xml.js';
@@ -30,7 +30,7 @@ const relationFile=(path:string)=>{const i=path.lastIndexOf('/');return path.sli
 
 const builtins:Readonly<Record<number,string>>={0:'General',1:'0',2:'0.00',3:'#,##0',4:'#,##0.00',9:'0%',10:'0.00%',11:'0.00E+00',14:'mm-dd-yy',20:'h:mm',21:'h:mm:ss',22:'m/d/yy h:mm',49:'@'};
 const FONT_KEYS=['fontFamily','fontSize','bold','italic','underline','color'] as const;
-const STYLE_KEYS=[...FONT_KEYS,'fill','border','alignment','verticalAlignment','wrapText'];
+const STYLE_KEYS=[...FONT_KEYS,'fill','border','borderEdges','alignment','verticalAlignment','wrapText'];
 const ERROR=new Set(['#NULL!','#DIV/0!','#VALUE!','#REF!','#NAME?','#NUM!','#N/A']);
 function requireProfile(condition:unknown,detail:string):asserts condition{if(!condition)throw new OfficeError('unsupported','XLSX profile: '+detail);}
 function esc(s:string):string{requireProfile(!/[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]/.test(s),'XML text contains unsupported controls');return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;').replace(/\r/g,'&#13;');}
@@ -113,10 +113,35 @@ function readFont(e:Element,context:ColorContext):TextStyle{attrs(e,[]);const c=
   }
   const color=one(c,'color',false);if(color)result.color=readRgb(color,context);return result;}
 const borderWidth:Readonly<Record<string,number>>={thin:9525,medium:25400,thick:38100};
-function borderXml(b:NonNullable<CellStyle['border']>):string{const kind=Object.keys(borderWidth).find(k=>borderWidth[k]===b.width);requireProfile(kind,'Unsupported border width');return '<border>'+['left','right','top','bottom'].map(x=>'<'+x+' style="'+kind+'"><color rgb="'+rgb(b.color)+'"/></'+x+'>').join('')+'<diagonal/></border>';}
-function parseBorder(e:Element,context:ColorContext):CellStyle['border']{attrs(e,['diagonalUp','diagonalDown','outline']);requireProfile(!flag(get(e,'diagonalUp'))&&!flag(get(e,'diagonalDown'))&&flag(get(e,'outline'),true),'Unsupported diagonal or nonoutline border');const children=nodes(e,['left','right','top','bottom','diagonal']);let border:CellStyle['border'];let blank=0;
-  for(const side of ['left','right','top','bottom']){const el=one(children,side)!;attrs(el,['style']);const kind=get(el,'style'),c=nodes(el,['color']);if(!kind){requireProfile(!c.length,'Unexpected border color');blank++;continue;}requireProfile(borderWidth[kind]!==undefined,'Unsupported border line');const sourceColor=one(c,'color',false),color=sourceColor?readRgb(sourceColor,context):hexColor('000000');const edge={color,width:borderWidth[kind]};requireProfile(!border||JSON.stringify(border)===JSON.stringify(edge),'Asymmetric borders outside profile');border=edge;}
-  const diag=one(children,'diagonal',false);if(diag)plain(diag);requireProfile(!border||blank===0,'Partial borders outside profile');return border;}
+const borderSides=['left','right','top','bottom'] as const;
+const borderLines=new Set<CellBorderLine>(['hair','thin','medium','thick','dotted','dashed','mediumDashed','double','dashDot','mediumDashDot','dashDotDot','mediumDashDotDot','slantDashDot']);
+type ImportedBorder=Pick<CellStyle,'border'|'borderEdges'>;
+function borderXml(style:ImportedBorder):string{
+ let edges=style.borderEdges;
+ if(style.border){
+  const line=Object.keys(borderWidth).find(k=>borderWidth[k]===style.border!.width);requireProfile(line,'Unsupported uniform border width');
+  edges=Object.fromEntries(borderSides.map(side=>[side,{line:line as CellBorderLine,color:style.border!.color}]));
+ }
+ return '<border>'+borderSides.map(side=>{const e=edges?.[side];return e?'<'+side+' style="'+e.line+'"><color rgb="'+rgb(e.color)+'"/></'+side+'>':'<'+side+'/>';}).join('')+'<diagonal/></border>';
+}
+function parseBorder(e:Element,context:ColorContext):ImportedBorder|undefined{
+ attrs(e,['diagonalUp','diagonalDown','outline']);requireProfile(!flag(get(e,'diagonalUp'))&&!flag(get(e,'diagonalDown'))&&flag(get(e,'outline'),true),'Unsupported diagonal or nonoutline border');
+ const children=nodes(e,['left','right','top','bottom','diagonal']);
+ const edges:NonNullable<CellStyle['borderEdges']>={};
+ for(const side of borderSides){
+  const el=one(children,side,false);if(!el)continue;
+  attrs(el,['style']);const kind=get(el,'style'),c=nodes(el,['color']);
+  if(!kind||kind==='none'){requireProfile(!c.length,'Unexpected border color without line');continue;}
+  requireProfile(borderLines.has(kind as CellBorderLine),'Unsupported border line');
+  const sourceColor=one(c,'color',false),color=sourceColor?readRgb(sourceColor,context):hexColor('000000');
+  edges[side]={line:kind as CellBorderLine,color};
+ }
+ const diag=one(children,'diagonal',false);if(diag)plain(diag);
+ const keys=Object.keys(edges) as CellBorderSide[];if(!keys.length)return undefined;
+ const first=edges[keys[0]!]!;
+ if(keys.length===4&&borderWidth[first.line]&&keys.every(side=>same(edges[side],first)))return {border:{width:borderWidth[first.line]!,color:first.color}};
+ return {borderEdges:edges};
+}
 function styleWriter(document:WorkbookSnapshot){
   styleCheck(document.defaultTextStyle,true);requireProfile(Object.keys(document.resources).length===0&&Object.keys(document.styles).length===0,'Named styles or resources outside profile');
   const defaultFont={fontFamily:'Arial',fontSize:139700,...document.defaultTextStyle};const fonts=[fontXml(defaultFont)],fills=['<fill><patternFill patternType="none"/></fill>','<fill><patternFill patternType="gray125"/></fill>'],borders=['<border><left/><right/><top/><bottom/><diagonal/></border>'];
@@ -130,7 +155,7 @@ function styleWriter(document:WorkbookSnapshot){
     if(!Number.isFinite(numId)){if(!formats.has(format))formats.set(format,164+formats.size);numId=formats.get(format)!;}
     const font:TextStyle={...defaultFont};for(const key of FONT_KEYS){const value=direct[key];if(value!==undefined)Object.assign(font,{[key]:value});}
     const fi=dedup(fonts,fontXml(font)),fill=direct.fill?dedup(fills,'<fill><patternFill patternType="solid"><fgColor rgb="'+rgb(direct.fill)+'"/><bgColor indexed="64"/></patternFill></fill>'):0;
-    const border=direct.border?dedup(borders,borderXml(direct.border)):0;
+    const border=direct.border||direct.borderEdges?dedup(borders,borderXml(direct)):0;
     const horizontal=direct.alignment?({start:'left',center:'center',end:'right',justify:'justify'} as const)[direct.alignment]:undefined;
     const vertical=direct.verticalAlignment;
     const alignment=(horizontal||vertical||direct.wrapText!==undefined)?'<alignment'+(horizontal?' horizontal="'+horizontal+'"':'')+(vertical?' vertical="'+vertical+'"':'')+(direct.wrapText!==undefined?' wrapText="'+Number(direct.wrapText)+'"':'')+'/>':'';
@@ -166,7 +191,7 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,theme:ColorContext
     requireProfile((get(e,'xfId')??'0')==='0'&&formats.has(numId),'Unsupported cell style inheritance/format');
     requireProfile(!flag(get(e,'pivotButton'))&&!flag(get(e,'quotePrefix'))&&!flag(get(e,'applyProtection')),'Unsupported pivot, quote or protection flag');
     for(const key of ['applyNumberFormat','applyFont','applyFill','applyBorder','applyAlignment'])if(get(e,key)!==undefined)requireProfile(flag(get(e,key)),'Disabled style property unsupported');
-    const style:CellStyle={};if(fi!==0)Object.assign(style,fonts[fi]);if(fills[fill])style.fill=fills[fill];if(borders[border])style.border=borders[border];
+    const style:CellStyle={};if(fi!==0)Object.assign(style,fonts[fi]);if(fills[fill])style.fill=fills[fill];if(borders[border])Object.assign(style,borders[border]);
     const a=one(nodes(e,['alignment']),'alignment',false);if(a){plain(a,['horizontal','vertical','wrapText','textRotation','indent','relativeIndent','shrinkToFit','justifyLastLine','readingOrder']);requireProfile((get(a,'textRotation')??'0')==='0'&&(get(a,'indent')??'0')==='0'&&(get(a,'relativeIndent')??'0')==='0'&&!flag(get(a,'shrinkToFit'))&&!flag(get(a,'justifyLastLine'))&&(get(a,'readingOrder')??'0')==='0','Unsupported active alignment');const h=get(a,'horizontal'),v=get(a,'vertical');if(h&&h!=='general'){requireProfile(['left','center','right','justify'].includes(h),'Unsupported horizontal alignment');style.alignment=({left:'start',right:'end',center:'center',justify:'justify'} as const)[h as 'left'|'right'|'center'|'justify'];}if(v){requireProfile(['top','center','bottom'].includes(v),'Unsupported vertical alignment');style.verticalAlignment=v as CellStyle['verticalAlignment'];}if(get(a,'wrapText')!==undefined)style.wrapText=flag(get(a,'wrapText'));}
     if(i===0)requireProfile(fi===0&&fill===0&&border===0&&numId===0&&!a,'Nondefault base cell style');
     return {...(Object.keys(style).length?{style}:{}),...(numId?{numberFormat:formats.get(numId)!}:{})};});
@@ -194,7 +219,8 @@ export function writeSheetsXlsx(input:WorkbookSnapshot):Uint8Array{
     const fr=sheet.view?.frozenRows??0,fc=sheet.view?.frozenColumns??0;
     const view='<sheetViews><sheetView workbookViewId="0"'+(sheet.view?.rightToLeft?' rightToLeft="1"':'')+(sheet.view?.showGridLines===false?' showGridLines="0"':'')+'>'+((fr||fc)?'<pane'+(fc?' xSplit="'+fc+'"':'')+(fr?' ySplit="'+fr+'"':'')+' topLeftCell="'+address(fr+1,fc+1)+'" activePane="'+(fr&&fc?'bottomRight':fr?'bottomLeft':'topRight')+'" state="frozen"/>':'')+'</sheetView></sheetViews>';
     const merge=sheet.merges.length?'<mergeCells count="'+sheet.merges.length+'">'+sheet.merges.map(m=>'<mergeCell ref="'+address(m.row,m.column)+':'+address(m.row+m.rowCount-1,m.column+m.columnCount-1)+'"/>').join('')+'</mergeCells>':'';
-    put(path,DECL+'<worksheet xmlns="'+NS+'">'+view+(colXml?'<cols>'+colXml+'</cols>':'')+'<sheetData>'+rowXml+'</sheetData>'+merge+'</worksheet>');
+    const geometry=sheet.defaultGeometry,format=geometry?'<sheetFormatPr baseColWidth="8" defaultRowHeight="'+geometry.rowHeight/12700+'"'+(geometry.columnWidth!==undefined?' defaultColWidth="'+geometry.columnWidth/(9525*7)+'"':'')+' customHeight="1"/>':'';
+    put(path,DECL+'<worksheet xmlns="'+NS+'">'+view+format+(colXml?'<cols>'+colXml+'</cols>':'')+'<sheetData>'+rowXml+'</sheetData>'+merge+'</worksheet>');
   }
   rels.push('<Relationship Id="rIdStyles" Type="'+REL+'/styles" Target="styles.xml"/>');
   put('xl/styles.xml',style.xml());put('xl/workbook.xml',DECL+'<workbook xmlns="'+NS+'" xmlns:r="'+REL+'"><workbookPr date1904="'+Number(document.dateSystem==='1904')+'"/><sheets>'+sheets.join('')+'</sheets><calcPr fullCalcOnLoad="1"/></workbook>');
@@ -253,11 +279,20 @@ function verifySelection(e:Element):void{
  if(get(e,'activeCellId')!==undefined)integer(get(e,'activeCellId'),0,10000);
  const sqref=get(e,'sqref');if(sqref){requireProfile(sqref.length<=65536,'Selection range budget');for(const value of sqref.split(/\s+/)){if(value.includes(':'))range(value);else coordinate(value);}}
 }
-function verifyWorksheetAux(elements:Element[]):void{
+function verifyWorksheetAux(elements:Element[]):Sheet['defaultGeometry']|undefined{
  const dim=one(elements,'dimension',false);if(dim){plain(dim,['ref']);const ref=get(dim,'ref');if(ref?.includes(':'))range(ref);else coordinate(ref);}
  const properties=one(elements,'sheetPr',false);if(properties){attrs(properties,[]);for(const n of nodes(properties,['outlinePr','pageSetUpPr'])){if(n.localName==='outlinePr'){plain(n,['summaryBelow','summaryRight','showOutlineSymbols','applyStyles']);requireProfile(flag(get(n,'summaryBelow'),true)&&flag(get(n,'summaryRight'),true)&&flag(get(n,'showOutlineSymbols'),true)&&!flag(get(n,'applyStyles')),'Nonstandard worksheet outline');}else{plain(n,['autoPageBreaks','fitToPage']);requireProfile(flag(get(n,'autoPageBreaks'),true)&&!flag(get(n,'fitToPage')),'Unsupported page setup mode');}}}
- const format=one(elements,'sheetFormatPr',false);if(format){plain(format,['baseColWidth','defaultRowHeight','defaultColWidth','customHeight','zeroHeight','thickTop','thickBottom','outlineLevelRow','outlineLevelCol']);requireProfile((get(format,'baseColWidth')??'8')==='8'&&decimal(get(format,'defaultRowHeight')??'15')===15&&get(format,'defaultColWidth')===undefined&&!flag(get(format,'customHeight'))&&!flag(get(format,'zeroHeight'))&&!flag(get(format,'thickTop'))&&!flag(get(format,'thickBottom'))&&(get(format,'outlineLevelRow')??'0')==='0'&&(get(format,'outlineLevelCol')??'0')==='0','Custom default row/column geometry or outline outside profile');}
+ let geometry:Sheet['defaultGeometry'];
+ const format=one(elements,'sheetFormatPr',false);if(format){
+  plain(format,['baseColWidth','defaultRowHeight','defaultColWidth','customHeight','zeroHeight','thickTop','thickBottom','outlineLevelRow','outlineLevelCol']);
+  requireProfile((get(format,'baseColWidth')??'8')==='8'&&!flag(get(format,'zeroHeight'))&&!flag(get(format,'thickTop'))&&!flag(get(format,'thickBottom'))&&(get(format,'outlineLevelRow')??'0')==='0'&&(get(format,'outlineLevelCol')??'0')==='0','Hidden or nonstandard default geometry/outline outside profile');
+  if(get(format,'customHeight')!==undefined)flag(get(format,'customHeight'));
+  const height=Math.round(decimal(get(format,'defaultRowHeight')??'15',.0001,409)*12700);
+  const width=get(format,'defaultColWidth');
+  geometry={rowHeight:height,...(width!==undefined?{columnWidth:Math.round(decimal(width,.0001,255)*9525*7)}:{})};
+ }
  const margins=one(elements,'pageMargins',false);if(margins){plain(margins,['left','right','top','bottom','header','footer']);for(const key of ['left','right','top','bottom','header','footer'])decimal(get(margins,key),0,100);}
+ return geometry;
 }
 
 export function openSheetsXlsx(bytes:Uint8Array,documentId:string,title='Workbook',options:ContainerOptions={}):SheetsXlsxSource{
@@ -301,7 +336,7 @@ export function openSheetsXlsx(bytes:Uint8Array,documentId:string,title='Workboo
     const id=def.getAttributeNS(REL,'id'),rel=wrels.find(r=>r.id===id&&r.type===REL+'/worksheet');requireProfile(rel?.targetPart&&!used.has(rel.targetPart),'Missing or duplicate sheet relationship');used.add(rel.targetPart);
     const sheet:Sheet={id:'sheet-'+(i+1),name,cells:{},rows:{},columns:{},merges:[]};
     sheetParts.push({id:sheet.id,path:rel.targetPart,relId:rel.id,numericId:sheetNo});
-    const top=root(opc.parts.get(rel.targetPart)!,'worksheet',options);attrs(top,[]);const elements=nodes(top,['sheetPr','dimension','sheetViews','sheetFormatPr','cols','sheetData','mergeCells','pageMargins']);verifyWorksheetAux(elements);worksheetAuxiliary||=elements.some(e=>['sheetPr','sheetFormatPr','pageMargins'].includes(e.localName??''));
+    const top=root(opc.parts.get(rel.targetPart)!,'worksheet',options);attrs(top,[]);const elements=nodes(top,['sheetPr','dimension','sheetViews','sheetFormatPr','cols','sheetData','mergeCells','pageMargins']);const defaultGeometry=verifyWorksheetAux(elements);if(defaultGeometry)sheet.defaultGeometry=defaultGeometry;worksheetAuxiliary||=elements.some(e=>['sheetPr','sheetFormatPr','pageMargins'].includes(e.localName??''));
     const views=one(elements,'sheetViews',false);if(views){attrs(views,[]);const view=one(nodes(views,['sheetView']),'sheetView')!;attrs(view,['workbookViewId','rightToLeft','showGridLines','tabSelected','zoomScale','zoomScaleNormal','zoomScaleSheetLayoutView','zoomScalePageLayoutView','topLeftCell','showZeros','showOutlineSymbols','showRowColHeaders','view']);requireProfile((get(view,'view')??'normal')==='normal'&&flag(get(view,'showZeros'),true)&&flag(get(view,'showOutlineSymbols'),true)&&flag(get(view,'showRowColHeaders'),true),'Unsupported worksheet view mode');if(get(view,'topLeftCell'))coordinate(get(view,'topLeftCell'));requireProfile(get(view,'workbookViewId')==='0','Unsupported workbook view');sheet.view={};if(get(view,'rightToLeft')!==undefined)sheet.view.rightToLeft=flag(get(view,'rightToLeft'));if(get(view,'showGridLines')!==undefined)sheet.view.showGridLines=flag(get(view,'showGridLines'));const viewNodes=nodes(view,['pane','selection']);for(const sel of viewNodes.filter(x=>x.localName==='selection'))verifySelection(sel);const pane=one(viewNodes,'pane',false);if(pane){plain(pane,['xSplit','ySplit','topLeftCell','activePane','state']);requireProfile(get(pane,'state')==='frozen','Unsupported split pane');const fc=integer(get(pane,'xSplit')??'0',0,16383),fr=integer(get(pane,'ySplit')??'0',0,1048575);requireProfile(fr||fc,'Empty frozen pane');requireProfile(get(pane,'topLeftCell')===address(fr+1,fc+1),'Noncanonical frozen pane origin');requireProfile(get(pane,'activePane')===(fr&&fc?'bottomRight':fr?'bottomLeft':'topRight'),'Unexpected active pane');sheet.view.frozenRows=fr;sheet.view.frozenColumns=fc;}if(!Object.keys(sheet.view).length)delete sheet.view;}
     const cols=one(elements,'cols',false);if(cols){attrs(cols,[]);for(const e of nodes(cols,['col'])){plain(e,['min','max','width','customWidth','hidden']);const start=integer(get(e,'min'),1,16384),end=integer(get(e,'max'),start,16384);const width=get(e,'width'),hidden=get(e,'hidden');for(let col=start;col<=end;col++){requireProfile(!sheet.columns[col],'Overlapping column metadata');sheet.columns[col]={...(width!==undefined?{width:Math.round(decimal(width,.00001,255)*9525*7)}:{}),...(hidden!==undefined?{hidden:flag(hidden)}:{})};}}}
     const data=one(elements,'sheetData')!;attrs(data,[]);const rowSeen=new Set<number>();for(const row of nodes(data,['row'])){attrs(row,['r','ht','customHeight','hidden','spans']);if(get(row,'spans'))requireProfile(/^\d+:\d+$/.test(get(row,'spans')!),'Invalid row spans');const r=integer(get(row,'r'),1,1048576);requireProfile(!rowSeen.has(r),'Duplicate row');rowSeen.add(r);const ht=get(row,'ht'),hidden=get(row,'hidden');if(ht!==undefined||hidden!==undefined)sheet.rows[r]={...(ht!==undefined?{height:Math.round(decimal(ht,.00001,409)*12700)}:{}),...(hidden!==undefined?{hidden:flag(hidden)}:{})};
@@ -419,6 +454,7 @@ function sheetOutput(source:SheetsXlsxSource,prior:NativeSheet|undefined,generat
  // Row metadata is entirely represented by the model except the source
  // optimization hint spans, which is intentionally regenerated/omitted.
  replace('sheetData',nextData);
+ if(!same(old?.defaultGeometry,fresh.defaultGeometry))replace('sheetFormatPr',one(childElements(next),'sheetFormatPr',false));
  if(!same(old?.columns,fresh.columns))replace('cols',one(childElements(next),'cols',false));
  if(!same(old?.merges,fresh.merges))replace('mergeCells',one(childElements(next),'mergeCells',false));
  if(!same(old?.view,fresh.view)){
