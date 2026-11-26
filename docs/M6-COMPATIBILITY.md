@@ -105,3 +105,23 @@ Baseline `a205f36de26f374d75e97d8292102fdb967cc87f` is the M6.3 pagination sourc
 - New-source CI required. No runtime dependency additions, new release, tag or master merge.
 
 Next: continue M6.4 rich text/named style and other common XLSX profiles; M6.5 conditional aggregates and lookup functions; M6.6 charts/conditional formatting. These latter items remain unimplemented. Formal reference Excel fidelity and full legacy XLS acceptance remain open.
+
+
+## M6.5 batch B — conditional aggregates and lookup functions
+
+Baseline `9e4c53c7834ecdf47a29e572fc6dc57feefd58fa` passed local M6.4/M6.5 A evidence. At this checkpoint [CI 45792491019](https://github.com/xzcode/office-ex/actions/runs/45792491019) verify, Windows and macOS succeeded, Linux package job still in progress. The earlier M6.3 CI was cancelled before Linux completed; do not imply all three packages passed for that exact source.
+
+### Implementation
+
+- Formula registry expands from 38 to 48: COUNTIF, COUNTIFS, SUMIF, SUMIFS, AVERAGEIF, AVERAGEIFS, VLOOKUP, HLOOKUP, MATCH and scalar INDEX. Conditional operations pair relative positions across same-sized rectangular ranges on the current or another worksheet. Ordinary numeric/text criteria, comparisons, case-insensitive wildcards and tilde escaping are supported. Wildcard matching uses a bounded token matcher, not executable regular expressions. The sparse union of explicit cells plus arithmetic implicit blank counts avoids materializing whole-column ranges.
+- VLOOKUP/HLOOKUP and MATCH support ordinary exact typed matches (including text wildcards) and sorted contiguous numeric approximate matches; INDEX supports positive scalar coordinates. Approximate text/mixed/unsorted or gapped key vectors, blank lookup targets, error-bearing lookup vectors, INDEX array outputs and mismatched single-criterion output shapes fail closed rather than manufacturing caches. SUMIF/AVERAGEIF implicit output range expansion is deferred until the dependency index represents that effective range. Multi-criteria range shape mismatch returns VALUE error. Full reference Excel coercion/collation, named ranges, spill arrays, external links, XLOOKUP and BIFF8 serialization of these functions are not claimed.
+- Existing formula dependency tracking handles cross-sheet range edits, undo/redo, stale propagation, cancellation, and step limits. New native XLSX calculations participate in existing source-backed formula cache generation. Microsoft function help is the syntax reference; tests are Office EX and independent openpyxl readback, not Microsoft Excel runtime conformance.
+
+### Evidence
+
+- Final local check: 288/288, zero failures/skips; focused spreadsheet formula, calculation and format 38/38. TypeScript, architecture, build and dependency audit passed.
+- Independent openpyxl conditional/lookup workbook with eleven formulas. Editing Data!C1 from 10 to 20 updates report caches to 20, 2, 30, 20, 30, 500, 50, 1048572, 40, 30, 1, respectively. Formula source, styles, theme and core/app metadata preserved. Existing independent Excel, Word and PowerPoint corpus passed.
+- Sandboxed Linux native 3/3: workbook opens editable, actual worker results, cross-sheet cell edit/undo/redo, source-backed save/reopen with eleven independently checked caches. Evidence: [native lookups](verification/m6/native-lookups.json). Reproduce using `python tests/office_external_compat.py .work/m6-lookup-corpus`, build, and `node --import tsx scripts/smoke-m6-lookups.mjs .work/m6-lookup-corpus`.
+- No new production dependencies, version bump, release, tag or master merge. Exact new-source CI required.
+
+Next: M6.6 charts and conditional-formatting profiles. Continue rich text and named styles as M6.4 follow-ups and further formula features as M6.5 follow-ups. Reference Excel compatibility remains open.

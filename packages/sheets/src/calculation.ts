@@ -162,6 +162,70 @@ function comparison(a: CalculatedValue, b: CalculatedValue): number {
   const bv = b.kind === "string" ? b.value.toUpperCase() : "value" in b ? b.value : 0;
   return av === bv ? 0 : av < bv ? -1 : 1;
 }
+/** Spreadsheet wildcards, with tilde escaping. Never compile user text to
+ * executable regular expressions. Every backtrack is charged to the same
+ * calculation budget as a cell lookup. */
+type WildToken={kind:'literal';value:string}|{kind:'star'|'any'};
+function wildcardMatcher(pattern:string,tick:()=>void):(text:string)=>boolean{
+  const raw=Array.from(pattern.toUpperCase()),tokens:WildToken[]=[];
+  for(let i=0;i<raw.length;i++){
+    tick();const c=raw[i]!;
+    if(c==='~'&&i+1<raw.length&&['~','*','?'].includes(raw[i+1]!))tokens.push({kind:'literal',value:raw[++i]!});
+    else if(c==='*'){if(tokens.at(-1)?.kind!=='star')tokens.push({kind:'star'});}
+    else if(c==='?')tokens.push({kind:'any'});
+    else tokens.push({kind:'literal',value:c});
+  }
+  return text=>{
+    const chars=Array.from(text.toUpperCase());let i=0,j=0,star=-1,resume=0;
+    while(i<chars.length){
+      tick();const token=tokens[j];
+      if(token?.kind==='any'||token?.kind==='literal'&&token.value===chars[i]){i++;j++;continue;}
+      if(token?.kind==='star'){star=j++;resume=i;continue;}
+      if(star>=0){j=star+1;i=++resume;continue;}
+      return false;
+    }
+    while(tokens[j]?.kind==='star'){tick();j++;}
+    return j===tokens.length;
+  };
+}
+type Criterion=(value:CalculatedValue)=>boolean;
+const errorNames=new Set(['#NULL!','#DIV/0!','#VALUE!','#REF!','#NAME?','#NUM!','#N/A']);
+function compileCriterion(value:CalculatedValue,tick:()=>void,zeroBlank=false):Criterion|PendingValue{
+  let op='=',operand:CalculatedValue=value;
+  if(value.kind==='blank')operand=num(0);
+  if(value.kind==='string'){
+    if(value.value.length>255)return pending('unsupported-syntax','unsupported');
+    const match=/^(<=|>=|<>|=|<|>)([\s\S]*)$/.exec(value.value);
+    const body=match?match[2]!:value.value;
+    if(match)op=match[1]!;
+    if(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(body.trim())&&Number.isFinite(Number(body)))operand=num(Number(body));
+    else if(/^(TRUE|FALSE)$/i.test(body))operand=bool(body.toUpperCase()==='TRUE');
+    else if(errorNames.has(body.toUpperCase()))operand=error(body.toUpperCase() as FormulaError);
+    else operand={kind:'string',value:body};
+  }
+  const compare=(c:number)=>op==='='?c===0:op==='<>'?c!==0:op==='<'?c<0:op==='>'?c>0:op==='<='?c<=0:c>=0;
+  if(operand.kind==='string'){
+    const text=operand.value;
+    if(text==='')return v=>op==='='?(v.kind==='blank'||v.kind==='string'&&v.value===''):op==='<>'?!(v.kind==='blank'||v.kind==='string'&&v.value===''):v.kind==='string'&&compare(comparison(v,operand));
+    if((op==='='||op==='<>')&&/[*?~]/.test(text)){
+      const matches=wildcardMatcher(text,tick);
+      return v=>{const equal=v.kind==='string'&&matches(v.value);return op==='='?equal:!equal;};
+    }
+    return v=>v.kind==='string'?compare(comparison(v,operand)):op==='<>';
+  }
+  if(operand.kind==='number')return v=>{
+    if(v.kind==='blank')return zeroBlank?compare(-Math.sign(operand.value)):op==='<>'
+    // Equality criteria also admit a numeric string. Ordered comparisons
+    // are restricted to actual numeric cells, as with ordinary reports.
+    if(v.kind==='string'&&(op==='='||op==='<>')){const n=numeric(v);return typeof n==='number'?compare(n===operand.value?0:n<operand.value?-1:1):op==='<>';}
+    return v.kind==='number'?compare(v.value===operand.value?0:v.value<operand.value?-1:1):op==='<>'
+  };
+  if(operand.kind==='boolean'||operand.kind==='error')return v=>op==='='?v.kind===operand.kind&&v.value===operand.value:op==='<>'?!(v.kind===operand.kind&&v.value===operand.value):false;
+  return pending('unsupported-syntax','unsupported');
+}
+const rowCount=(r:Rectangle)=>r.row2-r.row1+1;
+const columnCount=(r:Rectangle)=>r.column2-r.column1+1;
+const sameShape=(a:Rectangle,b:Rectangle)=>rowCount(a)===rowCount(b)&&columnCount(a)===columnCount(b);
 function decimalRound(value: number, digits: number, mode:'nearest'|'up'|'down'='nearest'): NumberValue | ErrorValue {
   const precision = Math.trunc(digits);
   if (precision > 308) return num(value);
@@ -394,6 +458,122 @@ export class WorkbookCalculator {
         const value=scalar(evaluate(node.args[0],sheetId,owner,depth+1));
         if(value.kind==='pending')return value;
         return bool(name==='ISNUMBER'?value.kind==='number':name==='ISTEXT'?value.kind==='string':name==='ISLOGICAL'?value.kind==='boolean':name==='ISBLANK'?value.kind==='blank':name==='ISERROR'?value.kind==='error':name==='ISNA'?value.kind==='error'&&value.value==='#N/A':value.kind==='error'&&value.value!=='#N/A');
+      }
+      const argValue=(index:number)=>scalar(evaluate(node.args[index]!,sheetId,owner,depth+1));
+      const rangeArg=(index:number):Rectangle|ErrorValue|PendingValue=>{
+        const arg=node.args[index];
+        if(arg?.kind==='error')return error(arg.value);
+        if(arg?.kind!=='reference'&&arg?.kind!=='range')return pending('unsupported-syntax','unsupported');
+        return rectangle(arg,sheetId,owner)??error('#REF!');
+      };
+      if(['COUNTIF','COUNTIFS','SUMIF','SUMIFS','AVERAGEIF','AVERAGEIFS'].includes(name)){
+        const countOnly=name.startsWith('COUNT'),average=name.startsWith('AVERAGE'),multi=name.endsWith('IFS'),n=node.args.length;
+        const firstPair=multi&&!countOnly?1:0;
+        if(multi?(n<firstPair+2||(n-firstPair)%2!==0):countOnly?n!==2:n<2||n>3)return error('#VALUE!');
+        const checks:{range:Rectangle;matches:Criterion}[]=[];
+        for(let i=firstPair;i<(multi?n:2);i+=2){
+          const range=rangeArg(i);if('kind' in range)return range;
+          const value=argValue(i+1);if(value.kind==='pending')return value;
+          const matches=compileCriterion(value,tick,name==='AVERAGEIFS');if(typeof matches!=='function')return matches;
+          checks.push({range,matches});
+        }
+        const base=checks[0]!.range;
+        if(checks.some(c=>!sameShape(c.range,base)))return error('#VALUE!');
+        let output=base;
+        if(!countOnly&&(multi||n===3)){
+          const range=rangeArg(multi?0:2);if('kind' in range)return range;
+          // SUMIF/AVERAGEIF can implicitly extend a differently sized
+          // output range in Excel. Until dependency tracking represents
+          // that effective range, do not silently compute a partial sum.
+          if(!sameShape(base,range))return multi?error('#VALUE!'):pending('unsupported-syntax','unsupported');
+          output=range;
+        }
+        const width=columnCount(base),area=rowCount(base)*width,positions=new Set<number>();
+        // Visit only explicitly stored cells in the union of relative
+        // ranges. Missing cells share the same criterion result, so whole
+        // columns and rows don't need dense iteration.
+        for(const r of [...checks.map(c=>c.range),...(!countOnly?[output]:[])]){
+          for(const item of indexes.get(r.sheetId)!.range(r.row1,r.column1,r.row2,r.column2)){
+            tick();positions.add((item.row-r.row1)*width+item.column-r.column1);
+          }
+        }
+        let count=countOnly&&checks.every(c=>c.matches(blank))?area-positions.size:0,sum=0;
+        const getAt=(r:Rectangle,position:number)=>getCell(r.sheetId,r.row1+Math.floor(position/width),r.column1+position%width,depth+1);
+        for(const position of [...positions].sort((a,b)=>a-b)){
+          tick();let matched=true;
+          for(const check of checks){
+            const v=getAt(check.range,position);if(v.kind==='pending')return v;
+            if(!check.matches(v)){matched=false;break;}
+          }
+          if(!matched)continue;
+          if(countOnly){count++;continue;}
+          const v=getAt(output,position);if(v.kind==='pending'||v.kind==='error')return v;
+          if(v.kind==='number'){sum+=v.value;count++;}
+          else if(v.kind==='boolean'&&name==='SUMIFS'){sum+=Number(v.value);count++;}
+        }
+        return countOnly?num(count):average?count?num(sum/count):error('#DIV/0!'):num(sum);
+      }
+      if(['VLOOKUP','HLOOKUP','MATCH','INDEX'].includes(name)){
+        const n=node.args.length;
+        if(name==='INDEX'){
+          if(n<2||n>3)return error('#VALUE!');
+          const r=rangeArg(0);if('kind'in r)return r;
+          const a=argValue(1);if(a.kind==='pending')return a;const row=numeric(a);if(typeof row!=='number')return row;
+          let rr=Math.trunc(row),cc=1;
+          if(n===3){
+            const b=argValue(2);if(b.kind==='pending')return b;const col=numeric(b);if(typeof col!=='number')return col;cc=Math.trunc(col);
+          }else if(rowCount(r)===1){cc=rr;rr=1;}
+          else if(columnCount(r)>1)return pending('unsupported-syntax','unsupported');
+          // Zero or omitted matrix coordinates may return an array.
+          if(!rr||!cc)return pending('unsupported-syntax','unsupported');
+          if(rr<1||cc<1||rr>rowCount(r)||cc>columnCount(r))return error('#REF!');
+          const v=getCell(r.sheetId,r.row1+rr-1,r.column1+cc-1,depth+1);return v.kind==='blank'?num(0):v;
+        }
+        const match=name==='MATCH',horizontal=name==='HLOOKUP';
+        if(match?n<2||n>3:n<3||n>4)return error('#VALUE!');
+        const target=argValue(0);if(target.kind==='pending'||target.kind==='error')return target;
+        const r=rangeArg(1);if('kind'in r)return r;
+        if(match&&rowCount(r)>1&&columnCount(r)>1)return error('#N/A');
+        const across=horizontal||match&&rowCount(r)===1;
+        let returnIndex=1,mode=1;
+        if(!match){
+          const v=argValue(2);if(v.kind==='pending')return v;const number=numeric(v);if(typeof number!=='number')return number;
+          returnIndex=Math.trunc(number);
+          if(returnIndex<1)return error('#VALUE!');
+          if(returnIndex>(across?rowCount(r):columnCount(r)))return error('#REF!');
+        }
+        const modeIndex=match?2:3;
+        if(n>modeIndex&&node.args[modeIndex]!.kind!=='missing'){
+          const v=argValue(modeIndex);if(v.kind==='pending')return v;
+          if(match){const number=numeric(v);if(typeof number!=='number')return number;mode=Math.trunc(number);if(![-1,0,1].includes(mode))return error('#N/A');}
+          else{const flag=logical(v);if(typeof flag!=='boolean')return flag;mode=flag?1:0;}
+        }
+        const length=across?columnCount(r):rowCount(r),keyRange={...r,row2:across?r.row1:r.row2,column2:across?r.column2:r.column1};
+        // For approximate lookup, validate a contiguous sorted numeric
+        // vector. Mixed, blank or unsorted vectors are intentionally not
+        // assigned speculative Excel-compatible caches.
+        if(mode!==0&&target.kind!=='number')return pending('unsupported-syntax','unsupported');
+        if(target.kind==='blank')return pending('unsupported-syntax','unsupported');
+        const exact=target.kind==='string'?wildcardMatcher(target.value,tick):undefined;
+        let best=-1,previous:number|undefined,seen=0;
+        for(const entry of indexes.get(r.sheetId)!.range(keyRange.row1,keyRange.column1,keyRange.row2,keyRange.column2)){
+          tick();const position=across?entry.column-r.column1:entry.row-r.row1;
+          const v=getCell(r.sheetId,entry.row,entry.column,depth+1);
+          if(v.kind==='pending')return v;
+          if(mode===0){
+            if(v.kind==='error')return pending('unsupported-syntax','unsupported');
+            if(v.kind!=='blank'&&v.kind===target.kind&&(v.kind==='string'?exact!(v.value):v.value===target.value)){best=position;break;}
+          }else{
+            if(position!==seen++||v.kind!=='number'||previous!==undefined&&(mode===1?v.value<previous:v.value>previous))return pending('unsupported-syntax','unsupported');
+            previous=v.value;const t=(target as NumberValue).value;
+            if(mode===1?v.value<=t:v.value>=t)best=position;
+          }
+        }
+        if(mode!==0&&seen!==length)return pending('unsupported-syntax','unsupported');
+        if(best<0)return error('#N/A');
+        if(match)return num(best+1);
+        const value=getCell(r.sheetId,r.row1+(across?returnIndex-1:best),r.column1+(across?best:returnIndex-1),depth+1);
+        return value.kind==='blank'?num(0):value;
       }
       if(name==='COUNTBLANK'){
         if(node.args.length!==1||!['reference','range'].includes(node.args[0]!.kind))return error('#VALUE!');

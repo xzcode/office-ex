@@ -166,3 +166,44 @@ test('M6.5 IFERROR is lazy, does not promote unsupported caches or hide cycles, 
  assert.deepEqual(calc.calculate(snapshot(s)).get(sid,1,2).value,number(5));
  s.undo();assert.deepEqual(calc.calculate(snapshot(s)).get(sid,1,2).value,number(99));
 });
+
+test('M6.5 conditional aggregates pair relative range positions, match criteria and wildcards, and handle sparse blanks',()=>{
+ const d=book({'1:1':string('Apple'),'2:1':string('apple'),'3:1':string('Pear'),'4:1':string('A*'),'1:2':string('East'),'2:2':string('West'),'3:2':string('East'),'4:2':string('East'),'1:3':number(10),'2:3':number(20),'3:3':number(30),'4:3':number(40)});
+ const cases:[string,CellValue][]=[
+  ['=COUNTIF(A1:A4,"apple")',number(2)],['=COUNTIF(A1:A4,"A*")',number(3)],['=COUNTIF(A1:A4,"A~*")',number(1)],['=COUNTIF(A:A,"")',number(1048572)],
+  ['=COUNTIF(C1:C4,">=20")',number(3)],['=COUNTIFS(A1:A4,"A*",B1:B4,"East")',number(2)],['=SUMIF(A1:A4,"apple",C1:C4)',number(30)],
+  ['=SUMIFS(C1:C4,B1:B4,"East",C1:C4,">15")',number(70)],['=AVERAGEIF(B1:B4,"East",C1:C4)',number(80/3)],['=AVERAGEIFS(C1:C4,A1:A4,"A*",B1:B4,"East")',number(25)],
+  ['=AVERAGEIF(B1:B4,"missing",C1:C4)',err('#DIV/0!')],['=COUNTIFS(A1:A4,"apple",B1:B3,"East")',err('#VALUE!')],['=COUNTIFS(A:A,"",B:B,"")',number(1048572)]
+ ];
+ cases.forEach(([source],i)=>d.sheets[0]!.cells[(i+1)+':5']={value:formula(source)});
+ const r=new WorkbookCalculator().calculate(d,{maxSteps:10000});
+ cases.forEach(([source,expected],i)=>assert.deepEqual(r.get(sid,i+1,5).value,expected,source));
+});
+test('M6.5 lookup functions support exact wildcard, sorted numeric approximate match and scalar INDEX',()=>{
+ const d=book({'1:1':string('Apple'),'2:1':string('Pear'),'3:1':string('apple'),'1:2':number(10),'2:2':number(20),'3:2':number(30),'1:3':number(1),'2:3':number(5),'3:3':number(10),'1:4':number(100),'2:4':number(500),'3:4':number(1000),'5:1':number(10),'5:2':number(5),'5:3':number(1)});
+ const cases:[string,CellValue][]=[
+  ['=VLOOKUP("apple",A1:B3,2,FALSE)',number(10)],['=VLOOKUP("Pe*",A1:B3,2,0)',number(20)],['=VLOOKUP("missing",A1:B3,2,FALSE)',err('#N/A')],
+  ['=VLOOKUP(7,C1:D3,2,TRUE)',number(500)],['=VLOOKUP(0,C1:D3,2)',err('#N/A')],['=VLOOKUP("apple",A1:B3,3,FALSE)',err('#REF!')],
+  ['=MATCH("a*",A1:A3,0)',number(1)],['=MATCH(7,C1:C3,1)',number(2)],['=MATCH(7,A5:C5,-1)',number(1)],
+  ['=INDEX(A1:B3,2,2)',number(20)],['=INDEX(B1:B3,MATCH("Pear",A1:A3,0))',number(20)],['=INDEX(A5:C5,2)',number(5)],
+  ['=HLOOKUP(5,A5:C5,1,FALSE)',number(5)]
+ ];
+ cases.forEach(([source],i)=>d.sheets[0]!.cells[(i+1)+':6']={value:formula(source)});
+ const r=new WorkbookCalculator().calculate(d);
+ cases.forEach(([source,expected],i)=>assert.deepEqual(r.get(sid,i+1,6).value,expected,source));
+});
+test('M6.5 unsupported implicit range expansion, array INDEX and unsorted lookup remain protected',()=>{
+ const d=book({'1:1':number(5),'2:1':number(1),'1:2':number(3),'2:2':number(4),
+  '1:3':formula('=SUMIF(A1:A2,">0",B1)'),'2:3':formula('=INDEX(A1:B2,0,1)'),'3:3':formula('=VLOOKUP(3,A1:B2,2,TRUE)')});
+ const r=new WorkbookCalculator().calculate(d);
+ for(let i=1;i<=3;i++)assert.equal(r.get(sid,i,3).state,'unsupported');
+});
+test('M6.5 cross-sheet conditional and lookup formulas recalculate on edit and undo',()=>{
+ const d=book({'1:1':formula("=SUMIF('Sales 2026'!A1:A2,\"East\",'Sales 2026'!B1:B2)"),'1:2':formula("=VLOOKUP(\"East\",'Sales 2026'!A1:B2,2,FALSE)")});
+ d.sheets.push({id:'sales',name:'Sales 2026',cells:{'1:1':{value:string('East')},'2:1':{value:string('West')},'1:2':{value:number(10)},'2:2':{value:number(20)}},rows:{},columns:{},merges:[]});
+ const s=new DocumentSession(d),calc=new WorkbookCalculator();
+ let r=calc.calculate(snapshot(s));assert.deepEqual(r.get(sid,1,1).value,number(10));assert.deepEqual(r.get(sid,1,2).value,number(10));
+ s.execute(setCells(s.snapshot(),'sales',[{row:1,column:2,cell:{value:number(50)}}]));
+ r=calc.calculate(snapshot(s));assert.deepEqual(r.get(sid,1,1).value,number(50));assert.deepEqual(r.get(sid,1,2).value,number(50));
+ s.undo();assert.deepEqual(calc.calculate(snapshot(s)).get(sid,1,1).value,number(10));
+});

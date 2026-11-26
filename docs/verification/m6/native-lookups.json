@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "sandbox": true,
+  "source": "Independent openpyxl conditional/lookup workbook",
+  "checks": [
+    "Independent workbook opens editable and worker calculates conditional, vertical and horizontal lookup results",
+    "Cell edit on another sheet invalidates affected formulas, undo and redo restore caches",
+    "Native save/reopen preserves formula source, all eleven caches and source metadata"
+  ],
+  "status": "passed"
+}

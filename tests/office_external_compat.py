@@ -38,6 +38,22 @@ def generate(p):
     b.create_sheet('Other')['A1']='=Report!B1+3'
     b.save(p/'m6-sheet.xlsx')
     s['A1'].border=Border(diagonal=Side(style='thin',color='FF000000'),diagonalUp=True);b.save(p/'m6-unsupported-diagonal.xlsx')
+    b=Workbook();report=b.active;report.title='Report';report['A1']='Conditional report'
+    data=b.create_sheet('Data')
+    for i,row in enumerate([['Apple','East',10],['apple','West',20],['Pear','East',30],['A*','East',40]],1):
+        for j,value in enumerate(row,1):data.cell(i,j).value=value
+    for i,row in enumerate([(1,100),(5,500),(10,1000)],1):
+        data.cell(i,5).value=row[0];data.cell(i,6).value=row[1]
+    for j,value in enumerate([1,5,10],5):
+        data.cell(5,j).value=value;data.cell(6,j).value=value*10
+    expressions=['SUMIFS(Data!C1:C4,Data!A1:A4,"Apple",Data!B1:B4,"East")',
+        'COUNTIFS(Data!A1:A4,"A*",Data!B1:B4,"East")','AVERAGEIF(Data!B1:B4,"East",Data!C1:C4)',
+        'VLOOKUP("Apple",Data!A1:C4,3,FALSE)','INDEX(Data!C1:C4,MATCH("Pear",Data!A1:A4,0))',
+        'VLOOKUP(7,Data!E1:F3,2,TRUE)','HLOOKUP(5,Data!E5:G6,2,FALSE)','COUNTIF(Data!A:A,"")',
+        'SUMIF(Data!A1:A4,"apple",Data!C1:C4)','AVERAGEIFS(Data!C1:C4,Data!A1:A4,"A*",Data!B1:B4,"East")',
+        'COUNTIF(Data!A1:A4,"A~*")']
+    for i,expression in enumerate(expressions,1):report.cell(i,2).value='='+expression
+    b.save(p/'m6-lookups.xlsx')
     d=Document();d.add_heading('标题',0);d.add_paragraph('中文正文');d.add_paragraph('First item',style='List Number');d.save(p/'ordinary-text.docx')
     d=Document();t=d.add_table(rows=2,cols=2);t.style='Table Grid'
     for i,row in enumerate([['产品','数量'],['办公软件','12']]):
@@ -115,6 +131,16 @@ def verify(p):
     assert s['A2'].border.right.style=='dashDot' and s['A2'].border.right.color.rgb=='FF0000FF'
     assert s.sheet_format.defaultRowHeight==26 and s.sheet_format.defaultColWidth==18 and s.row_dimensions[3].height==31 and s.column_dimensions['C'].width==25
     with ZipFile(p/'m6-sheet.xlsx') as before,ZipFile(p/'m6-sheet-edited.xlsx') as after:
+        for name in ['xl/styles.xml','xl/theme/theme1.xml','docProps/core.xml','docProps/app.xml']:
+            assert before.read(name)==after.read(name),name
+    b=load_workbook(p/'m6-lookups-edited.xlsx');cached=load_workbook(p/'m6-lookups-edited.xlsx',data_only=True)
+    original=load_workbook(p/'m6-lookups.xlsx')
+    assert b['Data']['C1'].value==20
+    expected=[20,2,30,20,30,500,50,1048572,40,30,1]
+    for i,v in enumerate(expected,1):
+        assert b['Report'].cell(i,2).value==original['Report'].cell(i,2).value
+        assert cached['Report'].cell(i,2).value==v,(i,cached['Report'].cell(i,2).value,v)
+    with ZipFile(p/'m6-lookups.xlsx') as before,ZipFile(p/'m6-lookups-edited.xlsx') as after:
         for name in ['xl/styles.xml','xl/theme/theme1.xml','docProps/core.xml','docProps/app.xml']:
             assert before.read(name)==after.read(name),name
     d=Document(p/'image-edited.docx');assert len(d.inline_shapes)==1 and d.inline_shapes[0].width==457200
