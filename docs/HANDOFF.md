@@ -225,3 +225,7 @@ Candidate bf1d87b passed CI 45803738626: 293/293 core, independent corpus, archi
 Primary installers: Windows x64 EXE 129268639 bytes (SHA256 89890c2eb8c10ffdeab71d9397d28d6b823b4ada258c27f56b5635a52a2b835b), macOS ARM64 DMG 152838016 bytes (721fda07ef1ea3a7900679f1b8dfed67f160fdb5db9a417a766a54b191c6429c), Linux x64 DEB 112895832 bytes (1397e6fdc16177dfbfc0613728e06f49f871e698f322eecdd27d4213ae54752a).
 
 M6 development-preview delivery and publication gate completed. This is not full M6 feature conformance, reference Office fidelity or a formal production release. Broader M6.9 interaction acceptance, complex format profiles, performance, physical IME/printing, human locale review, Windows signing and macOS notarization remain open. Preserve existing public tags; master remains unchanged. Continue development from m5-distribution-20261125, not the one-shot release branch. 
+
+## 2026-11-26 — M7.1 A
+
+Continue m5-distribution-20261125; [M7 stability](M7-STABILITY.md). Implemented bounded XLSX inline/shared rich runs with source-preserving edits, ordinary source named-style associations and application, atomic chart range/anchor shifts plus successive-chart placement. Local 296/296 full, 18/18 focused, independent XlsxWriter/openpyxl and Linux sandboxed native 3/3 passed; build/licenses passed. New exact-source CI required. Complex styles/phonetic text, arbitrary rich formatting UI, destructive chart reference edits and legacy XLS serialization remain outside the admitted profile. Public dev.3 unchanged.

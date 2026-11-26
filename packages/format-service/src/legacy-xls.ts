@@ -103,14 +103,14 @@ function styleTables(doc:WorkbookSnapshot){
 function cache(v:CalculatedValue):{result:Uint8Array;extra:Uint8Array[]}{if(v.kind==='number')return {result:w64(v.value),extra:[]};const type=v.kind==='string'?0:v.kind==='boolean'?1:v.kind==='error'?2:3;return {result:Uint8Array.of(type,0,v.kind==='boolean'?Number(v.value):v.kind==='error'?errors[v.value]:0,0,0,0,255,255),extra:v.kind==='string'?[rec(0x207,text(v.value))]:[]};}
 function workbook(input:WorkbookSnapshot):Uint8Array{
   const d=validateDocument(input);ok(d.kind==='sheets'&&d.sheets.length>0&&d.sheets.length<=128,'Workbook sheet limit');
-  ok(!Object.keys(d.styles).length&&!Object.keys(d.resources).length,'Named styles/resources outside BIFF8 profile');
+  ok(!Object.keys(d.styles).length&&!Object.keys(d.resources).length&&!d.namedCellStyles,'Named styles/resources outside BIFF8 profile');
   const names=d.sheets.map(s=>s.name),styles=styleTables(d),calc=new WorkbookCalculator().calculate(d,{maxSteps:5_000_000});
   const strings:string[]=[],sstIndex=new Map<string,number>();let totalStrings=0,totalCells=0;
   const stringIndex=(s:string)=>{totalStrings++;let i=sstIndex.get(s);if(i===undefined){i=strings.length;strings.push(s);sstIndex.set(s,i);}return i;};
   const streams=d.sheets.map((s,index)=>{
     ok(!s.defaultGeometry,'Explicit worksheet default geometry outside BIFF8 profile');ok(!s.conditionalRules,'Conditional rules outside BIFF8 profile');ok(!s.charts,'Charts outside BIFF8 profile');
     const a:Uint8Array[]=[bof(0x10)];let maxR=0,maxC=0;
-    const cells=Object.entries(s.cells).map(([k,c])=>{const [r,col]=k.split(':').map(Number);coord(r,col);maxR=Math.max(maxR,r);maxC=Math.max(maxC,col);return {r,col,c};}).sort((x,y)=>x.r-y.r||x.col-y.col);
+    const cells=Object.entries(s.cells).map(([k,c])=>{ok(!c.richText&&!c.namedStyle,'Rich text or named cell style outside BIFF8 profile');const [r,col]=k.split(':').map(Number);coord(r,col);maxR=Math.max(maxR,r);maxC=Math.max(maxC,col);return {r,col,c};}).sort((x,y)=>x.r-y.r||x.col-y.col);
     ok((totalCells+=cells.length)<=200000,'Cell budget');
     for(const [k,col] of Object.entries(s.columns).sort((a,b)=>Number(a[0])-Number(b[0]))){const c=Number(k);coord(1,c);const width=Math.round((col.width??64*9525)/(7*9525)*256);ok(width>=0&&width<=65535,'Column width limit');a.push(rec(0x7d,cat(w16(c-1),w16(c-1),w16(width),w16(16),w16(col.hidden?1:0),w16(0))));}
     for(const k of Object.keys(s.rows)){const r=Number(k);coord(r,1);maxR=Math.max(maxR,r);}

@@ -48,7 +48,12 @@ export type CellBorderLine='hair'|'thin'|'medium'|'thick'|'dotted'|'dashed'|'med
 export interface CellBorderEdge {line:CellBorderLine;color:Color}
 export interface CellStyle extends TextStyle { fill?: Color; border?: {color:Color;width:number}; borderEdges?:Partial<Record<CellBorderSide,CellBorderEdge>>; verticalAlignment?: 'top'|'center'|'bottom'; wrapText?: boolean }
 export interface SheetView { rightToLeft?:boolean; frozenRows?:number; frozenColumns?:number; showGridLines?:boolean }
-export interface Cell { value: CellValue; styleId?: string; numberFormat?: string; style?: CellStyle }
+export type SheetRichFont=Pick<TextStyle,'fontFamily'|'fontSize'|'bold'|'italic'|'underline'|'color'>;
+export interface SheetRichRun {text:string;style?:SheetRichFont}
+export interface SheetNamedStyle {name:string;style?:CellStyle;numberFormat?:string}
+/** Cell values stay scalar for calculation; rich runs describe presentation.
+ * Named style association is independent of materialized effective cell style. */
+export interface Cell { value: CellValue; styleId?: string; numberFormat?: string; style?: CellStyle; richText?:readonly SheetRichRun[];namedStyle?:string }
 export interface SheetRange {row:number;column:number;rowCount:number;columnCount:number}
 export type ConditionalOperator='equal'|'notEqual'|'lessThan'|'lessThanOrEqual'|'greaterThan'|'greaterThanOrEqual'|'between'|'notBetween';
 export interface ConditionalCellStyle {fill?:Color;color?:Color;bold?:boolean;italic?:boolean;underline?:boolean}
@@ -65,7 +70,7 @@ export interface Sheet {
   conditionalRules?:SheetConditionalRule[];
   charts?:SheetChart[];
 }
-export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSystem: '1900' | '1904'; sheets: Sheet[] }
+export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSystem: '1900' | '1904'; sheets: Sheet[]; namedCellStyles?:SheetNamedStyle[] }
 
 export interface Geometry { x: number; y: number; width: number; height: number; rotation: number }
 export type SlidePreset = 'rect'|'ellipse'|'line'|'roundRect'|'triangle'|'diamond'|'parallelogram';
@@ -226,7 +231,7 @@ export function validateDocument(value: unknown): OfficeDocument {
   assert(isRecord(value), 'invalid', 'Expected document');
   if (value.schemaVersion !== 1) throw new OfficeError('unsupported', 'Unsupported document schema version');
   const fields = ['schemaVersion', 'documentId', 'title', 'resources', 'styles', 'defaultTextStyle', 'kind'];
-  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections','defaultParagraphStyleId','numbering','pageStories'] : value.kind === 'sheets' ? ['dateSystem', 'sheets'] : value.kind === 'slides' ? ['size', 'slides', 'theme'] : [])]);
+  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections','defaultParagraphStyleId','numbering','pageStories'] : value.kind === 'sheets' ? ['dateSystem', 'sheets','namedCellStyles'] : value.kind === 'slides' ? ['size', 'slides', 'theme'] : [])]);
   assertId(model.documentId); text(model.title, 1024, false);
   const ids = new Set<string>();
   const id = (candidate: unknown): void => { assertId(candidate); assert(!ids.has(candidate), 'invalid', 'Duplicate stable node identifier'); ids.add(candidate); };
@@ -381,6 +386,17 @@ export function validateDocument(value: unknown): OfficeDocument {
     });
   } else if (model.kind === 'sheets') {
     assert(model.dateSystem === '1900' || model.dateSystem === '1904', 'invalid', 'Invalid workbook date system');
+    const named=new Set<string>(),namedLower=new Set<string>(['normal']);
+    if(model.namedCellStyles!==undefined){
+      const definitions=list(model.namedCellStyles,1);assert(definitions.length<=128,'limit','Named cell style budget');
+      for(const raw of definitions){
+        const style=object(raw,['name','style','numberFormat']);text(style.name,255,false);
+        assert(!/[\x00-\x1f\x7f]/.test(style.name)&&!namedLower.has(style.name.toLowerCase()),'invalid','Invalid or duplicate named cell style');
+        named.add(style.name);namedLower.add(style.name.toLowerCase());
+        validateCell({value:{kind:'blank'},...(style.style!==undefined?{style:style.style}:{}),...(style.numberFormat!==undefined?{numberFormat:style.numberFormat}:{})});
+      }
+    }
+    let richRuns=0;
     const names = new Set<string>();
     list(model.sheets, 1).forEach((candidate) => {
       const sheet = object(candidate, ['id', 'name', 'cells', 'rows', 'columns', 'merges', 'view','defaultGeometry','conditionalRules','charts']); id(sheet.id); text(sheet.name, 31, false);
@@ -392,6 +408,8 @@ export function validateDocument(value: unknown): OfficeDocument {
       for (const [key, item] of Object.entries(sheet.cells)) {
         const match = /^([1-9]\d*):([1-9]\d*)$/.exec(key); assert(match, 'invalid', 'Invalid cell key'); assertCellAddress(Number(match[1]), Number(match[2]));
         validateCell(item, styles);
+        if(item.namedStyle!==undefined)assert(named.has(item.namedStyle),'invalid','Unknown named cell style association');
+        richRuns+=item.richText?.length??0;assert(richRuns<=200000,'limit','Workbook rich run budget exceeded');
       }
       for (const [key, max, size] of [['rows', 1_048_576, 'height'], ['columns', 16_384, 'width']] as const) {
         const dimensions = sheet[key]; assert(isRecord(dimensions), 'invalid', 'Invalid sheet dimensions');
@@ -527,12 +545,23 @@ export function validateDocument(value: unknown): OfficeDocument {
 }
 
 export function validateCell(value: unknown, styles: Record<string, unknown> = {}): asserts value is Cell {
-  const cell = object(value, ['value', 'styleId', 'numberFormat', 'style']); optionalId(cell.styleId, styles);
+  const cell = object(value, ['value', 'styleId', 'numberFormat', 'style','richText','namedStyle']); optionalId(cell.styleId, styles);
   if(cell.style!==undefined){assert(isRecord(cell.style),'invalid','Invalid cell style');const {fill,border,borderEdges,verticalAlignment,wrapText,...font}=cell.style;validateTextStyle(font);if(fill!==undefined)validateColor(fill);if(border!==undefined){const edge=object(border,['color','width']);validateColor(edge.color);integer(edge.width,1,12700*12);}if(borderEdges!==undefined){
       assert(border===undefined,'invalid','Conflicting uniform and per-edge cell borders');
       const edges=object(borderEdges,['left','right','top','bottom']);assert(Object.keys(edges).length>0,'invalid','Empty cell edge set');
       for(const item of Object.values(edges)){const edge=object(item,['line','color']);assert(['hair','thin','medium','thick','dotted','dashed','mediumDashed','double','dashDot','mediumDashDot','dashDotDot','mediumDashDotDot','slantDashDot'].includes(String(edge.line)),'invalid','Unsupported cell border line');validateColor(edge.color);}
     }if(verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(verticalAlignment)),'invalid','Invalid vertical cell alignment');if(wrapText!==undefined)bool(wrapText);}
+  if(cell.namedStyle!==undefined)text(cell.namedStyle,255,false);
+  if(cell.richText!==undefined){
+    const scalar=cell.value as CellValue;assert(scalar?.kind==='string','invalid','Rich runs require string cell value');
+    const runs=list(cell.richText,1);assert(runs.length<=256,'limit','Rich cell run budget exceeded');
+    let combined='';
+    for(const raw of runs){const run=object(raw,['text','style']);text(run.text,32767,false);combined+=run.text;
+      assert(combined.length<=32767,'limit','Rich cell text budget exceeded');
+      if(run.style!==undefined){const font=object(run.style,['fontFamily','fontSize','bold','italic','underline','color']);validateTextStyle(font);if(font.color!==undefined)assert((font.color as Color).kind==='rgba'&&(font.color as Extract<Color,{kind:'rgba'}>).alpha===255,'unsupported','Rich font requires opaque RGB');}
+    }
+    assert(combined===scalar.value,'invalid','Rich runs do not match scalar cell text');
+  }
   if (cell.numberFormat !== undefined) text(cell.numberFormat, 1024);
   const item = object(cell.value, ['kind', 'value', 'source']);
   if (item.kind === 'blank') assert(Object.keys(item).length === 1, 'invalid', 'Blank cell has a payload');

@@ -2,7 +2,7 @@ import {installRibbon,ribbonNodes,type RibbonState,decorateOfficeButton} from '.
 /** Recovered M3 virtualized worksheet workspace. */
 import { OfficeError, EMU_PER_CSS_PIXEL } from '@office-ex/contracts';
 import { patchCommand, type DocumentSnapshot, type DocumentCommand, type Color, type CellStyle, type SheetView,type ConditionalOperator,type SheetChart,type DeepReadonly } from '@office-ex/core';
-import { addSheet, renameSheet, deleteSheet, moveSheet, insertRows, deleteRows, insertColumns, deleteColumns, mergeCells, unmergeCells, clearCells, copyCells, formatCells, addConditionalRule, removeConditionalRule, conditionalCellStyle, addSheetChart, removeSheetChart, setDimensions, fillCells, pasteTsv, exportTsv, setCells, cellFromInput, formatCell, formatCellValue, calculationKey, localizeFormula, formulaSeparators, type CellRange, type WorkbookSnapshot, type CalculationCell, type CalculatedValue, type CellInputOptions } from '@office-ex/sheets';
+import { addSheet, renameSheet, deleteSheet, moveSheet, insertRows, deleteRows, insertColumns, deleteColumns, mergeCells, unmergeCells, clearCells, copyCells, formatCells, applyNamedCellStyle, addConditionalRule, removeConditionalRule, conditionalCellStyle, addSheetChart, removeSheetChart, setDimensions, fillCells, pasteTsv, exportTsv, setCells, cellFromInput, formatCell, formatCellValue, calculationKey, localizeFormula, formulaSeparators, type CellRange, type WorkbookSnapshot, type CalculationCell, type CalculatedValue, type CellInputOptions } from '@office-ex/sheets';
 import type { MessageKey } from '@office-ex/i18n';
 import { GridAxis, columnLabel, cellLabel } from './sheets-geometry.js';
 
@@ -211,6 +211,13 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
   for (const [key, value, id] of [["writerAlignLeft", "start", "sheet-align-start"], ["writerAlignCenter", "center", "sheet-align-center"], ["writerAlignRight", "end", "sheet-align-end"]] as const) toolbar.append(button(key, id, () => changed(formatCells(host.snapshot(), sheet.id, selectionRange(), { style: { alignment: value } }))));
   toolbar.append(button("sheetWrap", "sheet-wrap", () => changed(formatCells(host.snapshot(), sheet.id, selectionRange(), { style: { wrapText: !currentStyle().wrapText } }))));
   toolbar.append(button("sheetBorder", "sheet-border", () => changed(formatCells(host.snapshot(), sheet.id, selectionRange(), { style: { border: { width: 9525, color: { kind: "rgba", red: 110, green: 120, blue: 135, alpha: 255 } } } }))));
+  const namedStyle=make('select');namedStyle.id='sheet-named-style';
+  const chooseStyle=make('option','—');chooseStyle.value='';namedStyle.append(chooseStyle);
+  for(const name of ['Normal',...(model.namedCellStyles??[]).map(s=>s.name)]){const option=make('option',name);option.value=name;namedStyle.append(option);}
+  namedStyle.value=selected?.namedStyle??'Normal';
+  namedStyle.disabled=!!host.readOnly||host.format==='xls'||!model.namedCellStyles?.length;
+  namedStyle.onchange=()=>guard(()=>{if(namedStyle.value)changed(applyNamedCellStyle(host.snapshot(),sheet.id,selectionRange(),namedStyle.value));});
+  if(model.namedCellStyles?.length)toolbar.append(label('ribbonStyles',namedStyle));
   root2.append(toolbar);
   const second = make("div", "", "sheets-formatbar");
   const formats = make("select");
@@ -756,7 +763,25 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
             else if(result.state!=="valid")current.title=t(result.state==="unsupported"?"sheetUnsupported":result.state==="stale"?"sheetStale":"sheetCalcError");
           }
         }
-        if(rendered.text.data!==text)rendered.text.data=text;
+        if(cell?.richText?.length&&cell.value.kind==='string'){
+          // The grid keeps scalar text for calculation/clipboard, and
+          // projects only trusted model runs, not source XML or HTML.
+          const fragment=document.createDocumentFragment();
+          for(const run of cell.richText){
+            const span=make('span',run.text,'sheets-rich-run'),s=run.style;
+            if(s?.fontFamily)span.style.fontFamily=s.fontFamily;
+            if(s?.fontSize!==undefined)span.style.fontSize=Math.min(200,s.fontSize/9525)+'px';
+            if(s?.bold!==undefined)span.style.fontWeight=s.bold?'700':'400';
+            if(s?.italic!==undefined)span.style.fontStyle=s.italic?'italic':'normal';
+            if(s?.underline!==undefined)span.style.textDecoration=s.underline?'underline':'none';
+            if(s?.color)span.style.color=styleColor(s.color);
+            fragment.append(span);
+          }
+          current.replaceChildren(fragment);
+        }else{
+          if(rendered.text.parentNode!==current)current.replaceChildren(rendered.text);
+          if(rendered.text.data!==text)rendered.text.data=text;
+        }
         current.classList.toggle("number",cell?.value.kind==="number"||result?.value?.kind==="number");
         current.classList.toggle("cell-error",cell?.value.kind==="error"||result?.state==="error");
         rendered.result=result;rendered.revision=currentRevision;
@@ -799,6 +824,7 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
       const fg = root2.querySelector<HTMLInputElement>("#sheet-text-color"), bg = root2.querySelector<HTMLInputElement>("#sheet-fill-color");
       if (fg) fg.value = colorHex(style.color, "#222735");
       if (bg) bg.value = colorHex(style.fill, "#ffffff");
+      namedStyle.value=cell?.namedStyle??'Normal';
       custom.value = cell?.numberFormat ?? "General";
       if (!Array.from(formats.options).some((o) => o.value === custom.value)) {
         const option = make("option", custom.value);
@@ -1058,7 +1084,7 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
       {label:'ribbonFont',rows:[pick('sheet-font','sheet-font-size'),pick('sheet-bold','sheet-italic','sheet-underline','sheet-text-color','sheet-fill-color','sheet-border')]},
       {label:'ribbonAlignment',rows:[pick('sheet-align-start','sheet-align-center','sheet-align-end','sheet-wrap'),pick('sheet-merge','sheet-unmerge')]},
       {label:'ribbonNumbers',rows:[pick('sheet-number-format'),pick('sheet-custom-format')]},
-      {label:'ribbonStyles',rows:[pick('sheet-conditional-open')]},
+      {label:'ribbonStyles',rows:[pick('sheet-named-style','sheet-conditional-open')]},
       {label:'sheetCharts',rows:[pick('sheet-chart-open')]},
       {label:'ribbonEditing',rows:[pick('sheet-clear'),pick('sheet-fill-down','sheet-fill-right')]}
     ]},

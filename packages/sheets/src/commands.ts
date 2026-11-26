@@ -152,7 +152,26 @@ function dimensions2(snapshot:DocumentSnapshot, sheetId:string, axis:Axis, start
     return { ...r, start: { ...r.start, [dimension]: bounds[backwards ? 1 : 0] }, end: { ...r.end, [dimension]: bounds[backwards ? 0 : 1] } };
   }));
   const sheet = sheets[index], cells:Record<string,Cell> = {};
-  assert(!sheet.charts?.length,'unsupported','Remove or update chart ranges before inserting or deleting rows or columns');
+  // All chart ranges are local, bounded single-column vectors. Rebase
+  // anchors and source references atomically. Reject an edit that would
+  // destroy a source vector, rather than silently remove a chart or series.
+  if(sheet.charts){
+    const shift=(range:CellRange):CellRange=>{
+      const bounds=shiftInterval(range[dimension],range[dimension]+range[size]-1,start,count,removing);
+      assert(bounds&&bounds[1]<=maximum,'unsupported','Operation would delete or overflow a chart data range');
+      return {...range,[dimension]:bounds[0],[size]:bounds[1]-bounds[0]+1};
+    };
+    const position=(at:number,anchor=false)=>{
+      if(removing&&at>=start&&at<start+count){assert(anchor,'unsupported','Operation would delete a chart series label');return Math.min(start,maximum);}
+      const result=at>=start?at+(removing?-count:count):at;
+      assert(result<=maximum,'unsupported','Operation would overflow a chart reference');return result;
+    };
+    sheet.charts=sheet.charts.map(chart=>{
+      const categories=shift(chart.categories),series=chart.series.map(s=>({...s,values:shift(s.values),...(s.label?{label:{...s.label,[dimension]:position(s.label[dimension])}}:{})}));
+      assert(categories.columnCount===1&&series.every(s=>s.values.columnCount===1&&s.values.rowCount===categories.rowCount),'unsupported','Operation would misalign chart data vectors');
+      return {...chart,categories,series,anchor:{...chart.anchor,[dimension]:position(chart.anchor[dimension],true)}};
+    });
+  }
   for (const [key, cell] of Object.entries(sheet.cells)) {
     const [row, column] = key.split(":").map(Number), value = axis === "rows" ? row : column;
     if (removing && value >= start && value < start + count) continue;
@@ -261,8 +280,9 @@ export function clearCells(snapshot:DocumentSnapshot, sheetId:string, range:Cell
   for (const [key, cell] of Object.entries(cells)) {
     const [row, column] = key.split(":").map(Number);
     if (!inside(range, row, column)) continue;
-    if (Object.keys(cell).length === 1) delete cells[key];
-    else cells[key] = { ...cell, value: { kind: "blank" } };
+    const {richText,...rest}=cell;
+    if (Object.keys(rest).length === 1) delete cells[key];
+    else cells[key] = { ...rest, value: { kind: "blank" } };
   }
   return cellsCommand(snapshot, index, cells);
 }
@@ -274,7 +294,9 @@ export function formatCells(snapshot:DocumentSnapshot, sheetId:string, range:Cel
     const style=format.style!==undefined?{...before.style,...format.style}:undefined;
     if(style&&format.style?.border!==undefined)delete style.borderEdges;
     if(style&&format.style?.borderEdges!==undefined)delete style.border;
-    cells[key] = { ...before, ...(style?{style}:{}), ...format.numberFormat !== void 0 ? { numberFormat: format.numberFormat } : {} };
+    const font=Object.fromEntries(Object.entries(format.style??{}).filter(([key])=>['fontFamily','fontSize','bold','italic','underline','color'].includes(key)));
+    const richText=before.richText&&Object.keys(font).length?before.richText.map(r=>({...r,style:{...r.style,...font}})):before.richText;
+    cells[key] = { ...before, ...(style?{style}:{}), ...(richText?{richText}:{}), ...format.numberFormat !== void 0 ? { numberFormat: format.numberFormat } : {} };
   }
   return cellsCommand(snapshot, index, cells);
 }
@@ -402,7 +424,15 @@ export function addSheetChart(snapshot:DocumentSnapshot,sheetId:string,range:Cel
  assertCellRange(range,170000);assert(range.rowCount>=2&&range.rowCount<=10001&&range.columnCount>=2&&range.columnCount<=(kind==='pie'?2:17),'invalid','Select headers, one category column and value columns');
  const categories={row:range.row+1,column:range.column,rowCount:range.rowCount-1,columnCount:1};
  const series=Array.from({length:range.columnCount-1},(_,i)=>({label:{row:range.row,column:range.column+i+1},values:{...categories,column:range.column+i+1}}));
- const chart:SheetChart={kind,categories,series,anchor:{row:range.row,column:Math.min(16384,range.column+range.columnCount+1),offsetX:0,offsetY:0,width:5400000,height:2700000}};
+ const column=Math.min(16384,range.column+range.columnCount+1),height=2700000,width=5400000,rowHeight=sheet.defaultGeometry?.rowHeight??24*9525;
+ let row=range.row;
+ // Place successive charts below overlapping chart anchors using the
+ // existing default geometry approximation. Never stack at one point.
+ for(const existing of sheet.charts??[]){const a=existing.anchor,columns=Math.ceil(a.width/(sheet.defaultGeometry?.columnWidth??104*9525)),currentColumns=Math.ceil(width/(sheet.defaultGeometry?.columnWidth??104*9525));
+  if(column<a.column+columns&&a.column<column+currentColumns)row=Math.max(row,a.row+Math.ceil((a.offsetY+a.height)/rowHeight)+1);
+ }
+ assert(row<=1048576,'unsupported','No room for a new chart anchor');
+ const chart:SheetChart={kind,categories,series,anchor:{row,column,offsetX:0,offsetY:0,width,height}};
  return edit(snapshot,[{op:'set',path:['sheets',index,'charts'],value:[...sheet.charts??[],chart]}]);
 }
 export function removeSheetChart(snapshot:DocumentSnapshot,sheetId:string,chartIndex:number):DocumentCommand{
@@ -410,4 +440,20 @@ export function removeSheetChart(snapshot:DocumentSnapshot,sheetId:string,chartI
  assert(Number.isSafeInteger(chartIndex)&&chartIndex>=0&&chartIndex<charts.length,'invalid','Chart not found');
  const next=charts.filter((_,i)=>i!==chartIndex);
  return edit(snapshot,[next.length?{op:'set',path:['sheets',index,'charts'],value:next}:{op:'delete',path:['sheets',index,'charts']}]);
+}
+
+/** Apply a source-defined named style. Its current effective properties
+ * are materialized in the cell while the native style association remains. */
+export function applyNamedCellStyle(snapshot:DocumentSnapshot,sheetId:string,range:CellRange,name:string):DocumentCommand{
+ assertCellRange(range,100000);
+ const d=book(snapshot),index=sheetIndex(snapshot,sheetId),sheet=d.sheets[index]!,definition=d.namedCellStyles?.find(s=>s.name===name);
+ assert(name==='Normal'||definition,'invalid','Unknown named cell style');
+ const cells={...sheet.cells};
+ for(let row=range.row;row<range.row+range.rowCount;row++)for(let column=range.column;column<range.column+range.columnCount;column++){
+  const key=cellKey(row,column),prior=cells[key]??{value:{kind:'blank' as const}};
+  // Named styles are cell-level styles; retain explicit inline rich runs.
+  const {style,styleId,namedStyle,numberFormat,...rest}=prior;
+  cells[key]={...rest,...(definition?{namedStyle:definition.name,...(definition.style?{style:definition.style}:{}),...(definition.numberFormat?{numberFormat:definition.numberFormat}:{})}:{})};
+ }
+ return cellsCommand(snapshot,index,cells);
 }

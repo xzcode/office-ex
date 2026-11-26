@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "sandbox": true,
+  "checks": [
+    "Native rich cell renders its separate font and color runs",
+    "Native cell editing preserves unaffected rich text runs",
+    "Named style applied by actual Ribbon control and both features reopen from native XLSX"
+  ],
+  "status": "passed"
+}

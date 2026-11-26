@@ -1,6 +1,6 @@
 /** Reconstructed number/date formatting from the M3 browser artifact. */
-import { assert } from '@office-ex/contracts';
-import type { Cell, CellValue, SheetConditionalRule, ConditionalCellStyle, DeepReadonly } from '@office-ex/core';
+import { assert,graphemeBoundaries } from '@office-ex/contracts';
+import type { Cell, CellValue, SheetRichRun, SheetConditionalRule, ConditionalCellStyle, DeepReadonly } from '@office-ex/core';
 import { parseFormula, serializeFormula, formulaSeparators, type ParseFormulaOptions, type FormulaError } from './formula.js';
 import { numberFormatter, dateFormatter } from './intl-cache.js';
 import type { CalculationCell, CalculatedValue } from './calculation.js';
@@ -96,10 +96,40 @@ export function parseCellInput(input:string, options:CellInputOptions = {}):Cell
   if (/^(#NULL!|#DIV\/0!|#VALUE!|#REF!|#NAME\?|#NUM!|#N\/A)$/i.test(text2)) return { kind: "error", value: text2.toUpperCase() as FormulaError };
   return { kind: "string", value: input };
 }
+/** Preserve unchanged prefix/suffix runs using grapheme boundaries. New
+ * text inherits the preceding run (or first run at the beginning). */
+function replaceRichText(runs:readonly SheetRichRun[],before:string,after:string):SheetRichRun[]|undefined{
+  if(!after)return undefined;if(before===after)return runs.slice();
+  const a=graphemeBoundaries(before),b=graphemeBoundaries(after);let head=0,tail=0;
+  while(head<a.length-1&&head<b.length-1&&before.slice(a[head],a[head+1])===after.slice(b[head],b[head+1]))head++;
+  while(tail<a.length-1-head&&tail<b.length-1-head&&before.slice(a[a.length-2-tail],a[a.length-1-tail])===after.slice(b[b.length-2-tail],b[b.length-1-tail]))tail++;
+  const from=a[head]!,end=a[a.length-1-tail]!,out:SheetRichRun[]=[];
+  const append=(text:string,style:SheetRichRun['style'])=>{
+    if(!text)return;const last=out.at(-1);
+    if(last&&JSON.stringify(last.style??{})===JSON.stringify(style??{}))last.text+=text;
+    else out.push({text,...(style?{style}:{})});
+  };
+  let cursor=0,inserted=false,inherit=runs[0]?.style;
+  for(const run of runs){
+    const next=cursor+run.text.length;
+    if(cursor<from){append(run.text.slice(0,Math.min(run.text.length,from-cursor)),run.style);inherit=run.style;}
+    if(!inserted&&next>=from){append(after.slice(b[head],b[b.length-1-tail]),inherit);inserted=true;}
+    if(next>end)append(run.text.slice(Math.max(0,end-cursor)),run.style);
+    cursor=next;
+  }
+  if(!inserted)append(after.slice(b[head],b[b.length-1-tail]),inherit);
+  assert(out.length<=256,'limit','Rich cell run budget exceeded');
+  return out.length?out:undefined;
+}
 export function cellFromInput(input:string, options:CellInputOptions = {}, before?:Cell):Cell {
   const value = parseCellInput(input, options);
   const numberFormat = options.type === "date" ? /[ T]\d\d:/.test(input) ? "yyyy-mm-dd hh:mm:ss" : "yyyy-mm-dd" : value.kind === "number" && input.trim().endsWith("%") ? "0.00%" : before?.numberFormat;
-  return { ...before, value, ...numberFormat !== void 0 ? { numberFormat } : {} };
+  const result:Cell={...before,value,...(numberFormat!==undefined?{numberFormat}:{})};
+  if(before?.richText&&before.value.kind==='string'&&value.kind==='string'){
+    const rich=replaceRichText(before.richText,before.value.value,value.value);
+    if(rich)result.richText=rich;else delete result.richText;
+  }else delete result.richText;
+  return result;
 }
 function splitSections(code:string):string[] {
   const sections = [];

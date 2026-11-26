@@ -5,7 +5,7 @@
  */
 import { XMLSerializer, type Element, type Document } from '@xmldom/xmldom';
 import { assert, assertCellAddress, OfficeError } from '@office-ex/contracts';
-import { createDocument, validateDocument, type SheetsDocument, type Sheet, type Cell, type CellStyle, type CellBorderSide,type CellBorderLine,type SheetConditionalRule,type ConditionalCellStyle,type Color, type TextStyle } from '@office-ex/core';
+import { createDocument, validateDocument, type SheetsDocument, type Sheet, type Cell, type CellStyle, type CellBorderSide,type CellBorderLine,type SheetConditionalRule,type ConditionalCellStyle,type SheetNamedStyle,type SheetRichFont,type SheetRichRun,type Color, type TextStyle } from '@office-ex/core';
 import { columnName, columnNumber, parseFormula, formulaIsSupported, WorkbookCalculator, calculationKey, type CalculatedValue, type WorkbookSnapshot } from '@office-ex/sheets';
 import { openOpc, type OpcPackage, type OpcRelationship } from './opc.js';
 import { parseXml, childElements } from './xml.js';
@@ -113,6 +113,38 @@ function readFont(e:Element,context:ColorContext):TextStyle{attrs(e,[]);const c=
     if(value!=='none'){const resolved=value==='major'?context.majorFont:context.minorFont;requireProfile(resolved,'Missing theme font scheme');result.fontFamily=resolved;}
   }
   const color=one(c,'color',false);if(color)result.color=readRgb(color,context);return result;}
+function readRichFont(e:Element,context:ColorContext):SheetRichFont{
+ attrs(e,[]);const children=nodes(e,['rFont','sz','b','i','u','color','family','scheme','charset']),style:SheetRichFont={};
+ const family=one(children,'rFont',false),size=one(children,'sz',false);
+ if(family){plain(family,['val']);const name=get(family,'val');requireProfile(name,'Missing rich font');style.fontFamily=name;}
+ if(size){plain(size,['val']);style.fontSize=Math.round(decimal(get(size,'val'),.01,1638)*12700);}
+ for(const [tag,key]of [['b','bold'],['i','italic'],['u','underline']] as const){const prop=one(children,tag,false);if(prop){plain(prop,['val']);const v=get(prop,'val');style[key]=tag==='u'&&v==='single'?true:tag==='u'&&v==='none'?false:flag(v,true);}}
+ const color=one(children,'color',false);if(color)style.color=readRgb(color,context);
+ for(const tag of ['family','charset']){const prop=one(children,tag,false);if(prop){plain(prop,['val']);integer(get(prop,'val'),0,tag==='family'?14:255);}}
+ const scheme=one(children,'scheme',false);if(scheme){plain(scheme,['val']);const value=get(scheme,'val');requireProfile(['major','minor','none'].includes(value??''),'Unsupported rich font scheme');
+   if(value!=='none'){const font=value==='major'?context.majorFont:context.minorFont;requireProfile(font,'Missing rich theme font');style.fontFamily=font;}
+ }
+ return style;
+}
+interface RichString {text:string;richText?:SheetRichRun[]}
+function readRichString(e:Element,context:ColorContext):RichString{
+ attrs(e,[]);const children=nodes(e,['t','r']),text=one(children,'t',false);
+ if(text){requireProfile(children.length===1,'Mixed plain and rich string');return {text:decodeText(leaf(text,['xml:space']))};}
+ requireProfile(children.length>0&&children.length<=256,'Rich string run budget');
+ let value='';const richText=children.map(r=>{
+   attrs(r,[]);const items=nodes(r,['rPr','t']),font=one(items,'rPr',false),style=font?readRichFont(font,context):undefined;
+   const text=decodeText(leaf(one(items,'t')!,['xml:space']));requireProfile(text.length>0,'Empty rich run outside profile');value+=text;requireProfile(value.length<=32767,'Rich text length budget');
+   return {text,...(style?{style}:{})};
+ });
+ return {text:value,richText};
+}
+function richXml(runs:readonly SheetRichRun[]):string{
+ return '<is>'+runs.map(run=>{
+  const s=run.style;
+  const props=s?'<rPr>'+(s.fontFamily?'<rFont val="'+esc(s.fontFamily)+'"/>':'')+(s.fontSize?'<sz val="'+s.fontSize/12700+'"/>':'')+(['bold','italic','underline'] as const).map((key,i)=>s[key]===undefined?'':'<'+['b','i','u'][i]+' val="'+(key==='underline'?(s[key]?'single':'none'):Number(s[key]))+'"/>').join('')+(s.color?'<color rgb="'+rgb(s.color)+'"/>':'')+'</rPr>':'';
+  return '<r>'+props+'<t xml:space="preserve">'+encodeText(run.text)+'</t></r>';
+ }).join('')+'</is>';
+}
 const borderWidth:Readonly<Record<string,number>>={thin:9525,medium:25400,thick:38100};
 const borderSides=['left','right','top','bottom'] as const;
 const borderLines=new Set<CellBorderLine>(['hair','thin','medium','thick','dotted','dashed','mediumDashed','double','dashDot','mediumDashDot','dashDotDot','mediumDashDotDot','slantDashDot']);
@@ -187,13 +219,13 @@ function readConditionalRules(elements:Element[],styles:ConditionalCellStyle[]):
 function styleWriter(document:WorkbookSnapshot){
   styleCheck(document.defaultTextStyle,true);requireProfile(Object.keys(document.resources).length===0&&Object.keys(document.styles).length===0,'Named styles or resources outside profile');
   const defaultFont={fontFamily:'Arial',fontSize:139700,...document.defaultTextStyle};const fonts=[fontXml(defaultFont)],fills=['<fill><patternFill patternType="none"/></fill>','<fill><patternFill patternType="gray125"/></fill>'],borders=['<border><left/><right/><top/><bottom/><diagonal/></border>'];
-  const formats=new Map<string,number>(),xfs=['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'];
+  const formats=new Map<string,number>(),xfs=['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'],parentXfs=['<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>'],namedNames=['Normal'];
   const ids=new Map<string,number>(),dxfs:string[]=[];
   const dxfId=(s:Readonly<ConditionalCellStyle>)=>dedup(dxfs,dxfXml(s));
   const dedup=(a:string[],v:string)=>{let i=a.indexOf(v);if(i<0){i=a.length;a.push(v);}return i;};
-  const styleId=(cell:WorkbookSnapshot['sheets'][number]['cells'][string])=>{
-    requireProfile(!cell.styleId,'Named cell style outside profile');const direct=cell.style??{};styleCheck(direct);
-    const format=cell.numberFormat??'General';if(!Object.keys(direct).length&&format==='General')return 0;
+  const makeXf=(cell:Pick<Cell,'style'|'numberFormat'>,parent:number|undefined)=>{
+    const direct=cell.style??{};styleCheck(direct);
+    const format=cell.numberFormat??'General';
     let numId=Number(Object.keys(builtins).find(k=>builtins[Number(k)]===format));
     if(!Number.isFinite(numId)){if(!formats.has(format))formats.set(format,164+formats.size);numId=formats.get(format)!;}
     const font:TextStyle={...defaultFont};for(const key of FONT_KEYS){const value=direct[key];if(value!==undefined)Object.assign(font,{[key]:value});}
@@ -202,15 +234,26 @@ function styleWriter(document:WorkbookSnapshot){
     const horizontal=direct.alignment?({start:'left',center:'center',end:'right',justify:'justify'} as const)[direct.alignment]:undefined;
     const vertical=direct.verticalAlignment;
     const alignment=(horizontal||vertical||direct.wrapText!==undefined)?'<alignment'+(horizontal?' horizontal="'+horizontal+'"':'')+(vertical?' vertical="'+vertical+'"':'')+(direct.wrapText!==undefined?' wrapText="'+Number(direct.wrapText)+'"':'')+'/>':'';
-    const xf='<xf numFmtId="'+numId+'" fontId="'+fi+'" fillId="'+fill+'" borderId="'+border+'" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"'+(alignment?' applyAlignment="1">'+alignment+'</xf>':'/>');
+    return '<xf numFmtId="'+numId+'" fontId="'+fi+'" fillId="'+fill+'" borderId="'+border+'"'+(parent===undefined?'':' xfId="'+parent+'" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"')+(alignment?(parent===undefined?'':' applyAlignment="1"')+'>'+alignment+'</xf>':'/>');
+  };
+  for(const definition of document.namedCellStyles??[]){
+    // Named alignment inheritance requires explicit semantics in the model.
+    requireProfile(!definition.style?.alignment&&!definition.style?.verticalAlignment&&definition.style?.wrapText===undefined,'Named parent alignment outside profile');
+    parentXfs.push(makeXf(definition,undefined));namedNames.push(definition.name);
+  }
+  const styleId=(cell:WorkbookSnapshot['sheets'][number]['cells'][string])=>{
+    requireProfile(!cell.styleId,'Generic named cell style outside profile');
+    const parent=cell.namedStyle?namedNames.indexOf(cell.namedStyle):0;requireProfile(parent>=0,'Unknown named cell style');
+    if(parent===0&&!Object.keys(cell.style??{}).length&&(cell.numberFormat??'General')==='General')return 0;
+    const xf=makeXf(cell,parent);
     let id=ids.get(xf);if(id===undefined){id=xfs.length;xfs.push(xf);ids.set(xf,id);}requireProfile(xfs.length<=64000&&formats.size<=1000,'Style budget exceeded');return id;
   };
   const xml=()=>DECL+'<styleSheet xmlns="'+NS+'">'+(formats.size?'<numFmts count="'+formats.size+'">'+[...formats].map(([f,id])=>'<numFmt numFmtId="'+id+'" formatCode="'+esc(f)+'"/>').join('')+'</numFmts>':'')+
-    '<fonts count="'+fonts.length+'">'+fonts.join('')+'</fonts><fills count="'+fills.length+'">'+fills.join('')+'</fills><borders count="'+borders.length+'">'+borders.join('')+'</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="'+xfs.length+'">'+xfs.join('')+'</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'+(dxfs.length?'<dxfs count="'+dxfs.length+'">'+dxfs.join('')+'</dxfs>':'')+'</styleSheet>';
+    '<fonts count="'+fonts.length+'">'+fonts.join('')+'</fonts><fills count="'+fills.length+'">'+fills.join('')+'</fills><borders count="'+borders.length+'">'+borders.join('')+'</borders><cellStyleXfs count="'+parentXfs.length+'">'+parentXfs.join('')+'</cellStyleXfs><cellXfs count="'+xfs.length+'">'+xfs.join('')+'</cellXfs><cellStyles count="'+namedNames.length+'">'+namedNames.map((name,i)=>'<cellStyle name="'+esc(name)+'" xfId="'+i+'"'+(i===0?' builtinId="0"':'')+'/>').join('')+'</cellStyles>'+(dxfs.length?'<dxfs count="'+dxfs.length+'">'+dxfs.join('')+'</dxfs>':'')+'</styleSheet>';
   return {styleId,dxfId,xml};
 }
-interface ImportedStyle {style?:CellStyle;numberFormat?:string}
-function readStyles(bytes:Uint8Array,options:ContainerOptions,theme:ColorContext={}):{font:TextStyle;styles:ImportedStyle[];dxfs:ConditionalCellStyle[]}{
+interface ImportedStyle {style?:CellStyle;numberFormat?:string;namedStyle?:string}
+function readStyles(bytes:Uint8Array,options:ContainerOptions,theme:ColorContext={}):{font:TextStyle;styles:ImportedStyle[];dxfs:ConditionalCellStyle[];named:SheetNamedStyle[];namedIds:Map<string,number>;context:ColorContext}{
   const top=root(bytes,'styleSheet',options);attrs(top,[]);const items=nodes(top,['numFmts','fonts','fills','borders','cellStyleXfs','cellXfs','cellStyles','dxfs','tableStyles','colors']);
   const counted=(name:string,child:string,required=true)=>{const e=one(items,name,required);if(!e)return [];attrs(e,['count']);const list=nodes(e,[child]);requireProfile(integer(get(e,'count'),0,64000)===list.length,'Style count mismatch');return list;};
   const context:ColorContext={...theme};
@@ -223,22 +266,43 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,theme:ColorContext
   const formats=new Map(Object.entries(builtins).map(([i,f])=>[Number(i),f]));
   for(const e of counted('numFmts','numFmt',false)){plain(e,['numFmtId','formatCode']);const id=integer(get(e,'numFmtId'),164,65535);requireProfile(!formats.has(id)&&get(e,'formatCode')!==undefined,'Duplicate or missing custom format');formats.set(id,get(e,'formatCode')!);}
   const fonts=counted('fonts','font').map(e=>readFont(e,context));requireProfile(fonts.length>0,'Missing default font');
+  // A nondefault font without a color means automatic text color,
+  // not inheritance of a custom default font color. Normalize the
+  // implicit black only when a base color would otherwise leak in.
+  if(fonts[0]!.color)for(const f of fonts.slice(1))if(!f.color)f.color=hexColor('000000');
   const fills=counted('fills','fill').map(e=>{attrs(e,[]);const p=one(nodes(e,['patternFill']),'patternFill')!;attrs(p,['patternType']);const c=nodes(p,['fgColor','bgColor']),kind=get(p,'patternType')??'none';
     if(kind==='none'||kind==='gray125'){requireProfile(!c.length,'Unsupported fill colors');return undefined;}requireProfile(kind==='solid','Unsupported fill pattern');const bg=one(c,'bgColor',false);if(bg){attrs(bg,['indexed','rgb','theme','tint','auto']);requireProfile(!childElements(bg).length,'Invalid fill background');}return readRgb(one(c,'fgColor')!,context);});
   requireProfile(fills.length>=2&&!fills[0]&&!fills[1],'Missing default/reserved fills');
   const borders=counted('borders','border').map(e=>parseBorder(e,context));requireProfile(borders.length>0&&!borders[0],'Missing default border');
-  const styleXfs=counted('cellStyleXfs','xf');requireProfile(styleXfs.length===1,'Named style inheritance outside profile');plain(styleXfs[0],['numFmtId','fontId','fillId','borderId']);for(const k of ['numFmtId','fontId','fillId','borderId'])requireProfile(get(styleXfs[0],k)==='0','Nondefault parent style');
-  const named=counted('cellStyles','cellStyle');requireProfile(named.length===1,'Named styles outside profile');plain(named[0],['name','xfId','builtinId','hidden']);requireProfile(!flag(get(named[0],'hidden')),'Hidden Normal style');requireProfile(get(named[0],'name')==='Normal'&&get(named[0],'xfId')==='0'&&get(named[0],'builtinId')==='0','Unsupported named style');
+  const styleXfs=counted('cellStyleXfs','xf');requireProfile(styleXfs.length>=1&&styleXfs.length<=129,'Named style budget');
+  const parents=styleXfs.map((e,i)=>{
+    plain(e,['numFmtId','fontId','fillId','borderId']);
+    const numId=integer(get(e,'numFmtId'),0,65535),fi=integer(get(e,'fontId'),0,fonts.length-1),fill=integer(get(e,'fillId'),0,fills.length-1),border=integer(get(e,'borderId'),0,borders.length-1);
+    requireProfile(formats.has(numId),'Unsupported named style number format');
+    if(i===0)requireProfile(!numId&&!fi&&!fill&&!border,'Nondefault Normal style');
+    const style:CellStyle={};if(fi&&!same(fonts[fi],fonts[0]))Object.assign(style,fonts[fi]);if(fills[fill])style.fill=fills[fill];if(borders[border])Object.assign(style,borders[border]);
+    return {...(Object.keys(style).length?{style}:{}),...(numId?{numberFormat:formats.get(numId)!}:{})};
+  });
+  const named=counted('cellStyles','cellStyle');requireProfile(named.length===parents.length,'Unreferenced named style parent');
+  const namedIds=new Map<string,number>(),byParent=new Map<number,string>(),names=new Set<string>();
+  for(const e of named){
+    plain(e,['name','xfId','builtinId','hidden']);requireProfile(!flag(get(e,'hidden')),'Hidden named style');
+    const name=get(e,'name'),index=integer(get(e,'xfId'),0,parents.length-1);
+    requireProfile(name&&name.length<=255&&!byParent.has(index)&&!names.has(name.toLowerCase()),'Invalid named style identity');
+    requireProfile(index===0?name==='Normal'&&get(e,'builtinId')==='0':name.toLowerCase()!=='normal'&&get(e,'builtinId')===undefined,'Unsupported built-in named style');
+    names.add(name.toLowerCase());byParent.set(index,name);namedIds.set(name,index);
+  }
+  const definitions:SheetNamedStyle[]=parents.slice(1).map((style,i)=>({name:byParent.get(i+1)!,...style}));
   const styles=counted('cellXfs','xf').map((e,i)=>{attrs(e,['numFmtId','fontId','fillId','borderId','xfId','applyNumberFormat','applyFont','applyFill','applyBorder','applyAlignment','pivotButton','quotePrefix','applyProtection']);
     const numId=integer(get(e,'numFmtId'),0,65535),fi=integer(get(e,'fontId'),0,fonts.length-1),fill=integer(get(e,'fillId'),0,fills.length-1),border=integer(get(e,'borderId'),0,borders.length-1);
-    requireProfile((get(e,'xfId')??'0')==='0'&&formats.has(numId),'Unsupported cell style inheritance/format');
+    const parent=integer(get(e,'xfId')??'0',0,parents.length-1);requireProfile(formats.has(numId),'Unsupported cell number format');
     requireProfile(!flag(get(e,'pivotButton'))&&!flag(get(e,'quotePrefix'))&&!flag(get(e,'applyProtection')),'Unsupported pivot, quote or protection flag');
     for(const key of ['applyNumberFormat','applyFont','applyFill','applyBorder','applyAlignment'])if(get(e,key)!==undefined)requireProfile(flag(get(e,key)),'Disabled style property unsupported');
-    const style:CellStyle={};if(fi!==0)Object.assign(style,fonts[fi]);if(fills[fill])style.fill=fills[fill];if(borders[border])Object.assign(style,borders[border]);
+    const style:CellStyle={};if(fi!==0&&!same(fonts[fi],fonts[0]))Object.assign(style,fonts[fi]);if(fills[fill])style.fill=fills[fill];if(borders[border])Object.assign(style,borders[border]);
     const a=one(nodes(e,['alignment']),'alignment',false);if(a){plain(a,['horizontal','vertical','wrapText','textRotation','indent','relativeIndent','shrinkToFit','justifyLastLine','readingOrder']);requireProfile((get(a,'textRotation')??'0')==='0'&&(get(a,'indent')??'0')==='0'&&(get(a,'relativeIndent')??'0')==='0'&&!flag(get(a,'shrinkToFit'))&&!flag(get(a,'justifyLastLine'))&&(get(a,'readingOrder')??'0')==='0','Unsupported active alignment');const h=get(a,'horizontal'),v=get(a,'vertical');if(h&&h!=='general'){requireProfile(['left','center','right','justify'].includes(h),'Unsupported horizontal alignment');style.alignment=({left:'start',right:'end',center:'center',justify:'justify'} as const)[h as 'left'|'right'|'center'|'justify'];}if(v){requireProfile(['top','center','bottom'].includes(v),'Unsupported vertical alignment');style.verticalAlignment=v as CellStyle['verticalAlignment'];}if(get(a,'wrapText')!==undefined)style.wrapText=flag(get(a,'wrapText'));}
-    if(i===0)requireProfile(fi===0&&fill===0&&border===0&&numId===0&&!a,'Nondefault base cell style');
-    return {...(Object.keys(style).length?{style}:{}),...(numId?{numberFormat:formats.get(numId)!}:{})};});
-  requireProfile(styles.length>0,'Missing cell styles');const dxfs=counted('dxfs','dxf',false).map(e=>readDxf(e,context));return {font:fonts[0],styles,dxfs};
+    if(i===0)requireProfile(parent===0&&fi===0&&fill===0&&border===0&&numId===0&&!a,'Nondefault base cell style');
+    return {...(Object.keys(style).length?{style}:{}),...(numId?{numberFormat:formats.get(numId)!}:{}),...(parent?{namedStyle:byParent.get(parent)!}:{})};});
+  requireProfile(styles.length>0,'Missing cell styles');const dxfs=counted('dxfs','dxf',false).map(e=>readDxf(e,context));return {font:fonts[0],styles,dxfs,named:definitions,namedIds,context};
 }
 function scalarXml(v:CalculatedValue):{type:string;body:string}{switch(v.kind){case 'blank':return {type:'',body:''};case 'string':return {type:' t="inlineStr"',body:'<is><t xml:space="preserve">'+encodeText(v.value)+'</t></is>'};case 'number':return {type:'',body:'<v>'+v.value+'</v>'};case 'boolean':return {type:' t="b"',body:'<v>'+Number(v.value)+'</v>'};case 'error':return {type:' t="e"',body:'<v>'+esc(v.value)+'</v>'};}}
 export function writeSheetsXlsx(input:WorkbookSnapshot):Uint8Array{
@@ -254,7 +318,7 @@ export function writeSheetsXlsx(input:WorkbookSnapshot):Uint8Array{
       const [r,c]=key.split(':').map(Number);const sid=style.styleId(cell),styleAttr=sid?' s="'+sid+'"':'';
       let v:{type:string;body:string};
       if(cell.value.kind==='formula'){const ast=parseFormula(cell.value.source);requireProfile(formulaIsSupported(ast),'Unknown formula prevents semantic save');const result=calculation.get(sheet.id,r,c);requireProfile(result.state==='valid'||result.state==='error','Formula not calculated');const cache=result.value;requireProfile(cache,'Missing formula result');const scalar=cache.kind==='string'?{type:' t="str"',body:'<v>'+encodeText(cache.value)+'</v>'}:scalarXml(cache);v={type:scalar.type,body:'<f>'+esc(cell.value.source.slice(1))+'</f>'+scalar.body};}
-      else v=scalarXml(cell.value);
+      else v=cell.richText?{type:' t="inlineStr"',body:richXml(cell.richText)}:scalarXml(cell.value);
       const row=rows.get(r)??[];row.push({col:c,xml:'<c r="'+address(r,c)+'"'+styleAttr+v.type+'>'+v.body+'</c>'});rows.set(r,row);
     }
     for(const r of Object.keys(sheet.rows).map(Number))if(!rows.has(r))rows.set(r,[]);
@@ -361,10 +425,10 @@ export function openSheetsXlsx(bytes:Uint8Array,documentId:string,title='Workboo
   const calc=one(children,'calcPr',false);if(calc){plain(calc,['fullCalcOnLoad','calcId','calcMode','forceFullCalc','calcOnSave','concurrentCalc','concurrentManualCount']);requireProfile((get(calc,'calcMode')??'auto')==='auto','Manual or partial calculation mode');if(get(calc,'fullCalcOnLoad')!==undefined)flag(get(calc,'fullCalcOnLoad'));}
   const styleRel=wrels.filter(r=>r.type===REL+'/styles');requireProfile(styleRel.length<=1,'Duplicate styles relationship');
   const themeRel=wrels.filter(r=>r.type===REL+'/theme');requireProfile(themeRel.length<=1,'Duplicate theme relationship');const theme=themeRel.length?readWorkbookTheme(opc.parts.get(themeRel[0]!.targetPart!)!,options):{};
-  const imported=styleRel.length?readStyles(opc.parts.get(styleRel[0].targetPart!)!,options,theme):{font:document.defaultTextStyle,styles:[{}] as ImportedStyle[],dxfs:[] as ConditionalCellStyle[]};
-  document.defaultTextStyle=imported.font;
-  const sst=wrels.filter(r=>r.type===REL+'/sharedStrings');requireProfile(sst.length<=1,'Duplicate shared strings relationship');let shared:string[]=[];
-  if(sst.length){const e=root(opc.parts.get(sst[0].targetPart!)!,'sst',options);attrs(e,['count','uniqueCount']);shared=nodes(e,['si']).map(si=>{attrs(si,[]);return decodeText(leaf(one(nodes(si,['t']),'t')!,['xml:space']));});if(get(e,'uniqueCount')!==undefined)requireProfile(integer(get(e,'uniqueCount'),0,1000000)===shared.length,'Shared string count mismatch');}
+  const imported=styleRel.length?readStyles(opc.parts.get(styleRel[0].targetPart!)!,options,theme):{font:document.defaultTextStyle,styles:[{}] as ImportedStyle[],dxfs:[] as ConditionalCellStyle[],named:[] as SheetNamedStyle[],namedIds:new Map<string,number>(),context:theme};
+  document.defaultTextStyle=imported.font;if(imported.named.length)document.namedCellStyles=imported.named;
+  const sst=wrels.filter(r=>r.type===REL+'/sharedStrings');requireProfile(sst.length<=1,'Duplicate shared strings relationship');let shared:RichString[]=[];
+  if(sst.length){const e=root(opc.parts.get(sst[0].targetPart!)!,'sst',options);attrs(e,['count','uniqueCount']);let totalRuns=0;shared=nodes(e,['si']).map(si=>{const value=readRichString(si,imported.context);totalRuns+=value.richText?.length??0;requireProfile(totalRuns<=200000,'Shared rich run budget');return value;});if(get(e,'uniqueCount')!==undefined)requireProfile(integer(get(e,'uniqueCount'),0,1000000)===shared.length,'Shared string count mismatch');}
   const sheets=one(children,'sheets')!;attrs(sheets,[]);const defs=nodes(sheets,['sheet']);requireProfile(defs.length>=1&&defs.length<=128,'Sheet count outside profile');document.sheets=[];
   const used=new Set<string>(),ids=new Set<number>(),cachedValues:[string,CalculatedValue][]=[],sheetParts:NativeSheet[]=[];
   let cellCount=0,worksheetAuxiliary=false;
@@ -374,7 +438,7 @@ export function openSheetsXlsx(bytes:Uint8Array,documentId:string,title='Workboo
     if(!type||type==='n')return {kind:'number',value:decimal(content)};
     if(type==='b'){requireProfile(content==='0'||content==='1','Invalid boolean cell');return {kind:'boolean',value:content==='1'};}
     if(type==='e'){requireProfile(ERROR.has(content),'Unsupported error value');return {kind:'error',value:content as Extract<CalculatedValue,{kind:'error'}>['value']};}
-    if(type==='s')return {kind:'string',value:shared[integer(content,0,shared.length-1)]};
+    if(type==='s')return {kind:'string',value:shared[integer(content,0,shared.length-1)].text};
     throw new OfficeError('unsupported','Unsupported XLSX cell type');
   };
   for(const [i,def] of defs.entries()){
@@ -387,11 +451,11 @@ export function openSheetsXlsx(bytes:Uint8Array,documentId:string,title='Workboo
     const views=one(elements,'sheetViews',false);if(views){attrs(views,[]);const view=one(nodes(views,['sheetView']),'sheetView')!;attrs(view,['workbookViewId','rightToLeft','showGridLines','tabSelected','zoomScale','zoomScaleNormal','zoomScaleSheetLayoutView','zoomScalePageLayoutView','topLeftCell','showZeros','showOutlineSymbols','showRowColHeaders','view']);requireProfile((get(view,'view')??'normal')==='normal'&&flag(get(view,'showZeros'),true)&&flag(get(view,'showOutlineSymbols'),true)&&flag(get(view,'showRowColHeaders'),true),'Unsupported worksheet view mode');if(get(view,'topLeftCell'))coordinate(get(view,'topLeftCell'));requireProfile(get(view,'workbookViewId')==='0','Unsupported workbook view');sheet.view={};if(get(view,'rightToLeft')!==undefined)sheet.view.rightToLeft=flag(get(view,'rightToLeft'));if(get(view,'showGridLines')!==undefined)sheet.view.showGridLines=flag(get(view,'showGridLines'));const viewNodes=nodes(view,['pane','selection']);for(const sel of viewNodes.filter(x=>x.localName==='selection'))verifySelection(sel);const pane=one(viewNodes,'pane',false);if(pane){plain(pane,['xSplit','ySplit','topLeftCell','activePane','state']);requireProfile(get(pane,'state')==='frozen','Unsupported split pane');const fc=integer(get(pane,'xSplit')??'0',0,16383),fr=integer(get(pane,'ySplit')??'0',0,1048575);requireProfile(fr||fc,'Empty frozen pane');requireProfile(get(pane,'topLeftCell')===address(fr+1,fc+1),'Noncanonical frozen pane origin');requireProfile(get(pane,'activePane')===(fr&&fc?'bottomRight':fr?'bottomLeft':'topRight'),'Unexpected active pane');sheet.view.frozenRows=fr;sheet.view.frozenColumns=fc;}if(!Object.keys(sheet.view).length)delete sheet.view;}
     const cols=one(elements,'cols',false);if(cols){attrs(cols,[]);for(const e of nodes(cols,['col'])){plain(e,['min','max','width','customWidth','hidden']);const start=integer(get(e,'min'),1,16384),end=integer(get(e,'max'),start,16384);const width=get(e,'width'),hidden=get(e,'hidden');for(let col=start;col<=end;col++){requireProfile(!sheet.columns[col],'Overlapping column metadata');sheet.columns[col]={...(width!==undefined?{width:Math.round(decimal(width,.00001,255)*9525*7)}:{}),...(hidden!==undefined?{hidden:flag(hidden)}:{})};}}}
     const data=one(elements,'sheetData')!;attrs(data,[]);const rowSeen=new Set<number>();for(const row of nodes(data,['row'])){attrs(row,['r','ht','customHeight','hidden','spans']);if(get(row,'spans'))requireProfile(/^\d+:\d+$/.test(get(row,'spans')!),'Invalid row spans');const r=integer(get(row,'r'),1,1048576);requireProfile(!rowSeen.has(r),'Duplicate row');rowSeen.add(r);const ht=get(row,'ht'),hidden=get(row,'hidden');if(ht!==undefined||hidden!==undefined)sheet.rows[r]={...(ht!==undefined?{height:Math.round(decimal(ht,.00001,409)*12700)}:{}),...(hidden!==undefined?{hidden:flag(hidden)}:{})};
-      for(const el of nodes(row,['c'])){requireProfile(++cellCount<=100000,'Cell budget exceeded');attrs(el,['r','s','t']);const [rr,c]=coordinate(get(el,'r'));requireProfile(rr===r,'Cell row mismatch');const key=r+':'+c;requireProfile(!sheet.cells[key],'Duplicate cell');const st=imported.styles[integer(get(el,'s')??'0',0,imported.styles.length-1)];const type=get(el,'t'),ch=nodes(el,['f','v','is']),f=one(ch,'f',false),v=one(ch,'v',false),is=one(ch,'is',false);let value:Cell['value'];
+      for(const el of nodes(row,['c'])){requireProfile(++cellCount<=100000,'Cell budget exceeded');attrs(el,['r','s','t']);const [rr,c]=coordinate(get(el,'r'));requireProfile(rr===r,'Cell row mismatch');const key=r+':'+c;requireProfile(!sheet.cells[key],'Duplicate cell');const st=imported.styles[integer(get(el,'s')??'0',0,imported.styles.length-1)];const type=get(el,'t'),ch=nodes(el,['f','v','is']),f=one(ch,'f',false),v=one(ch,'v',false),is=one(ch,'is',false);let value:Cell['value'];let richText:SheetRichRun[]|undefined;
         if(f){requireProfile(!is&&type!=='s'&&type!=='inlineStr','Invalid formula cell');const source='='+leaf(f);requireProfile(formulaIsSupported(parseFormula(source)),'Unknown formula outside editable profile');value={kind:'formula',source};if(v){const content=leaf(v);if(content!==''||type==='str')cachedValues.push([calculationKey(sheet.id,r,c),scalar(type,content)]);}}
-        else if(type==='inlineStr'){requireProfile(is&&!v,'Invalid inline string');attrs(is,[]);value={kind:'string',value:decodeText(leaf(one(nodes(is,['t']),'t')!,['xml:space']))};}
-        else{requireProfile(!is,'Unexpected inline string');value=scalar(type,v?leaf(v):undefined);}
-        sheet.cells[key]={value,...st};
+        else if(type==='inlineStr'){requireProfile(is&&!v,'Invalid inline string');const rich=readRichString(is,imported.context);value={kind:'string',value:rich.text};richText=rich.richText;}
+        else{requireProfile(!is,'Unexpected inline string');const content=v?leaf(v):undefined;value=scalar(type,content);if(type==='s')richText=shared[integer(content,0,shared.length-1)].richText;}
+        sheet.cells[key]={value,...st,...(richText?{richText}:{})};
       }}
     const merges=one(elements,'mergeCells',false);if(merges){attrs(merges,['count']);sheet.merges=nodes(merges,['mergeCell']).map(e=>{plain(e,['ref']);return range(get(e,'ref'));});if(get(merges,'count')!==undefined)requireProfile(integer(get(merges,'count'),0,10000)===sheet.merges.length,'Merge count mismatch');}
     // Covered non-anchor values may not be discarded in a semantic editor.
@@ -414,6 +478,7 @@ function mergeSourceStyles(source:SheetsXlsxSource,generated:SheetsXlsxSource):{
  const theme=native.themePath?readWorkbookTheme(native.opc.parts.get(native.themePath)!,{}):{};
  const oldStyles=readStyles(before,{},theme);
  requireProfile(same(oldStyles.font,generatedStyles.font),'Changing the source workbook default font is outside this profile');
+ requireProfile(same(oldStyles.named,generatedStyles.named),'Changing source named cell style definitions is outside this profile');
  const mapping=generatedStyles.styles.map(style=>oldStyles.styles.findIndex(old=>same(old,style)));
  const dxfMapping=generatedStyles.dxfs.map(style=>oldStyles.dxfs.findIndex(old=>same(old,style)));
  if(mapping.every(i=>i>=0)&&dxfMapping.every(i=>i>=0))return {mapping,dxfMapping};
@@ -449,6 +514,7 @@ function mergeSourceStyles(source:SheetsXlsxSource,generated:SheetsXlsxSource):{
   const xf=oldDoc.importNode(newXfs[index]!,true) as Element;
   for(const [attribute,table]of [['fontId','fonts'],['fillId','fills'],['borderId','borders']] as const)xf.setAttribute(attribute,String(component(table,Number(get(xf,attribute)))));
   xf.setAttribute('numFmtId',String(formatId(Number(get(xf,'numFmtId')))));
+  const name=generatedStyles.styles[index]!.namedStyle;if(name)xf.setAttribute('xfId',String(oldStyles.namedIds.get(name)!));
   const target=childElements(oldXfs).length;requireProfile(target<64000,'Cell style budget exceeded');
   oldXfs.appendChild(xf);oldXfs.setAttribute('count',String(target+1));mapping[index]=target;
  }
@@ -465,7 +531,7 @@ function worksheetCells(top:Element):Map<string,Element>{
  for(const row of childElements(data))for(const cell of childElements(row)){const [r,c]=coordinate(get(cell,'r'));out.set(r+':'+c,cell);}
  return out;
 }
-function effectiveCellStyle(cell:Cell|undefined):unknown{return {style:cell?.style??{},numberFormat:cell?.numberFormat??'General'};}
+function effectiveCellStyle(cell:Cell|undefined):unknown{return {style:cell?.style??{},numberFormat:cell?.numberFormat??'General',namedStyle:cell?.namedStyle};}
 function dimensionRef(sheet:Sheet):string{
  let r1=1048576,c1=16384,r2=1,c2=1,any=false;
  const take=(r:number,c:number)=>{any=true;r1=Math.min(r1,r);c1=Math.min(c1,c);r2=Math.max(r2,r);c2=Math.max(c2,c);};

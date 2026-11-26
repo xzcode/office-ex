@@ -125,7 +125,10 @@ test('M6.6 native chart graph creation, no-edit preservation, source data update
  const bytes=writeSheetsXlsx(model()),source=openSheetsXlsx(bytes,d.documentId,d.title);
  assert.deepEqual(source.document.sheets[0]!.charts,model().sheets[0]!.charts);
  assert.deepEqual(saveSheetsXlsx(bytes,source.document),bytes);
- assert.throws(()=>insertRows(session.snapshot(),sheet.id,2),OfficeError);
+ const initial=session.snapshot().document;
+ session.execute(insertRows(session.snapshot(),sheet.id,2));
+ assert.equal(model().sheets[0]!.charts![0]!.categories.row,3);
+ session.undo();assert.deepEqual(session.snapshot().document,initial);
  assert.throws(()=>writeLegacyXls(model()),OfficeError);
  const before=openOpc(bytes);
  source.document.sheets[0]!.cells['2:2']!.value={kind:'number',value:19};
@@ -137,4 +140,74 @@ test('M6.6 native chart graph creation, no-edit preservation, source data update
  assert.deepEqual(back.document.sheets[0]!.charts,model().sheets[0]!.charts);
  assert.equal(back.document.sheets[0]!.name,'Changed & More');
  session.undo();session.undo();assert.equal(model().sheets[0]!.charts!.length,3);
+});
+
+test('M7.1 rich cell text edits preserve grapheme-aligned formatting, formulas and source runs',async()=>{
+ const {cellFromInput,setCells,clearCells,formatCells,copyCells}=await import('@office-ex/sheets');
+ const d=createDocument('sheets','rich-profile'),sh=d.sheets[0]!;
+ const red={kind:'rgba' as const,red:180,green:0,blue:40,alpha:255};
+ sh.cells['1:1']={value:{kind:'string',value:'甲😀乙尾'},richText:[{text:'甲😀',style:{bold:true,color:red}},{text:'乙尾',style:{italic:true}}]};
+ sh.cells['1:2']={value:{kind:'formula',source:'=LEN(A1)'}};
+ const b=writeSheetsXlsx(d),source=openSheetsXlsx(b,d.documentId,d.title);
+ assert.deepEqual(source.document.sheets[0]!.cells['1:1']!.richText,sh.cells['1:1']!.richText);
+ assert.deepEqual(saveSheetsXlsx(b,source.document),b);
+ const s=new DocumentSession(source.document),model=()=>s.snapshot().document as SheetsDocument;
+ const edited=cellFromInput('甲😀新乙尾',{type:'text'},model().sheets[0]!.cells['1:1']);
+ assert.deepEqual(edited.richText,[{text:'甲😀新',style:{bold:true,color:red}},{text:'乙尾',style:{italic:true}}]);
+ s.execute(setCells(s.snapshot(),sh.id,[{row:1,column:1,cell:edited}]));
+ assert.deepEqual(new WorkbookCalculator().calculate(model()).get(sh.id,1,2).value,{kind:'number',value:5});
+ s.execute(formatCells(s.snapshot(),sh.id,{row:1,column:1,rowCount:1,columnCount:1},{style:{underline:true}}));
+ assert.ok(model().sheets[0]!.cells['1:1']!.richText!.every(r=>r.style?.underline));
+ s.execute(copyCells(s.snapshot(),sh.id,{row:1,column:1,rowCount:1,columnCount:1},sh.id,2,1));
+ const out=saveSheetsXlsx(b,model()),back=openSheetsXlsx(out,d.documentId,d.title);
+ assert.deepEqual(back.document.sheets[0]!.cells['2:1']!.richText,model().sheets[0]!.cells['1:1']!.richText);
+ s.execute(clearCells(s.snapshot(),sh.id,{row:1,column:1,rowCount:1,columnCount:1}));
+ assert.equal(model().sheets[0]!.cells['1:1']?.richText,undefined);s.undo();
+ assert.throws(()=>writeLegacyXls(model()),OfficeError);
+ assert.equal(cellFromInput('42',{},edited).richText,undefined);
+ const bad=createDocument('sheets','bad-rich');bad.sheets[0]!.cells['1:1']={value:{kind:'string',value:'A'},richText:[{text:'B'}]};assert.throws(()=>new DocumentSession(bad),OfficeError);
+});
+
+test('M7.1 source named styles remain linked across value and direct-format edits, copy and reset',async()=>{
+ const {applyNamedCellStyle,formatCells,copyCells}=await import('@office-ex/sheets');
+ const d=createDocument('sheets','named-profile'),sh=d.sheets[0]!;
+ d.namedCellStyles=[{name:'Report',style:{fontFamily:'Arial',fontSize:152400,bold:true,fill:{kind:'rgba',red:255,green:230,blue:160,alpha:255}},numberFormat:'0.00'}];
+ sh.cells['1:1']={value:{kind:'number',value:12}};
+ const s=new DocumentSession(d);s.execute(applyNamedCellStyle(s.snapshot(),sh.id,{row:1,column:1,rowCount:1,columnCount:1},'Report'));
+ const b=writeSheetsXlsx(s.snapshot().document as SheetsDocument),source=openSheetsXlsx(b,d.documentId,d.title);
+ assert.equal(source.document.sheets[0]!.cells['1:1']!.namedStyle,'Report');
+ assert.deepEqual(saveSheetsXlsx(b,source.document),b);
+ const n=new DocumentSession(source.document),m=()=>n.snapshot().document as SheetsDocument;
+ n.execute(formatCells(n.snapshot(),sh.id,{row:1,column:1,rowCount:1,columnCount:1},{style:{italic:true}}));
+ n.execute(copyCells(n.snapshot(),sh.id,{row:1,column:1,rowCount:1,columnCount:1},sh.id,2,1));
+ const out=saveSheetsXlsx(b,m()),back=openSheetsXlsx(out,d.documentId,d.title);
+ assert.deepEqual(back.document.namedCellStyles,source.document.namedCellStyles);
+ assert.equal(back.document.sheets[0]!.cells['2:1']!.namedStyle,'Report');
+ assert.equal(back.document.sheets[0]!.cells['2:1']!.style?.italic,true);
+ n.execute(applyNamedCellStyle(n.snapshot(),sh.id,{row:2,column:1,rowCount:1,columnCount:1},'Normal'));
+ assert.equal(m().sheets[0]!.cells['2:1']!.namedStyle,undefined);n.undo();
+ assert.throws(()=>writeLegacyXls(m()),OfficeError);
+});
+
+test('M7.1 chart anchors and source vectors rebase atomically during sheet row/column edits',async()=>{
+ const {addSheetChart,insertRows,deleteRows,insertColumns,deleteColumns}=await import('@office-ex/sheets');
+ const d=createDocument('sheets','chart-shift'),sh=d.sheets[0]!;
+ sh.cells['1:1']={value:{kind:'string',value:'Category'}};sh.cells['1:2']={value:{kind:'string',value:'Values'}};
+ for(let r=2;r<=5;r++)sh.cells[r+':2']={value:{kind:'number',value:r}};
+ const s=new DocumentSession(d),model=()=>s.snapshot().document as SheetsDocument;
+ for(const kind of ['column','line','pie'] as const)s.execute(addSheetChart(s.snapshot(),sh.id,{row:1,column:1,rowCount:5,columnCount:2},kind));
+ const original=model(),charts=original.sheets[0]!.charts!;
+ assert.ok(charts[0]!.anchor.row<charts[1]!.anchor.row&&charts[1]!.anchor.row<charts[2]!.anchor.row);
+ const bytes=writeSheetsXlsx(original);
+ s.execute(insertRows(s.snapshot(),sh.id,3,2));
+ assert.equal(model().sheets[0]!.charts![0]!.categories.rowCount,6);
+ s.execute(insertColumns(s.snapshot(),sh.id,1,2));
+ const chart=model().sheets[0]!.charts![0]!;
+ assert.equal(chart.categories.column,3);assert.equal(chart.series[0]!.values.column,4);assert.equal(chart.series[0]!.label!.column,4);
+ const reopened=openSheetsXlsx(saveSheetsXlsx(bytes,model()),d.documentId,d.title);
+ assert.deepEqual(reopened.document.sheets[0]!.charts,model().sheets[0]!.charts);
+ assert.throws(()=>deleteColumns(s.snapshot(),sh.id,4),OfficeError);
+ assert.throws(()=>deleteRows(s.snapshot(),sh.id,1),OfficeError);
+ s.execute(deleteRows(s.snapshot(),sh.id,3,2));assert.equal(model().sheets[0]!.charts![0]!.categories.rowCount,4);
+ s.undo();s.undo();s.undo();assert.deepEqual(model(),original);
 });
