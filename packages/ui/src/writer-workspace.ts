@@ -5,10 +5,11 @@ import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagrap
 import { layoutWriter, hitTestWriterPage, writerCaretBox, writerSelectionBoxes, type WriterLayout } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
-import {nativeWriterPage,type NativePageCache} from './native-writer-page.js';
+import {nativeWriterPage,type NativePageCache,type NativeWriterController} from './native-writer-page.js';
+import {installRibbon,ribbonNodes,type RibbonState} from './office-ribbon.js';
 import {WriterPaginationEngine} from '@office-ex/render';
 
-export interface WriterViewState{paragraphId?:string;start:number;end:number;pageIndex:number;focus?:boolean;continuous?:boolean;groupRange?:WriterRange;pageSectionId?:string;pageMode?:boolean;pageRange?:WriterRange;nativeCache?:NativePageCache;pagination?:WriterPaginationEngine}
+export interface WriterViewState extends RibbonState{pageZoom?:number;paragraphId?:string;start:number;end:number;pageIndex:number;focus?:boolean;continuous?:boolean;groupRange?:WriterRange;pageSectionId?:string;pageMode?:boolean;pageRange?:WriterRange;nativeCache?:NativePageCache;pagination?:WriterPaginationEngine}
 export interface WriterHost{
   snapshot():DocumentSnapshot;
   execute(command:DocumentCommand):boolean;
@@ -41,7 +42,12 @@ function safeColor(style:DeepReadonly<TextStyle>):string{
   const c=style.color;return c?.kind==='rgba'?'rgba('+c.red+','+c.green+','+c.blue+','+c.alpha/255+')':'#20242c';
 }
 export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLElement{
-  if(state.pageMode)return nativeWriterPage(host,state);
+  state.pageMode??=true;
+  const pageMode=state.pageMode;
+  if(pageMode&&state.focus&&state.paragraphId){
+    state.pageRange={anchor:{paragraphId:state.paragraphId,offset:state.start},focus:{paragraphId:state.paragraphId,offset:state.end}};state.focus=false;
+  }
+  let native:NativeWriterController|undefined;
   const root=node('div','','writer-workspace');
   const controls=node('div','','writer-controls'),panes=node('div','','writer-panes');
   const edit=node('section','','writer-edit-pane'),preview=node('section','','writer-preview-pane');
@@ -73,6 +79,10 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     return best;
   }
   function select(id:string,start:number,end=start,focus=false):void{
+    if(pageMode){
+      const a=paragraphBoundary(id,start),b=paragraphBoundary(id,end);state.pageRange={anchor:{paragraphId:id,offset:a},focus:{paragraphId:id,offset:b}};
+      state.paragraphId=id;state.start=Math.min(a,b);state.end=Math.max(a,b);native?.setRange(state.pageRange,focus);syncControls();return;
+    }
     const input=inputs.get(id);if(!input)return;
     const a=paragraphBoundary(id,start),b=paragraphBoundary(id,end);
     state.paragraphId=id;state.start=Math.min(a,b);state.end=Math.max(a,b);
@@ -137,6 +147,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     }
   }
   function scheduleLayout():void{
+    if(pageMode){native?.refresh();return;}
     if(timer!==undefined)clearTimeout(timer);
     // Derive layout from current revision after typing settles; never alter model state.
     timer=setTimeout(()=>{timer=undefined;updateLayout();},100);
@@ -147,21 +158,39 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     const hit=hitTestWriterPage(layout,state.pageIndex,{x:(e.clientX-box.left)/box.width*page.width,y:(e.clientY-box.top)/box.height*page.height});
     if(hit){if(continuousPick){if(!continuousPick(hit.paragraphId,hit.offset))return;}else if(inputs.has(hit.paragraphId))select(hit.paragraphId,hit.offset,hit.offset,true);}
   };
-  function currentSelection(){const input=activeParagraph();if(!input||!state.paragraphId)return undefined;
+  function currentSelection(){
+    if(pageMode){
+      const range=native?.getRange()??state.pageRange;
+      if(!range)return undefined;
+      try{
+        const p=locateParagraph(host.snapshot(),range.focus.paragraphId).paragraph;
+        const a=range.anchor.paragraphId===p.id?range.anchor.offset:range.focus.offset,b=range.focus.offset;
+        return {id:p.id,start:Math.min(a,b),end:Math.max(a,b),cross:range.anchor.paragraphId!==range.focus.paragraphId};
+      }catch{return undefined;}
+    }
+    const input=activeParagraph();if(!input||!state.paragraphId)return undefined;
     const start=paragraphBoundary(state.paragraphId,input.selectionStart),end=paragraphBoundary(state.paragraphId,input.selectionEnd);
-    return {id:state.paragraphId,input,start:Math.min(start,end),end:Math.max(start,end)};
+    return {id:state.paragraphId,start:Math.min(start,end),end:Math.max(start,end),cross:false};
   }
   function safe(fn:()=>void):void{try{fn();}catch(e){host.error(e);}}
   const actions:{button:HTMLButtonElement;range?:boolean;enabled?:()=>boolean}[]=[];
   const tableInputs:HTMLInputElement[]=[];
-  const metricFields:HTMLInputElement[]=[];
+  const metricFields:HTMLInputElement[]=[];let nativeImageSync:(()=>void)|undefined;
   function contextTable(){const id=state.paragraphId;if(!id)return undefined;const location=tableCellLocation(host.snapshot(),id);if(!location)return undefined;const table=modelOf(host.snapshot()).sections.flatMap(s=>s.blocks).find(b=>b.id===location.tableId);return table?.type==='table'?{...location,table}:undefined;}
   const formatFields:{element:HTMLInputElement|HTMLSelectElement;range:boolean}[]=[];
   function tool(key:MessageKey,id:string,fn:()=>void,range=false,enabled?:()=>boolean,parent:HTMLElement=controls):void{
     const b=button(t(key),()=>safe(fn),id);b.onmousedown=e=>e.preventDefault();actions.push({button:b,range,enabled});parent.append(b);
   }
   function selectedStyle(key:'bold'|'italic'|'underline'):boolean{
-    const selection=currentSelection();if(!selection||selection.start===selection.end)return false;
+    const selection=currentSelection();if(!selection)return false;
+    if(pageMode&&native?.getRange()){
+      const model=modelOf(host.snapshot()),range=native.getRange()!;let count=0,all=true;
+      for(const seg of resolveWriterRange(host.snapshot(),range).segments){
+        const p=seg.paragraph,named=p.styleId??model.defaultParagraphStyleId,base=resolveTextStyle(model.defaultTextStyle,model.styles,named?[named]:[],p.style??{}).style;let offset=0;
+        for(const r of p.runs){const end=offset+inlineText(r).length;if(r.type==='text'&&seg.start<seg.end&&offset<seg.end&&end>seg.start){count++;all=all&&resolveTextStyle(base,model.styles,r.styleId?[r.styleId]:[],r.style??{}).style[key]===true;}offset=end;}
+      }return count>0&&all;
+    }
+    if(selection.start===selection.end)return false;
     const doc=modelOf(host.snapshot());
     const p=selectedParagraph();
     if(!p||p.type!=='paragraph')return false;
@@ -191,12 +220,14 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   }
   function syncControls():void{
     const selection=currentSelection();
-    for(const action of actions)action.button.disabled=!selection||host.composing()||!!action.range&&selection.start===selection.end||!!action.enabled&&!action.enabled();
+    for(const action of actions)action.button.disabled=!selection||host.composing()||!!action.range&&selection.start===selection.end&&!selection.cross||!!action.enabled&&!action.enabled();
+    nativeImageSync?.();
     const tableContext=contextTable();
     for(const input of tableInputs)input.disabled=host.composing()||!selection||(input.id==='writer-table-width'?!tableContext:!!tableContext);
     const width=root.querySelector<HTMLInputElement>('#writer-table-width');if(width&&document.activeElement!==width)width.value=tableContext?String(tableContext.table.columnWidths[tableContext.column]!/EMU_PER_POINT):'';
     const border=root.querySelector<HTMLButtonElement>('#writer-table-border');if(border)border.setAttribute('aria-pressed',String(!!tableContext?.table.border));
-    for(const field of formatFields)field.element.disabled=!selection||host.composing()||field.range&&selection.start===selection.end||!!host.legacyWriter&&field.element.dataset.modernOnly==='true';
+    for(const field of formatFields)field.element.disabled=!selection||host.composing()||field.range&&selection.start===selection.end&&!selection.cross||!!host.legacyWriter&&field.element.dataset.modernOnly==='true';
+    const characterField=root.querySelector<HTMLSelectElement>('#writer-character-style');if(characterField&&selection?.cross)characterField.disabled=true;
     const style=effectiveSelectedStyle(),p=selectedParagraph();
     const listType=root.querySelector<HTMLSelectElement>('#writer-list-type'),listLevel=root.querySelector<HTMLSelectElement>('#writer-list-level'),restart=root.querySelector<HTMLButtonElement>('#writer-list-restart');
     const model=modelOf(host.snapshot()),ref=p?writerEffectiveStyle(model,p).writerList:undefined,level=ref?.numId?model.numbering?.lists[String(ref.numId)]?.levels[ref.level]:undefined;
@@ -239,7 +270,9 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     }
   }
   function applyDirectStyle(style:TextStyle):void{
-    const sel=currentSelection();if(!sel||sel.start===sel.end||host.composing())return;
+    const sel=currentSelection();if(!sel||host.composing())return;
+    if(pageMode){const range=native?.getRange();if(!range||sel.start===sel.end&&!sel.cross)return;if(host.execute(formatWriterRange(host.snapshot(),range,style,crypto.randomUUID())))native?.refresh(true);return;}
+    if(sel.start===sel.end)return;
     if(host.execute(formatParagraphRange(host.snapshot(),sel.id,sel.start,sel.end,style,crypto.randomUUID()))){
       select(sel.id,sel.start,sel.end,true);scheduleLayout();
     }
@@ -278,7 +311,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     const blank=node('option',t('writerChooseStyle'));blank.value='';blank.disabled=true;selectStyle.append(blank);
     for(const style of list){const item=node('option',style.name);item.value=style.id;selectStyle.append(item);}
     selectStyle.onchange=()=>safe(()=>{
-      const sel=currentSelection();if(!sel||!selectStyle.value||host.composing())return;
+      const sel=currentSelection();if(!sel||!selectStyle.value||host.composing()||kind==='character'&&sel.cross)return;
       const command=kind==='paragraph'?setParagraphNamedStyle(host.snapshot(),sel.id,selectStyle.value):setCharacterNamedStyle(host.snapshot(),sel.id,sel.start,sel.end,selectStyle.value,crypto.randomUUID());
       if(host.execute(command)){select(sel.id,sel.start,sel.end,true);scheduleLayout();}
     });
@@ -288,7 +321,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   for(const [alignment,label] of [['start','writerAlignLeft'],['center','writerAlignCenter'],['end','writerAlignRight']] as const)
     tool(label,'writer-align-'+alignment,()=>{const sel=currentSelection();if(sel&&!host.composing()&&host.execute(setParagraphAlignment(host.snapshot(),sel.id,alignment)))scheduleLayout();});
   function split():void{
-    const sel=currentSelection();if(!sel||host.composing())return;
+    const sel=currentSelection();if(!sel||host.composing()||sel.cross)return;
     const newId=crypto.randomUUID(),prefix=crypto.randomUUID();
     if(host.execute(splitParagraphRange(host.snapshot(),sel.id,sel.start,sel.end,prefix,newId))){
       state.paragraphId=newId;state.start=0;state.end=0;state.focus=true;host.render();
@@ -341,7 +374,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   tool('writerInsertImage','writer-insert-image',()=>{pictureMode='after';imagePicker.click();},false,undefined,pictureBar);
   tool('writerInsertInlineImage','writer-insert-inline-image',()=>{pictureMode='inline';imagePicker.click();},false,undefined,pictureBar);
   imagePicker.onchange=()=>{const file=imagePicker.files?.[0],sel=currentSelection(),revision=host.snapshot().revision,mode=pictureMode;imagePicker.value='';
-    if(!file||!sel||host.composing())return;
+    if(!file||!sel||host.composing()||sel.cross)return;
     void(async()=>{
       if(file.size>8*1024*1024)throw new OfficeError('limit','Image exceeds byte budget');
       const resource=await host.prepareImage(new Uint8Array(await file.arrayBuffer()));
@@ -350,6 +383,17 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
       if(host.execute(command)){if(mode==='inline'){state.start=state.end=sel.start+1;state.focus=true;}host.render();}
     })().catch(host.error);
   };
+  if(pageMode){
+    const chosenImage=()=>{
+      const sel=currentSelection();if(!sel||sel.cross)return undefined;const p=locateParagraph(host.snapshot(),sel.id).paragraph;let offset=0;
+      for(const run of p.runs){const end=offset+inlineText(run).length;if(run.type==='image'&&sel.start<=end&&sel.end>=offset)return run;offset=end;}return undefined;
+    };
+    const imageWidth=tableField('writerImageWidth','writer-native-image-width','',1,1584,'0.05');
+    tableInputs.splice(tableInputs.indexOf(imageWidth),1);const imageLabel=imageWidth.closest('label')!;pictureBar.append(imageLabel);
+    imageWidth.onchange=()=>safe(()=>{const img=chosenImage();if(img&&!host.composing()&&host.execute(resizeInlineImage(host.snapshot(),img.id,Math.round(imageWidth.valueAsNumber*20)*EMU_PER_TWIP)))scheduleLayout();});
+    tool('writerRemoveImage','writer-native-image-remove',()=>{const img=chosenImage();if(img&&!host.composing()&&host.execute(removeInlineImage(host.snapshot(),img.id))){state.pageRange=undefined;state.focus=false;host.render();}},false,()=>!!chosenImage(),pictureBar);
+    nativeImageSync=()=>{const img=chosenImage();imageWidth.disabled=!img||host.composing();if(document.activeElement!==imageWidth)imageWidth.value=img?String(Math.round(img.width/EMU_PER_TWIP)/20):'';};
+  }
   root.insertBefore(pictureBar,note);
   const pageBarControls=node('div','','writer-table-controls');
   const sections=modelOf(host.snapshot()).sections;
@@ -514,26 +558,28 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     }
     wrap.append(grid);edit.append(wrap);
   }
-  for(const [i,section] of modelOf(host.snapshot()).sections.entries()){
+  if(!pageMode)for(const [i,section] of modelOf(host.snapshot()).sections.entries()){
     if(i>0)edit.append(node('p',t('writerSectionNumber',{number:host.number(i+1)}),'writer-block-note'));
     for(const p of section.blocks)if(p.type==='table')renderTable(p);else renderParagraph(p,edit);
   }
-  if(!state.paragraphId||!inputs.has(state.paragraphId)){state.paragraphId=inputs.keys().next().value;state.start=0;state.end=0;}
+  if(!pageMode&&(!state.paragraphId||!inputs.has(state.paragraphId))){state.paragraphId=inputs.keys().next().value;state.start=0;state.end=0;}
   const initial=activeParagraph();if(initial){initial.setSelectionRange(state.start,state.end);if(state.focus){state.focus=false;requestAnimationFrame(()=>{if(initial.isConnected)initial.focus({preventScroll:true});});}}
-  const pageEdit=button(t('writerPageEdit'),()=>safe(()=>{
-    if(host.composing())return;state.pageMode=true;
-    if(state.paragraphId)state.pageRange={anchor:{paragraphId:state.paragraphId,offset:state.start},focus:{paragraphId:state.paragraphId,offset:state.end}};
+  const pageEdit=button(t(pageMode?'ribbonTextView':'writerPageEdit'),()=>safe(()=>{
+    if(host.composing())return;
+    if(pageMode){state.pageMode=false;state.focus=true;state.continuous=false;}
+    else{state.pageMode=true;state.continuous=false;if(state.paragraphId)state.pageRange={anchor:{paragraphId:state.paragraphId,offset:state.start},focus:{paragraphId:state.paragraphId,offset:state.end}};}
     host.render();
-  }),'writer-page-edit');root.insertBefore(pageEdit,controls);
+  }),pageMode?'writer-exit-page-edit':'writer-page-edit');root.insertBefore(pageEdit,controls);
   const continuousToggle=button(t('writerContinuous'),()=>safe(()=>{
     if(host.composing()||!state.paragraphId)return;
-    if(state.continuous){state.continuous=false;state.groupRange=undefined;state.focus=true;host.render();return;}
+    if(state.continuous&&!pageMode){state.continuous=false;state.groupRange=undefined;state.focus=true;host.render();return;}
+    if(pageMode)state.pageMode=false;
     writerTextGroup(host.snapshot(),state.paragraphId);state.continuous=true;
     state.groupRange={anchor:{paragraphId:state.paragraphId,offset:state.start},focus:{paragraphId:state.paragraphId,offset:state.end}};host.render();
   }),'writer-continuous');
   continuousToggle.disabled=!state.paragraphId||host.composing();
   root.insertBefore(continuousToggle,controls);
-  if(state.continuous&&state.paragraphId){
+  if(!pageMode&&state.continuous&&state.paragraphId){
     try{
       let group=writerTextGroup(host.snapshot(),state.paragraphId);
       if(group.text.includes('\r'))throw new OfficeError('unsupported','Continuous native input cannot preserve raw CR');
@@ -598,5 +644,44 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
       requestAnimationFrame(()=>{if(input.isConnected){input.focus({preventScroll:true});storeRange();}});
     }catch(error){state.continuous=false;state.groupRange=undefined;host.error(error);}
   }
-  syncControls();requestAnimationFrame(updateLayout);return root;
+  if(pageMode){
+    panes.remove();note.hidden=true;
+    root.classList.add('writer-page-mode');
+    root.append(nativeWriterPage(host,state,{ready(controller){native=controller;},selection(){syncControls();continuousToggle.disabled=!state.paragraphId||host.composing();}}));
+  }
+  const shortcut=(key:MessageKey,id:string,tab:string)=>{const b=button(t(key),()=>root.querySelector<HTMLButtonElement>('.office-ribbon-tab[data-ribbon-tab="'+tab+'"]')?.click(),id);return b;};
+  const pick=(...ids:string[])=>ribbonNodes(root,...ids);
+  installRibbon(root,state,t,[
+    {id:'home',label:'ribbonHome',groups:[
+      {label:'ribbonFont',rows:[pick('writer-font-family','writer-font-size'),pick('writer-bold','writer-italic','writer-underline','writer-text-color')]},
+      {label:'ribbonParagraph',rows:[pick('writer-align-start','writer-align-center','writer-align-end','writer-list-type'),pick('writer-list-level','writer-paragraph-direction')]},
+      {label:'ribbonStyles',rows:[pick('writer-paragraph-style'),pick('writer-character-style')]},
+      {label:'ribbonInsert',rows:[[shortcut('writerTable','writer-ribbon-table','insert'),shortcut('ribbonPictures','writer-ribbon-pictures','insert')],pick('writer-page-break')]},{label:'ribbonPageSetup',rows:[[shortcut('ribbonMargins','writer-ribbon-layout','layout')],[shortcut('ribbonTypography','writer-ribbon-typography','format')]]}
+    ]},
+    {id:'insert',label:'ribbonInsert',groups:[
+      {label:'writerTable',rows:[pick('writer-table-rows','writer-table-columns','writer-insert-table'),pick('writer-table-add-row','writer-table-delete-row','writer-table-add-column','writer-table-delete-column')]},
+      {label:'ribbonTableFormat',rows:[pick('writer-table-width','writer-table-border'),pick('writer-table-delete')]},
+      {label:'ribbonPictures',rows:[pick('writer-insert-image','writer-insert-inline-image','writer-native-image-remove'),pick('writer-native-image-width')]},
+      {label:'ribbonBreaks',rows:[pick('writer-split','writer-section-break')]}
+    ]},
+    {id:'layout',label:'ribbonLayout',groups:[
+      {label:'ribbonPageSetup',rows:[pick('writer-section','writer-paper','writer-orientation'),pick('writer-page-width','writer-page-height','writer-apply-page')]},
+      {label:'ribbonMargins',rows:[pick('writer-margin-top','writer-margin-bottom'),pick('writer-margin-left','writer-margin-right')]},
+      {label:'ribbonIndent',rows:[pick('writer-indent','writer-rightIndent'),pick('writer-firstLineIndent')]},
+      {label:'ribbonSpacing',rows:[pick('writer-spaceBefore','writer-spaceAfter'),pick('writer-lineHeight','writer-contextual-spacing')]}
+    ]},
+    {id:'format',label:'ribbonFormat',groups:[
+      {label:'ribbonTypography',rows:[pick('writer-character-spacing','writer-kerning-threshold'),pick('writer-text-language')]},
+      {label:'ribbonBorders',rows:[pick('writer-bottom-rule','writer-rule-color'),pick('writer-rule-width','writer-rule-space')]},
+      {label:'ribbonNumbering',rows:[pick('writer-list-start','writer-list-restart')]}
+    ]},
+    {id:'view',label:'ribbonView',groups:[{label:'ribbonDocumentView',rows:[[pageEdit,continuousToggle]]}]}
+  ],()=>!host.composing());
+  // Any non-ribbon invisible resource controls remain attached (datalist and file picker).
+  for(const container of [controls,properties,tableBar,pictureBar,pageBarControls,metricsBar]){
+    for(const element of [...container.children])if(element.matches('datalist,input[type=file]'))root.append(element);
+    // Every remaining action is a real control; keep unclassified controls accessible.
+    if(container.childElementCount){container.classList.add('ribbon-unclassified');}else container.remove();
+  }
+  syncControls();if(!pageMode)requestAnimationFrame(updateLayout);return root;
 }

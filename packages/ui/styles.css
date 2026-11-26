@@ -94,3 +94,168 @@
 .office-text-body p,.office-text-body td{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
 .office-text-body p{margin:0 0 12px}.office-text-table-wrap{overflow:auto;margin-block:12px}
 .office-text-body table{border-collapse:collapse;min-width:100%}.office-text-body td{padding:7px 10px;border:1px solid var(--line);vertical-align:top}
+
+/* Office EX compact editor shell and shared live ribbon. */
+[hidden]{display:none!important}
+.office-editor-shell{grid-template-columns:minmax(0,1fr)!important}
+.office-editor-shell>.sidebar{display:none}
+.office-editor-shell>main{grid-column:1}
+.office-editor-shell .topbar{height:44px;min-height:44px;padding:0 10px;gap:10px;background:var(--sidebar)}
+.office-quick-access{display:flex;flex:0 0 auto;gap:3px;align-items:center;border-inline-end:1px solid var(--line);padding-inline-end:8px}
+.office-quick-access .brand{padding:0;gap:5px;margin:0;border:0;background:none;width:32px;height:32px;justify-content:center}
+.office-quick-access .brand>span{display:none}
+.office-quick-access .brand .brand-icon{width:28px;height:28px;flex-basis:28px}
+.office-quick-access .nav-item{padding:0;margin:0;width:30px;height:30px;display:inline-flex;justify-content:center;min-width:0;background:transparent;border:1px solid transparent}
+.office-quick-access .nav-item:hover{background:var(--accent-soft);border-color:var(--line)}
+.office-editor-shell .tablist{height:100%;gap:4px;scrollbar-width:thin}
+.office-editor-shell .tab{height:30px;border-radius:5px;padding:4px 8px;max-width:240px;white-space:nowrap}
+.office-editor-shell .toolbar{display:none}
+.office-editor-shell .toolbar-actions{flex:0 0 auto;flex-wrap:nowrap;gap:3px}
+.office-editor-shell .toolbar-actions button{height:29px;padding:3px 8px;white-space:nowrap;overflow-wrap:normal}
+.office-editor-shell .stage-pill{font-size:10px;flex-shrink:0}
+.office-editor-shell footer{height:25px;min-height:25px;padding:0 12px;font-size:11px}
+.office-editor-shell .message{padding-block:4px;max-height:46px;overflow:auto}
+.office-document-content{padding:0!important;overflow:hidden;display:flex;flex-direction:column;min-height:0;background:var(--bg)}
+.office-document-content>.document-header{flex:0 0 34px;gap:8px;margin:0;padding:3px 13px;border-block-end:1px solid var(--line);background:var(--surface);min-width:0}
+.office-document-content>.document-header input{font-size:13px;letter-spacing:0;padding:2px 5px}
+.office-document-content>.document-header .status-chip{white-space:nowrap;max-width:20%;overflow:hidden;text-overflow:ellipsis;font-size:10px}
+.office-document-content>.document-header button{font-size:11px;height:26px;min-height:26px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
+.office-document-content>.workspace-card{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;padding:0;border:0;border-radius:0;box-shadow:none;margin:0;background:var(--bg);overflow:hidden}
+.office-document-content>.workspace-card>*{flex:1;min-height:0}
+.office-technical{flex:none;font-size:10px;color:var(--muted);background:var(--sidebar);border-top:1px solid var(--line);padding:2px 12px}
+.office-technical>summary{cursor:pointer;line-height:16px}
+.office-technical[open]{max-height:20vh;overflow:auto}
+.office-technical .boundary-note{margin:4px 0;padding:5px 8px}
+.office-icon{width:19px;height:19px;display:block;flex:0 0 19px;pointer-events:none}
+.office-command{display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;flex-shrink:0;min-width:0}
+.office-command-icon{gap:0;padding:0!important;width:29px;min-width:29px;max-width:29px}
+.office-command-icon .office-command-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.office-command[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.office-ribbon{flex:0 0 auto;min-width:0;background:var(--surface);border-block-end:1px solid var(--line);box-shadow:0 2px 5px #17283d09;z-index:5}
+.office-ribbon-tabs{display:flex;align-items:stretch;gap:3px;height:34px;padding-inline:9px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:thin}
+.office-ribbon-tab{flex-shrink:0;position:relative;border:0;border-radius:0;background:transparent;font-size:12px;padding:0 15px;color:var(--text);white-space:nowrap}
+.office-ribbon-tab[aria-selected=true]{font-weight:650;color:var(--accent);background:var(--accent-soft)}
+.office-ribbon-tab[aria-selected=true]::after{content:'';height:2px;position:absolute;inset-inline:10px;bottom:0;background:var(--accent);border-radius:2px}
+.office-ribbon-tab:hover{background:var(--accent-soft)}
+.office-ribbon-panels{min-width:0}
+.office-ribbon-panel{height:96px;box-sizing:border-box;display:flex;align-items:stretch;gap:0;padding:5px 7px 4px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+.office-ribbon-group{display:flex;flex-direction:column;flex:0 0 auto;align-items:stretch;justify-content:space-between;min-width:64px;border-inline-end:1px solid var(--line);padding:0 11px;gap:1px}
+.office-ribbon-group:last-child{border-inline-end:0}
+.office-ribbon-tools{display:flex;flex-direction:column;gap:4px;justify-content:center;flex:1;min-height:0}
+.office-ribbon-row{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;min-height:28px}
+.office-ribbon-row button{font-size:11px;line-height:1.2;height:28px;min-height:28px;padding:3px 7px;border:1px solid transparent;border-radius:4px;background:transparent;white-space:nowrap;max-width:none}
+.office-ribbon-row button:not(:disabled):hover{background:var(--accent-soft);border-color:var(--line)}
+.office-ribbon-row button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent)}
+.office-ribbon-row button .office-icon{width:17px;height:17px;flex-basis:17px}
+.office-ribbon-group-title{font-size:10px;line-height:14px;color:var(--muted);text-align:center;white-space:nowrap}
+.office-ribbon-field,.workspace-card .office-ribbon-field{display:inline-flex;flex-direction:row;gap:4px;align-items:center;margin:0;white-space:nowrap;min-width:0;color:var(--muted);font-size:10px}
+.office-ribbon-field input,.office-ribbon-field select,.office-ribbon-input,.office-ribbon-row>select{height:28px!important;box-sizing:border-box;border-radius:4px;border:1px solid var(--line);background:var(--surface);color:var(--text);padding:3px 6px;font-size:12px;max-width:170px;min-width:0}
+.office-ribbon-field input[type=number]{width:59px;max-width:70px;padding-inline:5px}
+.office-ribbon-field input[type=color]{width:34px;padding:2px;cursor:pointer}
+.office-ribbon-field input[type=checkbox]{width:15px;height:15px!important;margin:0}
+.office-ribbon-color>span{max-width:62px;overflow:hidden;text-overflow:ellipsis}
+.office-ribbon-field #writer-font-family,.office-ribbon-field #sheet-font,.office-ribbon-field #slide-font-family{width:135px}
+.office-ribbon-field #writer-character-style,.office-ribbon-field #writer-paragraph-style{max-width:180px}
+.ribbon-unclassified{padding:3px 8px!important;border:0}
+.writer-workspace,.sheets-workspace,.slides-workspace{display:flex!important;flex-direction:column;min-width:0;min-height:0;gap:0!important;height:100%}
+.writer-workspace:not(.writer-page-mode){overflow:hidden}
+.writer-workspace>.writer-panes{flex:1;min-height:0;overflow:auto;padding:15px;margin:0;gap:14px}
+.writer-workspace>.muted{margin:5px 12px;font-size:11px}
+.writer-page-mode>.writer-native-workspace{flex:1;min-height:0;display:flex;flex-direction:column;gap:0}
+.writer-page-workbench{display:grid;grid-template-columns:122px minmax(0,1fr);flex:1;min-height:0}
+.writer-page-rail{min-height:0;display:flex;flex-direction:column;overflow:hidden;border-inline-end:1px solid var(--line);background:var(--sidebar)}
+.writer-page-rail-title{font-size:12px;font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line)}
+.writer-page-list{flex:1;overflow:auto;padding:9px 8px;display:flex;flex-direction:column;align-items:center;gap:9px}
+.writer-page-thumb{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px;background:none;border:1px solid transparent;border-radius:5px;font-size:11px}
+.writer-page-thumb canvas{display:block;box-shadow:0 0 0 1px var(--line);max-width:100%;max-height:128px;object-fit:contain}
+.writer-page-thumb[aria-current=true]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.writer-page-workbench .writer-native-viewport{min-height:0;max-height:none;height:100%;overflow:auto;padding:10px 18px 24px;box-sizing:border-box;background:#e8ebf1;direction:ltr}
+:root[data-theme=dark] .writer-page-workbench .writer-native-viewport{background:#161b23}
+.writer-page-wrap{width:max-content;min-width:100%;display:flex;flex-direction:column;align-items:center;gap:10px}
+.writer-ruler{height:22px;flex:none;position:relative;border:1px solid #c8d0dd;border-radius:3px;background:repeating-linear-gradient(to right,#aab4c4 0 1px,transparent 1px var(--ruler-tick,12px)) left bottom/100% 6px no-repeat,#fafbfc;color:#566273;font-size:9px;box-sizing:border-box;direction:ltr;overflow:hidden}
+.writer-ruler span{position:absolute;top:2px;transform:translateX(3px)}
+.writer-paper-wrap{position:relative;flex:none}
+.writer-paper-wrap .writer-native-paper{position:absolute;top:0;left:0;margin:0;transform-origin:top left}
+.writer-native-workspace>.writer-pagebar{flex:none;display:flex;gap:10px;justify-content:space-between;align-items:center;padding:3px 9px;margin:0;border-top:1px solid var(--line);background:var(--surface);height:32px}
+.writer-page-navigation{display:flex;align-items:center;gap:5px;flex-shrink:0;font-size:11px}
+.writer-page-navigation button{height:24px;min-height:24px;border-color:transparent;background:transparent}
+.writer-page-navigation button:hover{background:var(--accent-soft)}
+.writer-page-navigation .office-icon{width:15px;height:15px;flex-basis:15px}
+.writer-native-info{flex:1;margin:0;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.writer-page-zoom-value{min-width:44px;text-align:center}
+.sheets-workspace .sheets-formula-bar{flex:none;margin:0;padding:5px 8px;gap:7px;background:var(--surface);border-bottom:1px solid var(--line)}
+.sheets-workspace .sheets-formula-bar input{height:29px}
+.sheets-workspace .sheets-formula-bar #sheets-address{width:105px}
+.office-document-content .sheets-scroll{flex:1;min-height:0;height:auto;border:0;border-radius:0}
+.sheets-workspace .sheets-bottom{flex:none;margin:0;padding:3px 8px 0;border-top:1px solid var(--line);background:var(--sidebar)}
+.sheets-workspace .sheet-tabs{gap:1px}
+.sheets-workspace .sheet-tabs button{height:29px;font-size:12px;border:0;border-radius:0;background:transparent;box-shadow:none;padding:4px 14px}
+.sheets-workspace .sheet-tabs [aria-selected=true]{border-bottom:2px solid #168448;color:var(--text);background:var(--surface)}
+.sheets-workspace .sheets-status{flex:none;margin:0;padding:4px 9px;min-height:23px;border-top:1px solid var(--line);background:var(--surface);white-space:nowrap;overflow-x:auto;flex-wrap:nowrap}
+.office-document-content .sheets-help{display:none}
+.office-document-content .slides-workspace .slides-workbench{flex:1;min-height:0;height:auto;grid-template-columns:158px minmax(0,1fr) 270px;gap:0}
+.office-document-content .slides-workbench.properties-collapsed{grid-template-columns:158px minmax(0,1fr)}
+.office-document-content .slides-thumbnails{min-height:0;max-height:none;overflow:auto;border-radius:0;background:var(--sidebar);border-inline-end:1px solid var(--line);padding:8px 6px}
+.office-document-content .slides-stage{min-width:0;min-height:0;height:auto;max-height:none;border-radius:0;background:#e8ebf1}
+:root[data-theme=dark] .office-document-content .slides-stage{background:#161b23}
+.office-document-content .slides-inspector{min-height:0;max-height:none;overflow:auto;border-inline-start:1px solid var(--line);padding:9px;background:var(--sidebar)}
+.office-properties-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 2px 8px;font-size:13px}
+.office-properties-head button{height:24px;border:0;background:transparent}
+.office-properties-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:9px}
+.office-properties-tabs button{flex:1;min-width:0;font-size:11px;border:0;border-radius:3px;background:transparent;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.office-properties-tabs button[aria-pressed=true]{color:var(--accent);background:var(--accent-soft);font-weight:600}
+.slides-inspector fieldset{border:1px solid var(--line);border-radius:6px;padding:8px;margin:0 0 9px;min-width:0}
+.slides-inspector fieldset legend{color:var(--muted);font-size:11px;font-weight:600}
+.slides-inspector .slides-field{display:flex;align-items:center;gap:7px;justify-content:space-between;margin:0 0 6px;font-size:11px;min-width:0}
+.slides-inspector .slides-field input:not([type=checkbox]),.slides-inspector .slides-field select{height:29px;min-width:0;width:112px;padding:4px 6px;font-size:12px;border-radius:4px}
+.slides-inspector .slides-field input[type=color]{width:52px;padding:2px}
+.slides-inspector .slides-field:has(textarea){display:flex;flex-direction:column;align-items:stretch}
+.slides-inspector textarea{width:100%;min-height:76px;resize:vertical;font-size:12px}
+.slides-inspector .slides-tool-buttons{gap:4px;flex-wrap:wrap}
+.slides-inspector .office-command{font-size:11px;padding:4px}
+.office-document-content .slides-status{flex:none;margin:0;padding:4px 10px;border-top:1px solid var(--line);background:var(--surface);font-size:11px;min-height:23px}
+.office-document-content .slides-help{display:none}
+@media(max-width:1000px){
+ .office-editor-shell .stage-pill{display:none}
+ .office-editor-shell .topbar{gap:5px;padding:0 5px}
+ .office-quick-access{gap:1px;padding-inline-end:4px}
+ .office-quick-access .nav-item{width:26px;height:26px}
+ .office-document-content .slides-workspace .slides-workbench{grid-template-columns:145px minmax(0,1fr) 232px}
+ .office-document-content .slides-workbench.properties-collapsed{grid-template-columns:145px minmax(0,1fr)}
+ .writer-page-workbench{grid-template-columns:104px minmax(0,1fr)}
+ .writer-native-info{display:none}
+}
+/* Final visual refinements: compact but readable at normal desktop DPI. */
+.office-ribbon-tab{font-size:13px;padding-inline:18px}
+.office-ribbon-group{padding-inline:13px}
+.office-ribbon-row button{font-size:12px}
+.office-ribbon-row button .office-icon{width:18px;height:18px;flex-basis:18px}
+.office-ribbon-group-title{font-size:11px}
+.workspace-card .office-ribbon-field{font-size:11px}
+.office-ribbon-field #writer-font-family,.office-ribbon-field #sheet-font,.office-ribbon-field #slide-font-family{width:144px}
+.office-ribbon-field input[type=color]{min-width:34px!important;width:34px!important;max-width:34px!important;flex:0 0 34px}
+.office-ribbon-field input[type=number]{width:62px!important;max-width:70px!important}
+.office-ribbon-field #writer-font-size,.office-ribbon-field #sheet-font-size,.office-ribbon-field #slide-font-size{width:59px!important}
+.office-ribbon-field:has(input[type=color])>span{max-width:76px}
+.office-document-content[data-editor=sheets] .office-ribbon-tab[aria-selected=true]{color:#168448;background:#e5f4eb}
+.office-document-content[data-editor=sheets] .office-ribbon-tab[aria-selected=true]::after{background:#168448}
+.office-document-content[data-editor=slides] .office-ribbon-tab[aria-selected=true]{color:#c25631;background:#fff0e9}
+.office-document-content[data-editor=slides] .office-ribbon-tab[aria-selected=true]::after{background:#c25631}
+:root[data-theme=dark] .office-document-content[data-editor=sheets] .office-ribbon-tab[aria-selected=true]{background:#294638;color:#a5e5bb}
+:root[data-theme=dark] .office-document-content[data-editor=slides] .office-ribbon-tab[aria-selected=true]{background:#4b3026;color:#ffbd9e}
+.office-document-content .slides-inspector label.slides-field{display:grid;grid-template-columns:minmax(0,1fr) 106px;align-items:center;gap:7px;line-height:1.35;margin:0 0 8px;text-align:start}
+.office-document-content .slides-inspector label.slides-field>span{overflow-wrap:anywhere}
+.office-document-content .slides-inspector label.slides-field:has(textarea){display:flex;flex-direction:column;align-items:stretch}
+.office-document-content .slides-inspector label.slides-field input:not([type=checkbox]),.office-document-content .slides-inspector label.slides-field select{width:106px;max-width:100%;justify-self:end}
+.office-document-content .slides-inspector label.slides-field input[type=color]{width:50px}
+.office-document-content .slides-inspector label.slides-field input[type=checkbox]{justify-self:start}
+.office-document-content .slides-inspector label.slides-field textarea{min-height:76px}
+.office-document-content .slides-workbench.properties-collapsed{grid-template-columns:158px minmax(0,1fr)!important}
+.slides-bottom-zoom{display:flex;gap:4px;align-items:center;margin-inline-start:auto}
+.slides-bottom-zoom button{height:25px;min-height:25px;background:transparent;border:0}
+.slides-bottom-zoom .office-icon{width:16px;height:16px;flex-basis:16px}
+/* Isolate the unscaled scene from the stage's scroll dimensions. Otherwise
+ * a fit-to-window calculation can oscillate with an appearing scrollbar. */
+.slides-stage{scrollbar-gutter:stable both-edges}
+.slides-surface{overflow:clip;overflow-clip-margin:18px}
+.slides-scaled-scene{position:absolute!important;inset:0 auto auto 0}

@@ -1,3 +1,4 @@
+import {revealControl} from './ribbon-test-controls.mjs';
 // SPDX-License-Identifier: MIT
 /** Verify and launch a locally generated trusted development-preview archive.
  * No arbitrary downloaded archives, no disabled sandbox, no actual user data. */
@@ -82,8 +83,8 @@ try{
  for(const format of ['doc','docx','xls','xlsx','ppt','pptx']){
   console.log('CHECK '+format);const name='preview-check.'+format,path=join(work,name);await page.locator('#new-'+format).click();
   await page.waitForSelector('.tab[aria-selected=true]');
-  if(format==='docx'){await page.locator('#draft-text').fill('Packaged Writer test');}
-  else if(format==='ppt'||format==='pptx'){await page.locator('#slide-insert-text').click();await page.locator('#slide-text-editor').fill('Packaged Slides test');}
+  if(format==='docx'){await page.locator('#writer-page-input').waitFor();await page.locator('#writer-page-input').focus();await page.keyboard.insertText('Packaged Writer test');}
+  else if(format==='ppt'||format==='pptx'){await (await revealControl(page,'#slide-insert-text')).click();await (await revealControl(page,'#slide-text-editor')).fill('Packaged Slides test');}
   await app.evaluate(({dialog},filePath)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath});dialog.showOpenDialog=async()=>({canceled:false,filePaths:[filePath]});dialog.showMessageBox=async()=>({response:1,checkboxChecked:false});},path);
   await page.locator('#save').click();try{await page.waitForFunction(name=>document.querySelector('.tab[aria-selected=true] .tab-title')?.textContent===name,name,{timeout:30000});}catch(error){const ui=await page.evaluate(()=>({title:document.querySelector('.tab[aria-selected=true] .tab-title')?.textContent,status:document.querySelector('#document-status')?.textContent,notice:document.querySelector('#notice')?.textContent,save:document.querySelector('#save')?.disabled}));throw new Error(format+' save: '+JSON.stringify(ui)+'; '+error);}
   const bytes=await readFile(path),inspection=await inspectForEditor(bytes,name,'package-check-'+format);assert.equal(inspection.report.readOnly,false,format);

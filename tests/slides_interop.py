@@ -121,7 +121,7 @@ with tempfile.TemporaryDirectory(prefix='office-ex-slides-interop-') as temporar
     body=content.placeholders[1];body.text='Independent body';body.text_frame.auto_size=MSO_AUTO_SIZE.NONE
     body_para=body.text_frame.paragraphs[0];body_para.space_before=Pt(0);ppr=body_para._p.get_or_add_pPr();ppr.set('marL','0');ppr.set('indent','0');ppr.append(OxmlElement('a:buNone'))
     rich.core_properties.title='External Office template';rich.core_properties.author='Fixture author';rich.save(target/'external-default.pptx')
-    protected=Presentation();slide=protected.slides.add_slide(protected.slide_layouts[6]);slide.shapes.add_textbox(Inches(1),Inches(1),Inches(2),Inches(1)).text='Unsupported auto-fit';protected.save(target/'external-autofit.pptx')
+    protected=Presentation();slide=protected.slides.add_slide(protected.slide_layouts[6]);box=slide.shapes.add_textbox(Inches(1),Inches(1),Inches(2),Inches(1));box.text='Unsupported rotated auto-fit';box.rotation=15;protected.save(target/'external-autofit.pptx')
     lists=Presentation();slide=lists.slides.add_slide(lists.slide_layouts[1]);slide.shapes.title.text='List title'
     body=slide.placeholders[1];body.text='First bullet'
     para=body.text_frame.add_paragraph();para.text='Nested bullet';para.level=1

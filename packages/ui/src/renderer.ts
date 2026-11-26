@@ -4,11 +4,10 @@ import { writerWorkspace, type WriterViewState } from './writer-workspace.js';
 import { sheetsWorkspace, releaseSheetCalculation, type SheetsViewState } from './sheets-workspace.js';
 import { slidesWorkspace, type SlidesViewState } from './slides-workspace.js';
 import { createPdfViewState, pdfWorkspace, disposePdfViewState, type PdfViewState } from './pdf-workspace.js';
-import { measureText } from '@office-ex/render';
 import type { Inspection } from '@office-ex/format-service';
 import type { DesktopBridge, OpenFileResult, PublicSettings, RecoveryItem, MenuAction } from './desktop-api.js';
 import { availableLocales, TARGET_LOCALES, REGIONAL_LOCALES, resolveLocale, resolveRegion, localeDirection, localeLabel, isMessageKey, message as translate, diagnosticKey, errorKey, formatNumber, formatDate, type MessageKey } from '@office-ex/i18n';
-import { CanvasFontMetrics } from './font-metrics.js';
+import {decorateOfficeButton} from './office-ribbon.js';
 import {xlsxValueView,type XlsxPreviewState} from './xlsx-value-preview.js';
 
 type WorkerType='inspect'|'serialize'|'recover'|'image'|'convert-doc'|'convert-docx'|'convert-xls'|'convert-xlsx'|'convert-ppt'|'convert-pptx';
@@ -75,6 +74,34 @@ function renderLocalized():void{
   render();content.scrollTop=scroll;content.scrollLeft=left;
 }
 function recent():void{const list=$('#recent-list');list.replaceChildren();if(!settings.recent.length){list.append(text('div',t('noRecent'),'recent-item'));return;}for(const item of settings.recent){const b=button(item.name,()=>run(async()=>openFile(unwrap(await bridge.openRecent(item.id)))),'recent-item');b.title=item.name;list.append(b);}}
+// Move existing file and global action controls into the editor header.
+const quick=document.createElement('div');quick.className='office-quick-access';quick.id='office-quick-access';
+const headerBar=$('.topbar'),actions=$('.toolbar-actions'),actionsHome=document.createComment('quick actions origin');
+actions.before(actionsHome);headerBar.prepend(quick);
+const quickItems=['home','open','new-menu','settings','about'].map(id=>{const element=$<HTMLButtonElement>('#'+id),placeholder=document.createComment(id+' origin');element.before(placeholder);return {element,placeholder};});
+const homeChildren=new Map<HTMLButtonElement,Node[]>();
+let editingShell=false;
+function shellMode(editing:boolean):void{
+ if(editing===editingShell)return;editingShell=editing;
+ $('#app').classList.toggle('office-editor-shell',editing);quick.hidden=!editing;
+ for(const {element,placeholder} of quickItems)if(editing)quick.append(element);else placeholder.after(element);
+ if(editing)headerBar.append(actions);else actionsHome.after(actions);
+}
+function quickButtonLabels():void{
+ for(const [id,key,icon]of [['undo','undo','undo'],['redo','redo','redo'],['save-as','saveAs','save'],['save','save','save'],['open','open','folder'],['new-menu','newDraft','add'],['settings','settings','settings'],['about','productAbout','page']] as const){
+   const b=$<HTMLButtonElement>('#'+id);if(!b)continue;
+   const label=id==='save'&&current()&&!current()?.session?t('copy'):t(key);
+   if(editingShell){
+    if(!homeChildren.has(b)&&['open','new-menu','settings','about'].includes(id))homeChildren.set(b,[...b.childNodes]);
+    b.textContent=label;delete b.dataset.officeIcon;b.classList.remove('office-command','office-command-icon');decorateOfficeButton(b,icon,id!=='save'&&id!=='save-as');
+   }else{
+    if(homeChildren.has(b)){b.replaceChildren(...homeChildren.get(b)!);homeChildren.delete(b);for(const child of b.querySelectorAll<HTMLElement>('[data-i18n]'))if(isMessageKey(child.dataset.i18n))child.textContent=t(child.dataset.i18n);}
+    else if(['undo','redo','save','save-as'].includes(id))b.textContent=label;
+    delete b.dataset.officeIcon;b.classList.remove('office-command','office-command-icon');
+   }
+ }
+}
+quick.hidden=true;
 function chrome():void{
   const list=$('#tablist');list.replaceChildren();
   for(const tab of tabs.values()){
@@ -85,10 +112,12 @@ function chrome():void{
     const close=button('×',()=>run(async()=>{await closeTab(tab.id);}),'tab-close');close.setAttribute('aria-label',`${t('close')} ${title}`);close.onclick=e=>{e.stopPropagation();run(async()=>{await closeTab(tab.id);});};element.append(close);list.append(element);
   }
   const tab=current(),session=tab?.session;
+  shellMode(!!tab);
   $('#breadcrumb').textContent=tab?(session?`${t(session.snapshot().document.kind)} / ${formatLabel(tab)}`:t('diagnostics')):t('workspace');
   $<HTMLButtonElement>('#undo').disabled=!session?.canUndo||Boolean(tab?.busy)||session.saveState==='saving';$<HTMLButtonElement>('#redo').disabled=!session?.canRedo||Boolean(tab?.busy)||session.saveState==='saving';
   $<HTMLButtonElement>('#save').disabled=!tab||tab.busy||session?.saveState==='saving'||(!session&&!tab.inspection);$<HTMLButtonElement>('#save').textContent=tab&&!session?t('copy'):t('save');
   $<HTMLButtonElement>('#save-as').disabled=!tab||tab.busy||session?.saveState==='saving'||(!session&&!tab.inspection);
+  quickButtonLabels();
   $('#status').textContent=tab?.busy?t('working'):t('ready');$('#document-status').textContent=session?`${t('revision')} ${session.revision} · ${session.dirty?t('unsaved'):t('saved')}`:tab?.inspection?t('readOnly'):'';
 }
 function home():void{
@@ -126,7 +155,8 @@ function documentView(tab:Tab):void{
   if(model.kind==='writer'&&(tab.format==='doc'||tab.format==='docx')){const convert=button(t(tab.format==='doc'?'convertDocx':'convertDoc'),()=>run(()=>convertWriter(tab)));convert.id='convert-writer';header.append(convert);}
   if(model.kind==='sheets'&&(tab.format==='xls'||tab.format==='xlsx')){const convert=button(t(tab.format==='xls'?'convertXlsx':'convertXls'),()=>run(()=>convertSheets(tab)));convert.id='convert-sheets';if(tab.inspection?.sheetsTemplateConversionBlocked){convert.disabled=true;convert.title=t('conversionBoundary');}header.append(convert);}
   if(model.kind==='slides'&&(tab.format==='ppt'||tab.format==='pptx')){const convert=button(t(tab.format==='ppt'?'convertPptx':'convertPpt'),()=>run(()=>convertSlides(tab)));convert.id='convert-slides';if(tab.inspection?.slidesTemplateConversionBlocked){convert.disabled=true;convert.title=t('errorUnsupported');}header.append(convert);}
-  if(model.kind==='writer'||model.kind==='slides'){const output=button(t('pdfExport'),()=>run(()=>exportCurrentPdf(tab)));output.id='export-pdf';const print=button(t('pdfPrint'),()=>run(()=>printCurrent(tab)));print.id='print-document';header.append(output,print);}content.append(header);
+  if(model.kind==='writer'||model.kind==='slides'){const output=button(t('pdfExport'),()=>run(()=>exportCurrentPdf(tab)));output.id='export-pdf';const print=button(t('pdfPrint'),()=>run(()=>printCurrent(tab)));print.id='print-document';header.append(output,print);}for(const b of header.querySelectorAll<HTMLButtonElement>('button'))decorateOfficeButton(b,b.id==='print-document'?'print':b.id==='export-pdf'?'page':'copy');content.append(header);
+  content.classList.add('office-document-content');content.dataset.editor=model.kind;
   const card=document.createElement('div');card.className='workspace-card';
   if(model.kind==='writer'){
     tab.writerState??={start:0,end:0,pageIndex:0};
@@ -140,10 +170,12 @@ function documentView(tab:Tab):void{
     tab.slidesState??={selectedIds:[],zoom:0};card.classList.add('slides-workspace-card');
     card.append(slidesWorkspace({snapshot:()=>session.snapshot(),execute:command=>execute(tab,command,false),render,error:errorMessage,composing:()=>composing,setComposing:value=>{composing=value;},t,number,prepareImage:bytes=>task<ImageResource>(tab.id+'-image','image',{bytes}),isCurrent:()=>current()===tab,legacyPresentation:tab.format==='ppt'},tab.slidesState));
   }
-  content.append(card,text('p',t(tab.format==='docx'?'docxNote':tab.format==='doc'?'docNote':tab.format==='xls'?'xlsNote':tab.format==='xlsx'?'xlsxNote':tab.format==='pptx'||tab.format==='ppt'?'slidesFormatNote':'draftNote'),'boundary-note'));
+  content.append(card);
+  const note=text('p',t(tab.format==='docx'?'docxNote':tab.format==='doc'?'docNote':tab.format==='xls'?'xlsNote':tab.format==='xlsx'?'xlsxNote':tab.format==='pptx'||tab.format==='ppt'?'slidesFormatNote':'draftNote'),'boundary-note');
+  const technical=document.createElement('details');technical.className='office-technical';technical.append(text('summary',t('diagnostics')),note);content.append(technical);
   const details=document.createElement('div');details.className='info-row';details.append(text('span',`${t('revision')}: ${session.revision}`),text('span',`${t('history')}: ${number(session.historyUsage.items)} · ${number(Math.ceil(session.historyUsage.bytes/1024))} KB`));
   // A real browser font measurement verifies the native provider without claiming pagination fidelity.
-  const measured=measureText(new CanvasFontMetrics(),'Office EX 中文',{fontFamily:'sans-serif',fontSize:152400});details.append(text('span',`${t('canvas')}: ${number(measured.metrics.advance/EMU_PER_CSS_PIXEL,{maximumFractionDigits:1,minimumFractionDigits:1})} px`));content.append(details);
+  technical.append(details);
 }
 function inspectionView(tab:Tab):void{
   const content=$('#content'),view=tab.inspection!;content.replaceChildren(text('div',t(view.xlsxValuePreview?'xlsxPreviewTitle':view.officeTextPreview?'officeTextPreviewTitle':'readOnly'),'eyebrow'),text('h1',tab.name));
@@ -169,7 +201,7 @@ function inspectionView(tab:Tab):void{
   const table=document.createElement('table');table.className='parts-table';const thead=document.createElement('thead'),tr=document.createElement('tr');for(const value of [t('part'),t('size'),t('digest')])tr.append(text('th',value));thead.append(tr);table.append(thead);const body=document.createElement('tbody');
   for(const entry of view.entries.slice(0,500)){const tr=document.createElement('tr');tr.append(text('td',entry.name),text('td',`${number(entry.size)} B`),text('td',entry.sha256));body.append(tr);}table.append(body);parts.append(table);if(view.entries.length>500)parts.append(text('p',t('entriesLimited',{count:number(view.entries.length)}),'muted'));
 }
-function render():void{if(composing)return;for(const previous of tabs.values()){previous.slidesState?.dispose?.();previous.pdfState?.detach?.();}applyLanguage();recent();chrome();const tab=current();if(!tab){home();return;}if(tab.busy){const content=$('#content');const loading=document.createElement('div');loading.className='loading';loading.append(text('span','','spinner'),text('span',t('reading')),button(t('cancel'),()=>{cancelTask(tab.id);tab.busy=false;render();}));content.replaceChildren(loading);return;}if(tab.error){$('#content').replaceChildren(text('h1',tab.name),text('p',t(errorKey(tab.error.code)),'diagnostic error'));return;}if(tab.session)documentView(tab);else if(tab.pdfState){const content=$('#content');content.replaceChildren(pdfWorkspace({t,error:errorMessage,isCurrent:()=>current()===tab,print:()=>printCurrent(tab)},tab.pdfState));}else if(tab.inspection)inspectionView(tab);}
+function render():void{if(composing)return;$('#content').classList.remove('office-document-content');delete $('#content').dataset.editor;for(const previous of tabs.values()){previous.slidesState?.dispose?.();previous.pdfState?.detach?.();}applyLanguage();recent();chrome();const tab=current();if(!tab){home();return;}if(tab.busy){const content=$('#content');const loading=document.createElement('div');loading.className='loading';loading.append(text('span','','spinner'),text('span',t('reading')),button(t('cancel'),()=>{cancelTask(tab.id);tab.busy=false;render();}));content.replaceChildren(loading);return;}if(tab.error){$('#content').replaceChildren(text('h1',tab.name),text('p',t(errorKey(tab.error.code)),'diagnostic error'));return;}if(tab.session)documentView(tab);else if(tab.pdfState){const content=$('#content');content.replaceChildren(pdfWorkspace({t,error:errorMessage,isCurrent:()=>current()===tab,print:()=>printCurrent(tab)},tab.pdfState));}else if(tab.inspection)inspectionView(tab);}
 async function refreshSettings():Promise<void>{const init=unwrap(await bridge.initialize());settings=init.settings;systemLocales=init.systemLocales;applyLanguage();recent();}
 async function newDraft(kind:DocumentKind,model?:OfficeDocument,format:'oex'|'docx'|'doc'|'xls'|'xlsx'|'pptx'|'ppt'='oex'):Promise<void>{if(composing){notify('finishComposition');return;}if(!flushInputs())return;releaseSheetCalculation();if(tabs.size>=32)throw new OfficeError('limit',t('limitTabs'));const id=crypto.randomUUID();const document=model?validateDocument({...model,documentId:id,title:`${model.title} (${t('restore')})`}):createDocument(kind,id,`${t('untitled')} ${t(kind)}`);if((format==='doc'||format==='docx')&&document.kind!=='writer'||(format==='xls'||format==='xlsx')&&document.kind!=='sheets'||(format==='ppt'||format==='pptx')&&document.kind!=='slides')throw new OfficeError('invalid','Document kind does not match format');if(!model&&(document.kind==='writer'||document.kind==='slides')){const preference=settings.documentLanguage;const lang=preference==='system'?systemLocales.find(isDocumentLanguageTag)??'und':preference;document.defaultTextStyle.language=lang;if(format==='doc')document.defaultTextStyle.fontFamily='Arial';}
   const tab:Tab={id,name:document.title,session:new DocumentSession(document),busy:false,format};tabs.set(id,tab);active=id;await syncTabs();message('');render();}

@@ -4,9 +4,10 @@ import { walkSlideShapes, isConnectorTarget, resolveSlideConnector, previewModel
 import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes, connectSlideShapes, setSlideConnections, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
 import { buildSlideScene, walkSlideScene, hitTest, shapeTransform, inverse, transform, multiply, IDENTITY, groupChildTransform, slideShapeParentTransform, type Matrix, type SlideScene, type Point } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
+import {installRibbon,ribbonNodes,type RibbonState,decorateOfficeButton} from './office-ribbon.js';
 import { createSlideSceneElement, slideCssColor, overflowingSlideText, measureSlideTextFit, measureSlideShapeGrowth, updateSlideShapeGeometry } from './slides-scene-dom.js';
 
-export interface SlidesViewState {slideId?:string;groupId?:string;selectedIds:string[];zoom:number;lockAspect?:boolean;flush?:()=>boolean;dispose?:()=>void}
+export interface SlidesViewState extends RibbonState {inspectorMode?:'object'|'text'|'slide';inspectorCollapsed?:boolean;slideId?:string;groupId?:string;selectedIds:string[];zoom:number;lockAspect?:boolean;flush?:()=>boolean;dispose?:()=>void}
 export interface SlidesHost {
   snapshot():DocumentSnapshot;execute(command:DocumentCommand):boolean;render():void;error(error:unknown):void;
   composing():boolean;setComposing(value:boolean):void;t(key:MessageKey,args?:Readonly<Record<string,string|number>>):string;number(value:number):string;
@@ -34,7 +35,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   function button(key:MessageKey,fn:()=>void,target:HTMLElement=toolbar,identifier?:string,needsSelection=false,mutates=true):HTMLButtonElement {
     const b=element('button',t(key));b.type='button';if(identifier)b.id=identifier;b.onpointerdown=event=>{if(event.pointerType==='mouse')event.preventDefault();};b.onclick=()=>safe(()=>{if(flush())fn();});target.append(b);if(mutates)editControls.push(b);if(needsSelection)selectionControls.push(b);return b;
   }
-  function field(key:MessageKey,control:HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement,parent:HTMLElement=inspector):void {const label=element('label',t(key),'slides-field');label.append(control);control.setAttribute('aria-label',t(key));parent.append(label);editControls.push(control);}
+  function field(key:MessageKey,control:HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement,parent:HTMLElement=inspector):void {const label=element('label','','slides-field');label.append(element('span',t(key)),control);control.setAttribute('aria-label',t(key));parent.append(label);editControls.push(control);}
   function input(key:MessageKey,type:string,value:string,fn:(value:string)=>void,needsSelection=true):HTMLInputElement {
     const control=element('input');control.type=type;control.value=value;field(key,control);control.onchange=()=>safe(()=>{if(flush())fn(control.value);});if(needsSelection)selectionControls.push(control);return control;
   }
@@ -104,7 +105,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     const m=doc(),slide=locateSlide(snap(),state.slideId!).slide,shapeId=id(),geometry={x:Math.round(m.size.width*.2),y:Math.round(m.size.height*.2),width:Math.round(m.size.width*.4),height:Math.round(m.size.height*(type==='line'?.15:type==='text'?.2:.3)),rotation:0};let shape:Shape;
     if(type==='text')shape={id:shapeId,type,runs:[{id:id(),type:'text',text:''}],textStyle:{fontSize:304800},geometry};
     else shape={id:shapeId,type,geometry,...(connector?{connector:true as const}:{}),...(type==='line'?{}:{fill:{kind:'theme',name:'accent1'} as Color}),stroke:{color:{kind:'theme',name:type==='line'?'accent1':'dk1'},width:12700}};
-    if(apply(insertShapes(snap(),state.slideId!,slide.shapes.length,[shape]))){choose([shapeId]);if(type==='text')textEditor.focus();}
+    if(apply(insertShapes(snap(),state.slideId!,slide.shapes.length,[shape]))){choose([shapeId]);if(type==='text')focusTextEditor();}
   }
   button('slideAdd',()=>{const current=locateSlide(snap(),state.slideId!),newId=id();if(apply(addSlide(snap(),current.index+1,newId,current.slide.background as Color))){state.slideId=newId;state.groupId=undefined;state.selectedIds=[];refresh();}},toolbar,'slide-add');
   button('slideDuplicate',()=>{const current=locateSlide(snap(),state.slideId!);if(apply(duplicateSlide(snap(),state.slideId!,id))){state.slideId=doc().slides[current.index+1]!.id;state.groupId=undefined;state.selectedIds=[];refresh();}},toolbar,'slide-duplicate');
@@ -189,9 +190,9 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   const textTools=element('div','','slides-tool-buttons');textGroup.append(textTools);
   for(const [property,key] of [['bold','writerBold'],['italic','writerItalic'],['underline','writerUnderline']] as const)button(key,()=>{const shape=selectedText();if(shape)format({[property]:!shape.textStyle?.[property]});},textTools,'slide-text-'+property,true);
   for(const [alignment,key] of [['start','writerAlignLeft'],['center','writerAlignCenter'],['end','writerAlignRight']] as const)button(key,()=>format({alignment}),textTools,'slide-text-'+alignment,true);
-  const font=element('input');font.type='text';font.maxLength=512;field('writerFontFamily',font,textGroup);font.onchange=()=>safe(()=>{if(flush()&&font.value.trim())format({fontFamily:font.value.trim()});});
-  const size=element('input');size.type='number';size.min='1';size.max='1638';size.step='.5';field('writerFontSize',size,textGroup);size.onchange=()=>safe(()=>{if(flush())format({fontSize:emu(size.value)});});
-  const textColor=element('input');textColor.type='color';field('writerTextColor',textColor,textGroup);textColor.onchange=()=>safe(()=>{if(flush())format({color:rgb(textColor.value)});});
+  const font=element('input');font.id='slide-font-family';font.type='text';font.maxLength=512;field('writerFontFamily',font,textGroup);font.onchange=()=>safe(()=>{if(flush()&&font.value.trim())format({fontFamily:font.value.trim()});});
+  const size=element('input');size.id='slide-font-size';size.type='number';size.min='1';size.max='1638';size.step='.5';field('writerFontSize',size,textGroup);size.onchange=()=>safe(()=>{if(flush())format({fontSize:emu(size.value)});});
+  const textColor=element('input');textColor.id='slide-font-color';textColor.type='color';field('writerTextColor',textColor,textGroup);textColor.onchange=()=>safe(()=>{if(flush())format({color:rgb(textColor.value)});});
   const language=element('input');language.type='text';language.maxLength=128;field('writerTextLanguage',language,textGroup);language.onchange=()=>safe(()=>{if(flush())format({language:language.value.trim()});});
   const direction=element('select');for(const [value,key] of [['ltr','writerLtr'],['rtl','writerRtl']] as const){const option=element('option',t(key));option.value=value;direction.append(option);}field('writerParagraphDirection',direction,textGroup);direction.onchange=()=>safe(()=>{const shape=selectedText();if(shape&&flush())apply(setShapeTextFrame(snap(),state.slideId!,shape.id,{direction:direction.value as 'ltr'|'rtl'}));});
   const wrap=element('input');wrap.type='checkbox';field('sheetWrap',wrap,textGroup);wrap.onchange=()=>safe(()=>{const shape=selectedText();if(shape&&flush())apply(setShapeTextFrame(snap(),state.slideId!,shape.id,{wrap:wrap.checked}));});
@@ -234,6 +235,32 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   const slideHeight=element('input');slideHeight.type='number';slideHeight.min='1';slideHeight.max='10000';slideHeight.step='.1';field('writerPageHeight',slideHeight,slideGroup);
   button('writerApplyPage',()=>apply(setSlideSize(snap(),emu(slideWidth.value),emu(slideHeight.value))),slideGroup,'slide-size-apply');
 
+  let lastInspectorSelection:string|undefined;
+  const ribbonTextControls=[font,size,textColor,...Array.from(textTools.querySelectorAll<HTMLButtonElement>('button'))];
+  const inspectorHead=element('div','','office-properties-head'),inspectorTitle=element('strong',t('ribbonProperties'));
+  const collapse=element('button',t('close'));collapse.type='button';collapse.id='slide-properties-close';decorateOfficeButton(collapse,'close',true);inspectorHead.append(inspectorTitle,collapse);
+  const inspectorTabs=element('div','','office-properties-tabs'),propertyButtons=new Map<string,HTMLButtonElement>();
+  for(const [mode,key] of [['object','ribbonObject'],['text','ribbonText'],['slide','ribbonSlide']] as const){
+    const b=element('button',t(key));b.type='button';b.dataset.propertyTab=mode;b.onclick=()=>safe(()=>{if(flush()){state.inspectorMode=mode;showInspector();}});inspectorTabs.append(b);propertyButtons.set(mode,b);
+  }
+  inspector.prepend(inspectorHead,inspectorTabs);
+  geometryGroup.dataset.propertyPanel=paintGroup.dataset.propertyPanel=cropGroup.dataset.propertyPanel='object';textGroup.dataset.propertyPanel='text';slideGroup.dataset.propertyPanel='slide';
+  const propertiesButton=element('button',t('ribbonProperties'));propertiesButton.type='button';propertiesButton.id='slide-properties-toggle';
+  propertiesButton.onclick=()=>safe(()=>{if(!flush())return;state.inspectorCollapsed=!state.inspectorCollapsed;showInspector();resize();});
+  collapse.onclick=()=>safe(()=>{if(!flush())return;state.inspectorCollapsed=true;showInspector();resize();});
+  state.inspectorMode??='slide';
+  function focusTextEditor():void{state.inspectorMode='text';state.inspectorCollapsed=false;showInspector();resize();textEditor.focus();}
+  function showInspector():void{
+    inspector.hidden=!!state.inspectorCollapsed;
+    body.classList.toggle('properties-collapsed',!!state.inspectorCollapsed);
+    propertiesButton.setAttribute('aria-pressed',String(!state.inspectorCollapsed));
+    for(const [key,b] of propertyButtons)b.setAttribute('aria-pressed',String(key===state.inspectorMode));
+    geometryGroup.hidden=state.inspectorMode!=='object';
+    paintGroup.hidden=state.inspectorMode!=='object';
+    textGroup.hidden=state.inspectorMode!=='text';
+    slideGroup.hidden=state.inspectorMode!=='slide';
+    cropGroup.hidden=state.inspectorMode!=='object'||selected()[0]?.type!=='image';
+  }
   function syncInspector():void {
     const m=doc(),current=locateSlide(snap(),state.slideId!);const scope=scopeShapes();state.selectedIds=state.selectedIds.filter(shapeId=>scope.some(s=>s.id===shapeId));const shapes=selected(),single=shapes.length===1?shapes[0]:undefined,text=single?.type==='text'?single:undefined;
     for(const control of editControls)control.disabled=!!host.readOnly;for(const control of selectionControls)control.disabled=!!host.readOnly||!shapes.length;
@@ -260,9 +287,14 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     dash.disabled=graphicsDisabled||!single||['text','image','group'].includes(single.type);
     arrowHead.disabled=arrowTail.disabled=graphicsDisabled||single?.type!=='line';
     dash.value=single?.stroke?.dash??'solid';arrowHead.value=single?.stroke?.head?.type??'none';arrowTail.value=single?.stroke?.tail?.type??'none';
-    cropGroup.hidden=single?.type!=='image';cropGroup.disabled=graphicsDisabled||single?.type!=='image';cropApply.disabled=cropReset.disabled=cropGroup.disabled;
+    cropGroup.hidden=state.inspectorMode!=='object'||single?.type!=='image';cropGroup.disabled=graphicsDisabled||single?.type!=='image';cropApply.disabled=cropReset.disabled=cropGroup.disabled;
     if(single?.type==='image')for(const key of Object.keys(cropFields) as (keyof SlideCrop)[])cropFields[key].value=String((single.crop?.[key]??0)/1000);
     textGroup.disabled=!text||!!host.readOnly;
+    for(const c of ribbonTextControls)c.disabled=!text||!!host.readOnly;
+    if(state.inspectorMode!==undefined&&state.selectedIds.join(',')!==lastInspectorSelection){
+      lastInspectorSelection=state.selectedIds.join(',');state.inspectorMode=text?'text':single||shapes.length?'object':'slide';showInspector();
+    }
+
     if(text){if(editingId!==text.id||!textDirty){const focused=document.activeElement===textEditor,start=textEditor.selectionStart,end=textEditor.selectionEnd;textEditor.value=shapeText(text);if(focused)textEditor.setSelectionRange(Math.min(start,textEditor.value.length),Math.min(end,textEditor.value.length));}editingId=text.id;const style={...m.defaultTextStyle,...text.textStyle,...text.runs[0]?.style};font.value=style.fontFamily??'sans-serif';size.value=String((style.fontSize??304800)/EMU_PER_POINT);textColor.value=colorHex(style.color,'#182030');language.value=style.language??'und';direction.value=text.textFrame?.direction==='rtl'?'rtl':'ltr';wrap.checked=text.textFrame?.wrap??true;vertical.value=text.textFrame?.verticalAlignment??'top';textEditor.dir=text.textFrame?.direction??style.paragraphDirection??'auto';}
     else {editingId=undefined;textEditor.value='';textDirty=false;}
     syncListControls();
@@ -282,7 +314,10 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   }
   function refresh():void {if(disposed)return;refreshScene();refreshThumbnails();syncInspector();}
   function resize():void {
-    if(!scene)return;const width=scene.width/EMU_PER_CSS_PIXEL,height=scene.height/EMU_PER_CSS_PIXEL,fit=Math.max(.05,Math.min(1,(stage.clientWidth-56)/width,(Math.max(360,stage.clientHeight)-56)/height));zoom=state.zoom>0?state.zoom:fit;surface.style.width=width*zoom+'px';surface.style.height=height*zoom+'px';scaled.style.width=width+'px';scaled.style.height=height+'px';scaled.style.transform=`scale(${zoom})`;stage.dataset.zoom=String(zoom);paintGeometry();
+    if(!scene)return;const width=scene.width/EMU_PER_CSS_PIXEL,height=scene.height/EMU_PER_CSS_PIXEL,style=getComputedStyle(stage),
+      innerWidth=Math.max(1,stage.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-2),
+      innerHeight=Math.max(1,stage.clientHeight-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom)-2),
+      fit=Math.max(.05,Math.min(1,innerWidth/width,innerHeight/height));zoom=state.zoom>0?state.zoom:fit;surface.style.width=width*zoom+'px';surface.style.height=height*zoom+'px';scaled.style.width=width+'px';scaled.style.height=height+'px';scaled.style.transform=`scale(${zoom})`;stage.dataset.zoom=String(zoom);paintGeometry();
   }
   function paintGeometry():void {
     if(!sceneElement)return;const values=gesture?.preview??{},projected=new Map([...walkSlideScene(scene.shapes)].map(s=>[s.id,s]));
@@ -319,7 +354,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     if(current.frame===undefined)current.frame=requestAnimationFrame(()=>{current.frame=undefined;if(gesture===current)paintGeometry();});
   });
   stage.onpointerup=event=>safe(()=>{if(!gesture||gesture.pointerId!==event.pointerId)return;const current=gesture;gesture=undefined;if(current.frame!==undefined)cancelAnimationFrame(current.frame);if(stage.hasPointerCapture(event.pointerId))stage.releasePointerCapture(event.pointerId);if(current.revision!==snap().revision){refresh();return;}apply(setShapeGeometries(snap(),state.slideId!,current.preview));});
-  stage.onpointercancel=()=>cancelGesture();stage.onlostpointercapture=()=>{if(gesture)cancelGesture();};stage.ondblclick=event=>safe(()=>{const shapeId=scopeHit(point(event),4/zoom*EMU_PER_CSS_PIXEL);if(shapeId){choose([shapeId]);const shape=selected()[0];if(shape?.type==='group')enterGroup(shape);else if(selectedText()){textEditor.focus();textEditor.setSelectionRange(0,textEditor.value.length);}}});
+  stage.onpointercancel=()=>cancelGesture();stage.onlostpointercapture=()=>{if(gesture)cancelGesture();};stage.ondblclick=event=>safe(()=>{const shapeId=scopeHit(point(event),4/zoom*EMU_PER_CSS_PIXEL);if(shapeId){choose([shapeId]);const shape=selected()[0];if(shape?.type==='group')enterGroup(shape);else if(selectedText()){focusTextEditor();textEditor.setSelectionRange(0,textEditor.value.length);}}});
   root.addEventListener('keydown',event=>safe(()=>{
     if(event.key==='Escape'&&gesture){event.preventDefault();event.stopPropagation();cancelGesture();return;}if(host.composing()||isTyping(event.target)||host.readOnly)return;
     if(event.key==='Escape'){if(state.selectedIds.length)choose([]);else leaveGroup();event.preventDefault();return;}
@@ -327,7 +362,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='a'){choose(scopeShapes().map(s=>s.id));event.preventDefault();return;}
     if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='d'){event.preventDefault();if(flush()&&state.selectedIds.length)duplicateSelection();return;}
     if(!state.selectedIds.length)return;if(['Delete','Backspace'].includes(event.key)){event.preventDefault();if(flush()&&apply(removeShapes(snap(),state.slideId!,state.selectedIds)))choose([]);return;}
-    if(event.key==='Enter'&&selectedText()){event.preventDefault();textEditor.focus();return;}
+    if(event.key==='Enter'&&selectedText()){event.preventDefault();focusTextEditor();return;}
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();if(!flush()||selectedHasBindings())return;const step=(event.shiftKey?10:1)*EMU_PER_CSS_PIXEL,dx=event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0,dy=event.key==='ArrowUp'?-step:event.key==='ArrowDown'?step:0;apply(setShapeGeometries(snap(),state.slideId!,Object.fromEntries(selected().map(s=>[s.id,{...s.geometry,x:s.geometry.x+dx,y:s.geometry.y+dy}]))));}
   }));
   root.addEventListener('copy',event=>safe(()=>{if(isTyping(event.target)||!state.selectedIds.length||!flush())return;const source=scopeShapes(),siblings=new Map(source.map(s=>[s.id,s])),shapes=selected().map(shape=>resolveSlideConnector(shape,siblings)),resources:Record<string,DeepReadonly<ImageResource>>={};for(const shape of walkSlideShapes(shapes))if(shape.type==='image'){const r=doc().resources[shape.resourceId];if(r?.dataBase64)resources[shape.resourceId]=r as DeepReadonly<ImageResource>;}copiedShapes={nonce:id(),shapes,resources};event.clipboardData?.setData('application/x-office-ex-shapes',copiedShapes.nonce);event.clipboardData?.setData('text/plain',shapes.filter(s=>s.type==='text').map(shapeText).join('\n'));event.preventDefault();}));
@@ -342,5 +377,40 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     const close=()=>{closePresentation=undefined;if(document.fullscreenElement===dialog)void document.exitFullscreen().catch(()=>{});dialog.close();dialog.remove();presentationDialog=undefined;window.removeEventListener('resize',resizePresentation);stage.focus();};closePresentation=close;previous.onclick=()=>{page=Math.max(0,page-1);paint();};next.onclick=()=>{page=Math.min(m.slides.length-1,page+1);paint();};exit.onclick=close;dialog.oncancel=event=>{event.preventDefault();close();};dialog.onkeydown=event=>{if(['ArrowRight','ArrowDown','PageDown',' '].includes(event.key)){event.preventDefault();page=Math.min(m.slides.length-1,page+1);paint();}else if(['ArrowLeft','ArrowUp','PageUp'].includes(event.key)){event.preventDefault();page=Math.max(0,page-1);paint();}else if(event.key==='Home'){event.preventDefault();page=0;paint();}else if(event.key==='End'){event.preventDefault();page=m.slides.length-1;paint();}else if(event.key==='Escape'){event.preventDefault();close();}};dialog.showModal();dialog.focus();paint();window.addEventListener('resize',resizePresentation);if(dialog.requestFullscreen)void dialog.requestFullscreen().then(()=>{resizePresentation();if(dialog.isConnected)dialog.focus();}).catch(()=>{});
   }
   state.dispose=()=>{if(disposed)return;cancelGesture();disposed=true;if(textTimer!==undefined)clearTimeout(textTimer);observer?.disconnect();thumbObserver?.disconnect();closePresentation?.();presentationDialog?.close();presentationDialog?.remove();};
+  const pick=(...ids:string[])=>ribbonNodes(root,...ids);
+  installRibbon(root,state,t,[
+    {id:'home',label:'ribbonHome',groups:[
+      {label:'ribbonSlide',rows:[pick('slide-add','slide-duplicate','slide-delete'),pick('slide-earlier','slide-later')]},
+      {label:'ribbonFont',rows:[pick('slide-font-family','slide-font-size'),pick('slide-text-bold','slide-text-italic','slide-text-underline','slide-font-color')]},
+      {label:'ribbonParagraph',rows:[pick('slide-text-start','slide-text-center','slide-text-end')]},
+      {label:'ribbonInsert',rows:[pick('slide-insert-text','slide-insert-image')]},
+      {label:'ribbonPresentation',rows:[pick('slide-present')]}
+    ]},
+    {id:'insert',label:'ribbonInsert',groups:[
+      {label:'ribbonShapes',rows:[pick('slide-insert-rect','slide-insert-ellipse','slide-insert-line','slide-insert-roundRect'),pick('slide-insert-triangle','slide-insert-diamond','slide-insert-parallelogram','slide-insert-connector')]},
+      {label:'ribbonObject',rows:[pick('slide-object-duplicate','slide-object-delete')]}
+    ]},
+    {id:'arrange',label:'ribbonArrange',groups:[
+      {label:'ribbonLayer',rows:[pick('slide-layer-front','slide-layer-back'),pick('slide-layer-forward','slide-layer-backward')]},
+      {label:'ribbonAlignment',rows:[pick('slide-align-left','slide-align-center','slide-align-right'),pick('slide-align-top','slide-align-middle','slide-align-bottom')]},
+      {label:'ribbonGrouping',rows:[pick('slide-group','slide-ungroup','slide-edit-group','slide-exit-group'),pick('slide-flipH','slide-flipV','slide-connect-objects','slide-detach-connector')]}
+    ]},
+    {id:'design',label:'ribbonDesign',groups:[
+      {label:'ribbonSlide',rows:[[background.closest('label')!,themeAccent.closest('label')!],[slideWidth.closest('label')!,slideHeight.closest('label')!,...pick('slide-size-apply')]]}
+    ]},
+    {id:'view',label:'ribbonView',groups:[
+      {label:'ribbonWindow',rows:[[propertiesButton]]}
+    ]}
+  ],()=>!host.composing()&&flush());
+  // Formatting fields remain controlled by the same selection sync.
+  const zoomBar=element('div','','slides-bottom-zoom');
+  for(const id of ['slide-zoom-out','slide-zoom-fit','slide-zoom-in']){const b=root.querySelector<HTMLButtonElement>('#'+id)!;decorateOfficeButton(b);zoomBar.append(b);}
+  status.append(zoomBar);
+  for(const c of [toolbar,textTools,objectActions,arrangeGroup])if(!c.childElementCount)c.remove();
+  // The Design ribbon owns the page-level fields, so the right panel shows
+  // an explicit useful status rather than an empty fieldset.
+  const slideInfo=element('p',t('ribbonSlideSettingsHint'),'muted');slideGroup.append(slideInfo);
+  for(const b of inspector.querySelectorAll<HTMLButtonElement>('button[id]'))decorateOfficeButton(b);
+  showInspector();
   refresh();observer=new ResizeObserver(()=>{if(!disposed)resize();});observer.observe(stage);return root;
 }

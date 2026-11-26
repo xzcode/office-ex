@@ -12,6 +12,7 @@ import {CanvasFontMetrics} from './font-metrics.js';
 import {BrowserParagraphShaper} from './native-writer-shaper.js';
 import {writerParagraphRule,writerListMarker} from './writer-paragraph-decoration.js';
 import type {WriterHost,WriterViewState} from './writer-workspace.js';
+import {decorateOfficeButton} from './office-ribbon.js';
 
 const PX=EMU_PER_CSS_PIXEL,css=(n:number)=>n/PX+'px';
 export interface NativePageCache{shaper:BrowserParagraphShaper;engine:WriterPaginationEngine;metrics:CanvasFontMetrics}
@@ -27,8 +28,12 @@ function firstPoint(model:DeepReadonly<WriterDocument>):WriterPoint|undefined{
 function collapsed(range:WriterRange):boolean{return range.anchor.paragraphId===range.focus.paragraphId&&range.anchor.offset===range.focus.offset;}
 function color(style:DeepReadonly<TextStyle>):string{const c=style.color;return c?.kind==='rgba'?'rgba('+[c.red,c.green,c.blue,c.alpha/255].join(',')+')':'#20242c';}
 function at(element:HTMLElement,x:number,y:number,width?:number,height?:number):void{element.style.position='absolute';element.style.left=css(x);element.style.top=css(y);if(width!==undefined)element.style.width=css(width);if(height!==undefined)element.style.height=css(height);}
-export function nativeWriterPage(host:WriterHost,state:WriterViewState):HTMLElement{
-  const root=node('section','','writer-native-workspace'),toolbar=node('div','','writer-controls'),pagebar=node('div','','writer-pagebar'),viewport=node('div','','writer-native-viewport'),paper=node('div','','writer-native-paper'),info=node('p','','muted');
+export interface NativeWriterController {getRange():WriterRange|undefined;setRange(value:WriterRange,focus?:boolean):void;refresh(focus?:boolean):void}
+export function nativeWriterPage(host:WriterHost,state:WriterViewState,external?:{ready(controller:NativeWriterController):void;selection():void}):HTMLElement{
+  const root=node('section','','writer-native-workspace'),toolbar=node('div','','writer-controls'),pagebar=node('div','','writer-pagebar'),viewport=node('div','','writer-native-viewport'),paper=node('div','','writer-native-paper'),info=node('p','','muted writer-native-info');
+  const workbench=node('div','','writer-page-workbench'),rail=node('nav','','writer-page-rail'),railHeader=node('div',host.t('ribbonPages'),'writer-page-rail-title'),pageList=node('div','','writer-page-list'),pageWrap=node('div','','writer-page-wrap'),ruler=node('div','','writer-ruler'),sheetWrap=node('div','','writer-paper-wrap');
+  rail.setAttribute('aria-label',host.t('ribbonPages'));rail.append(railHeader,pageList);pageWrap.append(ruler,sheetWrap);sheetWrap.append(paper);viewport.append(pageWrap);workbench.append(rail,viewport);
+  let railRevision=-1;
   paper.id='writer-native-page';paper.setAttribute('aria-label',host.t('writerPagePreview'));paper.dir='ltr';
   const input=node('textarea','','writer-native-input');input.id='writer-page-input';input.setAttribute('aria-label',host.t('writerPageEdit'));input.autocomplete='off';input.spellcheck=false;input.rows=1;input.dir='auto';
   const overlays=node('div','','writer-native-overlays');overlays.setAttribute('aria-hidden','true');
@@ -44,7 +49,7 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState):HTMLElem
   }
   function store():void{
     state.pageRange=range;
-    if(range){state.paragraphId=range.focus.paragraphId;state.start=state.end=range.focus.offset;}
+    if(range){state.paragraphId=range.focus.paragraphId;state.start=range.anchor.paragraphId===range.focus.paragraphId?Math.min(range.anchor.offset,range.focus.offset):range.focus.offset;state.end=range.anchor.paragraphId===range.focus.paragraphId?Math.max(range.anchor.offset,range.focus.offset):range.focus.offset;}
   }
   function move(point:WriterPoint,extend=false,follow=true,x?:number):void{
     const candidate={anchor:extend&&range?range.anchor:point,focus:point};
@@ -80,6 +85,7 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState):HTMLElem
       if(document.activeElement!==size)size.value=String((style.fontSize??152400)/EMU_PER_POINT);
       if(document.activeElement!==family)family.value=style.fontFamily??'sans-serif';
     }
+    external?.selection();
   }
   const exit=button('writerExitPageEdit','writer-exit-page-edit',()=>{
     if(host.composing())return;state.pageMode=false;state.focus=true;store();host.render();
@@ -87,7 +93,15 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState):HTMLElem
   const previous=button('writerPreviousPage','writer-native-previous',()=>{if(!composition){state.pageIndex=Math.max(0,state.pageIndex-1);draw();}});
   const next=button('writerNextPage','writer-native-next',()=>{if(!composition&&layout){state.pageIndex=Math.min(layout.pages.length-1,state.pageIndex+1);draw();}});
   const pageNumber=node('span');
-  pagebar.append(previous,pageNumber,next);
+  const zoomLabel=node('span','100%','writer-page-zoom-value');
+  let actualZoom=1;
+  const zoomOut=button('menuZoomOut','writer-zoom-out',()=>{state.pageZoom=Math.max(.25,actualZoom/1.25);applyZoom();});
+  const zoomIn=button('menuZoomIn','writer-zoom-in',()=>{state.pageZoom=Math.min(2,actualZoom*1.25);applyZoom();});
+  const zoomFit=button('menuResetZoom','writer-zoom-fit',()=>{state.pageZoom=undefined;applyZoom();});
+  for(const [b,key] of [[previous,'leftArrow'],[next,'rightArrow'],[zoomOut,'zoomOut'],[zoomIn,'zoomIn'],[zoomFit,'fit']] as const)decorateOfficeButton(b,key,true);
+  const navigation=node('div','','writer-page-navigation');navigation.append(previous,pageNumber,next);
+  const zooms=node('div','','writer-page-navigation');zooms.append(zoomOut,zoomFit,zoomIn,zoomLabel);
+  pagebar.append(navigation,info,zooms);
   toolbar.append(exit);
   function selectedFormat(style:TextStyle):void{
     if(!range||collapsed(range)||host.composing())return;
@@ -108,6 +122,30 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState):HTMLElem
   const family=field('writerFontFamily','writer-page-font','text');family.maxLength=512;family.onchange=()=>safe(()=>selectedFormat({fontFamily:family.value.trim()}));
   const size=field('writerFontSize','writer-page-size','number');size.min='1';size.max='1638';size.step='0.5';size.onchange=()=>safe(()=>{const n=size.valueAsNumber;assert(Number.isFinite(n)&&n>=1&&n<=1638&&Number.isInteger(n*2),'invalid','Invalid font size');selectedFormat({fontSize:n*EMU_PER_POINT});});
   for(const [align,label] of [['start','writerAlignLeft'],['center','writerAlignCenter'],['end','writerAlignRight']] as const)toolbar.append(button(label,'writer-page-align-'+align,()=>{if(range&&!host.composing()&&host.execute(setParagraphAlignment(host.snapshot(),range.focus.paragraphId,align)))refresh(true);}));
+  function applyZoom():void{
+    if(!layout)return;const page=layout.pages[state.pageIndex]!,width=page.width/PX,height=page.height/PX;
+    const scale=state.pageZoom??Math.min(1,Math.max(.25,(viewport.clientWidth-64)/width));
+    actualZoom=scale;sheetWrap.style.width=width*scale+'px';sheetWrap.style.height=height*scale+'px';paper.style.transform='scale('+scale+')';
+    ruler.style.width=width*scale+'px';ruler.style.setProperty('--ruler-tick',Math.max(3,96/8*scale)+'px');
+    ruler.replaceChildren();for(let inch=0;inch<=Math.floor(width/96);inch++){const mark=node('span',host.number(inch));mark.style.left=inch*96*scale+'px';ruler.append(mark);}
+    zoomLabel.textContent=host.number(Math.round(scale*100))+'%';
+  }
+  function drawRail():void{
+    if(!layout)return;
+    if(railRevision!==layout.revision||pageList.childElementCount!==layout.pages.length){
+      railRevision=layout.revision;const items:HTMLElement[]=[];
+      for(const [i,p] of layout.pages.entries()){
+        const b=node('button','','writer-page-thumb');b.type='button';b.dataset.writerPage=String(i);b.setAttribute('aria-label',t('writerPageNumber',{current:host.number(i+1),total:host.number(layout.pages.length)}));
+        const mini=node('canvas');mini.width=84;mini.height=Math.min(180,Math.max(22,Math.round(84*p.height/p.width)));mini.setAttribute('aria-hidden','true');const ctx=mini.getContext('2d');
+        if(ctx){ctx.fillStyle='#fff';ctx.fillRect(0,0,mini.width,mini.height);ctx.fillStyle='#9eacc0';const sx=mini.width/p.width,sy=mini.height/p.height;
+          for(const l of p.lines)if(l.width)ctx.fillRect(l.x*sx,l.y*sy,Math.max(1,l.width*sx),Math.max(1,Math.min(2,l.height*sy*.45)));
+          ctx.fillStyle='#c2cbd6';for(const img of p.images)ctx.fillRect(img.x*sx,img.y*sy,img.width*sx,img.height*sy);}
+        b.append(mini,node('span',host.number(i+1)));b.onclick=()=>safe(()=>{if(!composition){state.pageIndex=i;draw();}});items.push(b);
+      }
+      pageList.replaceChildren(...items);
+    }
+    for(const b of pageList.querySelectorAll<HTMLButtonElement>('[data-writer-page]'))b.setAttribute('aria-current',String(Number(b.dataset.writerPage)===state.pageIndex));
+  }
   function draw():void{
     if(!layout||!root.isConnected||layout.revision!==host.snapshot().revision)return;
     const model=doc(host.snapshot());state.pageIndex=Math.max(0,Math.min(layout.pages.length-1,state.pageIndex));const page=layout.pages[state.pageIndex]!;
@@ -136,7 +174,7 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState):HTMLElem
     paper.replaceChildren(...content,overlays,input);
     pageNumber.textContent=t('writerPageNumber',{current:host.number(state.pageIndex+1),total:host.number(layout.pages.length)});
     previous.disabled=state.pageIndex===0;next.disabled=state.pageIndex===layout.pages.length-1;
-    paper.hidden=false;root.dataset.pages=String(layout.pages.length);root.dataset.measured=String(cache.shaper.measurements);root.dataset.reused=String(cache.engine.stats.pagesReused);root.dataset.revision=String(revision);
+    paper.hidden=false;applyZoom();drawRail();root.dataset.pages=String(layout.pages.length);root.dataset.measured=String(cache.shaper.measurements);root.dataset.reused=String(cache.engine.stats.pagesReused);root.dataset.revision=String(revision);
     info.textContent=t('writerNativePageNote');if(layout.warnings.some(w=>w!=='writer.native-browser-line-metrics'&&w!=='writer.table-row-pagination'))info.textContent+=' '+t('writerLayoutLimits');
     highlight();
   }
@@ -249,7 +287,9 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState):HTMLElem
       else replace(data.getData('text/plain'));
     });
   });
-  viewport.append(paper);root.append(toolbar,pagebar,viewport,info);
+  root.append(...(external?[]:[toolbar]),workbench,pagebar);
+  external?.ready({getRange:()=>range,setRange(value,focus=false){range=value;preferredX=undefined;refresh(focus);},refresh});
+  const observer=new ResizeObserver(()=>{if(!root.isConnected){observer.disconnect();return;}if(state.pageZoom===undefined)applyZoom();});observer.observe(viewport);
   requestAnimationFrame(()=>refresh(true));return root;
 }
 

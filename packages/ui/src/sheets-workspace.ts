@@ -1,3 +1,4 @@
+import {installRibbon,ribbonNodes,type RibbonState,decorateOfficeButton} from './office-ribbon.js';
 /** Recovered M3 virtualized worksheet workspace. */
 import { OfficeError, EMU_PER_CSS_PIXEL } from '@office-ex/contracts';
 import { patchCommand, type DocumentSnapshot, type DocumentCommand, type Color, type CellStyle, type SheetView } from '@office-ex/core';
@@ -6,7 +7,7 @@ import type { MessageKey } from '@office-ex/i18n';
 import { GridAxis, columnLabel, cellLabel } from './sheets-geometry.js';
 
 type CellSnapshot = WorkbookSnapshot['sheets'][number]['cells'][string];
-export interface SheetsViewState {
+export interface SheetsViewState extends RibbonState {
   sheetId?:string; row:number; column:number; anchorRow:number; anchorColumn:number;
   scrollLeft:number; scrollTop:number; inputMode:'canonical'|'regional';
   calculation?:Map<string,CalculationCell>; calculatedRevision?:number;
@@ -929,5 +930,31 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
     recalculate(host, state2);
     paint();
   });
+  const pick=(...ids:string[])=>ribbonNodes(root2,...ids);
+  installRibbon(root2,state2,t,[
+    {id:'home',label:'ribbonHome',groups:[
+      {label:'ribbonFont',rows:[pick('sheet-font','sheet-font-size'),pick('sheet-bold','sheet-italic','sheet-underline','sheet-text-color','sheet-fill-color','sheet-border')]},
+      {label:'ribbonAlignment',rows:[pick('sheet-align-start','sheet-align-center','sheet-align-end','sheet-wrap'),pick('sheet-merge','sheet-unmerge')]},
+      {label:'ribbonNumbers',rows:[pick('sheet-number-format'),pick('sheet-custom-format')]},
+      {label:'ribbonEditing',rows:[pick('sheet-clear'),pick('sheet-fill-down','sheet-fill-right')]}
+    ]},
+    {id:'cells',label:'ribbonCells',groups:[
+      {label:'ribbonRows',rows:[pick('sheet-insert-rows','sheet-delete-rows'),pick('sheet-row-height')]},
+      {label:'ribbonColumns',rows:[pick('sheet-insert-columns','sheet-delete-columns'),pick('sheet-column-width')]},
+      {label:'ribbonWorksheets',rows:[pick('sheet-name','sheet-rename'),pick('sheet-delete','sheet-move-left','sheet-move-right')]}
+    ]},
+    {id:'formulas',label:'ribbonFormulas',groups:[
+      {label:'ribbonCalculation',rows:[pick('sheet-formula-mode'),pick('sheet-recalculate','sheet-cancel-calculation')]},
+      {label:'ribbonNumbers',rows:[pick('sheet-date-system')]}
+    ]},
+    {id:'view',label:'ribbonView',groups:[
+      {label:'ribbonWindow',rows:[pick('sheet-freeze','sheet-unfreeze'),pick('sheet-grid-lines','sheet-rtl')]}
+    ]}
+  ],()=>!host.composing()&&flush());
+  // Sheet creation remains beside the real worksheet tabs.
+  decorateOfficeButton(add,'add',true);
+  for(const container of [toolbar,second,management])if(!container.childElementCount)container.remove();
+  if(!management.isConnected&&controls2.childElementCount===1)controls2.remove();
+  else if(!management.childElementCount)controls2.remove();
   return root2;
 }

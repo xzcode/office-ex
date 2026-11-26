@@ -1,3 +1,4 @@
+import {revealControl} from './ribbon-test-controls.mjs';
 import {_electron as electron} from 'playwright-core';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,copyFile,readFile,writeFile,rm} from 'node:fs/promises';
