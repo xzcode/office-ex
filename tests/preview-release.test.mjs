@@ -44,3 +44,25 @@ test('preview release assembly only admits exact same-source native evidence and
   }
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('product version matches all workspace manifests and audited lock',async()=>{
+ const root=new URL('../',import.meta.url);
+ const read=async path=>JSON.parse(await readFile(new URL(path,root),'utf8'));
+ const pkg=await read('package.json'),lockBytes=await readFile(new URL('package-lock.json',root)),lock=JSON.parse(lockBytes);
+ const inventory=await read('docs/DEPENDENCIES.lock.json');
+ assert.match(pkg.version,/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/);
+ assert.equal(lock.version,pkg.version);assert.equal(lock.packages[''].version,pkg.version);
+ assert.equal(inventory.lockSha256,digest(lockBytes));
+ const workspaces=Object.entries(lock.packages).filter(([path])=>path&&!path.startsWith('node_modules/'));
+ assert.ok(workspaces.length>=14);
+ for(const [path,entry] of workspaces){
+  const manifest=await read(path+'/package.json');
+  assert.equal(manifest.version,pkg.version,path);
+  assert.equal(entry.version,pkg.version,path+' lock version');
+  for(const [dep,requested] of Object.entries(manifest.dependencies??{})){
+   if(!dep.startsWith('@office-ex/'))continue;
+   assert.equal(requested,pkg.version,path+' '+dep);
+   assert.equal(entry.dependencies[dep],requested,path+' '+dep+' lock dependency');
+  }
+ }
+});
