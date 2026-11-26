@@ -21,6 +21,7 @@ const XMLNS='http://www.w3.org/2000/xmlns/';
 const XML='http://www.w3.org/XML/1998/namespace';
 const A='http://schemas.openxmlformats.org/drawingml/2006/main',CP=PKG+'/metadata/core-properties',EP='http://schemas.openxmlformats.org/officeDocument/2006/extended-properties';
 const CORE_REL=PKG+'/relationships/metadata/core-properties',EXT_REL=REL+'/extended-properties';
+const VT='http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes';
 const encoder=new TextEncoder(),serializer=new XMLSerializer();
 const xmlBytes=(doc:Document)=>encoder.encode(serializer.serializeToString(doc));
 const canonical=(v:unknown):string=>v===undefined?'undefined':v===null||typeof v!=='object'?JSON.stringify(v):Array.isArray(v)?'['+v.map(canonical).join(',')+']':'{'+Object.entries(v).filter(([,v])=>v!==undefined).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>JSON.stringify(k)+':'+canonical(v)).join(',')+'}';
@@ -204,6 +205,30 @@ export function writeSheetsXlsx(input:WorkbookSnapshot):Uint8Array{
 }
 interface NativeSheet {id:string;path:string;relId:string;numericId:number}
 export interface SheetsXlsxSource {document:SheetsDocument;cachedValues:[string,CalculatedValue][];native:{opc:OpcPackage;sheetParts:NativeSheet[];stylesPath?:string;sharedPath?:string;metadataPaths:string[];themePath?:string;conversionBlocked:boolean}}
+/** Common Excel extended-properties sheet-name vector. Accept only one
+ * worksheet category, exact counts and the actual workbook title sequence. */
+function sheetTitleMetadata(element:Element,names?:readonly string[]):{count:Element;vector:Element;titles:Element[]}|undefined{
+ const children=childElements(element),heading=one(children,'HeadingPairs',false),titles=one(children,'TitlesOfParts',false);
+ if(!heading&&!titles)return undefined;
+ requireProfile(heading&&titles,'Incomplete sheet-title metadata');
+ const typed=(e:Element,local:string,allowed:readonly string[]=[])=>{
+  requireProfile(e.namespaceURI===VT&&e.localName===local,'Unsupported sheet-title vector type');attrs(e,allowed);return e;
+ };
+ const single=(e:Element,local:string,allowed:readonly string[]=[])=>{
+  const c=childElements(e);requireProfile(c.length===1,'Invalid sheet-title metadata cardinality');return typed(c[0]!,local,allowed);
+ };
+ attrs(heading,[]);attrs(titles,[]);
+ const h=single(heading,'vector',['size','baseType']),v=single(titles,'vector',['size','baseType']);
+ requireProfile(get(h,'size')==='2'&&get(h,'baseType')==='variant'&&['lpstr','lpwstr'].includes(get(v,'baseType')??''),'Unsupported sheet-title categories');
+ const pair=childElements(h);requireProfile(pair.length===2,'Unsupported sheet-title category count');
+ const label=single(typed(pair[0]!,'variant'),'lpstr'),count=single(typed(pair[1]!,'variant'),'i4');
+ requireProfile(['Worksheets','工作表','Arbeitsblätter','Feuilles de calcul','Hojas de cálculo','ワークシート','워크시트'].includes(leaf(label)),'Unsupported sheet-title category');
+ const items=childElements(v).map(e=>typed(e,get(v,'baseType')!));
+ const n=integer(leaf(count),1,128);requireProfile(n===items.length&&integer(get(v,'size'),1,128)===n,'Sheet-title count mismatch');
+ const values=items.map(e=>leaf(e));requireProfile(values.every(t=>t.length>0&&t.length<=31),'Invalid sheet-title name');
+ if(names)requireProfile(same(values,names),'Sheet-title metadata does not match workbook sheets');
+ return {count,vector:v,titles:items};
+}
 function admitMetadata(opc:OpcPackage,rr:OpcRelationship[],options:ContainerOptions):string[]{
  const seen=new Set<string>(),paths:string[]=[];
  for(const rel of rr){
@@ -214,9 +239,9 @@ function admitMetadata(opc:OpcPackage,rr:OpcRelationship[],options:ContainerOpti
   if(rel.type===CORE_REL)requireProfile(opc.contentTypes.get(path)==='application/vnd.openxmlformats-package.core-properties+xml'&&element.namespaceURI===CP&&element.localName==='coreProperties','Invalid core properties');
   else{
    requireProfile(opc.contentTypes.get(path)==='application/vnd.openxmlformats-officedocument.extended-properties+xml'&&element.namespaceURI===EP&&element.localName==='Properties','Invalid extended properties');
-   // Source-derived sheet-name vectors/heading pairs need separate mapping.
+   sheetTitleMetadata(element);
    const keys=new Set<string>();
-   for(const child of childElements(element)){const key=child.localName??'';requireProfile(child.namespaceURI===EP&&!keys.has(key)&&['Application','AppVersion','Company','Manager','DocSecurity','HyperlinksChanged','LinksUpToDate','ScaleCrop','SharedDoc','Template','TotalTime','PresentationFormat'].includes(key)&&childElements(child).length===0,'Sheet-dependent or unsupported extended property');keys.add(key);if(key==='DocSecurity')requireProfile((child.textContent??'').trim()==='0','Protected workbook metadata');if(key==='SharedDoc')requireProfile(['false','0'].includes((child.textContent??'').trim()),'Shared workbook metadata');}
+   for(const child of childElements(element)){const key=child.localName??'';requireProfile(child.namespaceURI===EP&&!keys.has(key)&&(['HeadingPairs','TitlesOfParts'].includes(key)||['Application','AppVersion','Company','Manager','DocSecurity','HyperlinksChanged','LinksUpToDate','ScaleCrop','SharedDoc','Template','TotalTime','PresentationFormat'].includes(key)&&childElements(child).length===0),'Sheet-dependent or unsupported extended property');keys.add(key);if(key==='DocSecurity')requireProfile((child.textContent??'').trim()==='0','Protected workbook metadata');if(key==='SharedDoc')requireProfile(['false','0'].includes((child.textContent??'').trim()),'Shared workbook metadata');}
   }
   paths.push(path);
  }
@@ -292,6 +317,7 @@ export function openSheetsXlsx(bytes:Uint8Array,documentId:string,title='Workboo
     document.sheets.push(sheet);
   }
   requireProfile(used.size===wrels.filter(r=>r.type===REL+'/worksheet').length,'Unreferenced worksheet dependency');
+  for(const path of metadataPaths)if(opc.contentTypes.get(path)==='application/vnd.openxmlformats-officedocument.extended-properties+xml')sheetTitleMetadata(parseXml(opc.parts.get(path)!,options).documentElement!,document.sheets.map(s=>s.name));
   return {document:validateDocument(document) as SheetsDocument,cachedValues,native:{opc,sheetParts,stylesPath:styleRel[0]?.targetPart??undefined,sharedPath:sst[0]?.targetPart??undefined,metadataPaths,themePath:themeRel[0]?.targetPart??undefined,conversionBlocked:!!(metadataPaths.length||themeRel.length||worksheetAuxiliary||one(children,'bookViews',false)||one(children,'fileVersion',false))}};
 }
 /** Append only newly required styles; original style ids never move. */
@@ -468,6 +494,18 @@ export function saveSheetsXlsx(bytes:Uint8Array,input:WorkbookSnapshot):Uint8Arr
   let references=0;for(const path of newPaths)for(const cell of worksheetCells(parseXml(parts.get(path)!).documentElement!).values())if(get(cell,'t')==='s')references++;
   const sharedDoc=parseXml(parts.get(native.sharedPath)!),shared=sharedDoc.documentElement!;
   if(get(shared,'count')!==undefined&&Number(get(shared,'count'))!==references){shared.removeAttribute('count');parts.set(native.sharedPath,xmlBytes(sharedDoc));}
+ }
+ // Cell-only edits preserve app.xml byte-for-byte. Structural edits update
+ // only the already admitted sheet-title count and title vector.
+ const oldNames=original.document.sheets.map(s=>s.name),newNames=model.sheets.map(s=>s.name);
+ if(!same(oldNames,newNames))for(const path of native.metadataPaths){
+  if(opc.contentTypes.get(path)!=='application/vnd.openxmlformats-officedocument.extended-properties+xml')continue;
+  const doc=parseXml(parts.get(path)!),metadata=sheetTitleMetadata(doc.documentElement!,oldNames);if(!metadata)continue;
+  metadata.count.textContent=String(newNames.length);metadata.vector.setAttribute('size',String(newNames.length));
+  const exemplar=metadata.titles[0]!;
+  for(const item of metadata.titles)metadata.vector.removeChild(item);
+  for(const name of newNames){const item=exemplar.cloneNode(false) as Element;item.textContent=name;metadata.vector.appendChild(item);}
+  parts.set(path,xmlBytes(doc));
  }
  if(mainChanged)parts.set(main,xmlBytes(mainDoc));if(graphChanged)parts.set(relationFile(main),xmlBytes(relDoc));if(typesChanged)parts.set('[Content_Types].xml',xmlBytes(typesDoc));
  const output=writeZip(parts),checked=openSheetsXlsx(output,model.documentId,model.title);

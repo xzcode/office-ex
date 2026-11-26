@@ -71,3 +71,26 @@
 .about-info{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 18px;border-block-start:1px solid var(--line);padding-block:14px}
 .about-info code{overflow-wrap:anywhere;user-select:text;font-size:12px}
 @media(max-width:1050px){.product-cards{gap:10px}.product-card{padding:12px}.product-card-header{align-items:flex-start;flex-direction:column;min-height:110px}}
+
+/* Noneditable source value preview: no model edits or formula calculation. */
+.compatibility-detail{margin-block:12px;padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+.compatibility-detail summary{cursor:pointer;font-weight:600}.compatibility-detail p{overflow-wrap:anywhere}
+.xlsx-value-preview{padding:16px;margin-block:14px;min-width:0}
+.xlsx-value-preview .boundary-note{margin:0 0 12px;line-height:1.6}
+.xlsx-preview-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-block:0 12px}
+.xlsx-preview-controls select{max-width:240px}.xlsx-preview-controls input{width:92px}.xlsx-preview-controls select,.xlsx-preview-controls input,.xlsx-preview-controls button{height:34px;padding:5px 10px}
+.xlsx-preview-viewport{overflow:auto;max-height:55vh;border:1px solid var(--line)}
+.xlsx-preview-grid{border-collapse:separate;border-spacing:0;table-layout:fixed;direction:ltr;font-size:12px;min-width:100%}
+.xlsx-preview-grid th,.xlsx-preview-grid td{height:29px;min-width:112px;max-width:180px;padding:5px 8px;border-inline-end:1px solid var(--line);border-block-end:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:start;box-sizing:border-box}
+.xlsx-preview-grid th{background:var(--bg);color:var(--muted);font-weight:500;text-align:center}
+.xlsx-preview-grid thead th{position:sticky;top:0;z-index:2}.xlsx-preview-grid tr>th:first-child{min-width:56px;max-width:72px;position:sticky;left:0;z-index:1}.xlsx-preview-grid thead th:first-child{z-index:3}
+.xlsx-preview-grid td[data-kind=formula-cache]{color:var(--accent)}.xlsx-preview-grid td[data-kind=formula-uncached],.xlsx-preview-grid td[data-kind=unsupported]{color:var(--warning)}
+.xlsx-preview-grid td:focus{outline:2px solid var(--accent);outline-offset:-2px}
+.xlsx-preview-cell-detail{padding-block:10px 0;min-height:34px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:180px;overflow:auto}
+#xlsx-preview-address[aria-invalid=true]{border-color:var(--error)}
+
+.office-text-preview{padding:18px;margin-block:14px}.office-text-preview>.boundary-note{margin:0 0 14px}
+.office-text-body{background:var(--surface);padding:18px 22px;border:1px solid var(--line);border-radius:7px;min-height:180px;margin-block-start:12px;max-height:60vh;overflow:auto}
+.office-text-body p,.office-text-body td{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+.office-text-body p{margin:0 0 12px}.office-text-table-wrap{overflow:auto;margin-block:12px}
+.office-text-body table{border-collapse:collapse;min-width:100%}.office-text-body td{padding:7px 10px;border:1px solid var(--line);vertical-align:top}

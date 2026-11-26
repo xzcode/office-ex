@@ -115,3 +115,23 @@ export function measureSlideTextFit(shape:TextScene):number{
   return low;
  }finally{probe.remove();}
 }
+
+/** Grow a direct shape-autofit textbox with the same projected text used by
+ * editing, presentation and print. Existing extents are a lower bound; no
+ * font-size reduction or source markup modification. Browser font metrics
+ * approximate PowerPoint. The caller commits the geometry in the same undo
+ * transaction as the text/style edit. */
+export function measureSlideShapeGrowth(shape:TextScene):{width:number;height:number}{
+ const probe=document.createElement('div');
+ Object.assign(probe.style,{position:'fixed',left:'-100000px',top:'0',visibility:'hidden',pointerEvents:'none'});
+ document.body.append(probe);
+ try{
+  const node=createSlideShapeElement(shape);node.style.left='0';node.style.top='0';node.style.transform='none';probe.append(node);
+  const body=node.querySelector<HTMLElement>('.slides-text-body')!;
+  let width=shape.geometry.width;
+  if(!shape.wrap){body.style.width='max-content';width=Math.max(width,Math.ceil(body.scrollWidth*EMU_PER_CSS_PIXEL+shape.margins.left+shape.margins.right));body.style.width='';node.style.width=px(width);}
+  const height=Math.max(shape.geometry.height,Math.ceil(body.scrollHeight*EMU_PER_CSS_PIXEL+shape.margins.top+shape.margins.bottom));
+  if(width>100000000||height>100000000)throw Error('Shape autofit geometry budget exceeded');
+  return {width,height};
+ }finally{probe.remove();}
+}

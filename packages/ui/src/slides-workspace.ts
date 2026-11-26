@@ -4,7 +4,7 @@ import { walkSlideShapes, isConnectorTarget, resolveSlideConnector, previewModel
 import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes, connectSlideShapes, setSlideConnections, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
 import { buildSlideScene, walkSlideScene, hitTest, shapeTransform, inverse, transform, multiply, IDENTITY, groupChildTransform, slideShapeParentTransform, type Matrix, type SlideScene, type Point } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
-import { createSlideSceneElement, slideCssColor, overflowingSlideText, measureSlideTextFit, updateSlideShapeGeometry } from './slides-scene-dom.js';
+import { createSlideSceneElement, slideCssColor, overflowingSlideText, measureSlideTextFit, measureSlideShapeGrowth, updateSlideShapeGeometry } from './slides-scene-dom.js';
 
 export interface SlidesViewState {slideId?:string;groupId?:string;selectedIds:string[];zoom:number;lockAspect?:boolean;flush?:()=>boolean;dispose?:()=>void}
 export interface SlidesHost {
@@ -43,7 +43,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     const ops=command.payload.operations.filter(op=>op.op==='set'&&['runs','geometry','textStyle','textFrame'].includes(String(op.path.at(-1))));
     if(!ops.length)return command;
     const snapshot=snap(),slide=locateSlide(snapshot,state.slideId),affected=[...walkSlideShapes(slide.slide.shapes)].filter(shape=>{
-      if(shape.type!=='text'||shape.textFrame?.autofit?.mode!=='normal')return false;
+      if(shape.type!=='text'||!shape.textFrame?.autofit||shape.textFrame.autofit.mode==='none')return false;
       const path=locateShape(snapshot,slide.slide.id,shape.id).path;
       return ops.some(op=>op.path.length===path.length+1&&path.every((v,i)=>op.path[i]===v));
     });
@@ -53,8 +53,15 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     for(const old of affected){
       if(old.type!=='text')continue;
       const location=locateShape(candidate,slide.slide.id,old.id),model=location.shape,shape=projected.get(old.id);
-      if(model.type!=='text'||model.textFrame?.autofit?.mode!=='normal'||shape?.type!=='text')continue;
+      if(model.type!=='text'||!model.textFrame?.autofit||model.textFrame.autofit.mode==='none'||shape?.type!=='text')continue;
       const newFit=model.textFrame.autofit;
+      if(newFit.mode==='shape'){
+        if(JSON.stringify(old)===JSON.stringify(model))continue;
+        if(location.parent||model.geometry.rotation!==0||model.textFrame.verticalAlignment==='center'||model.textFrame.verticalAlignment==='bottom')throw new OfficeError('unsupported','Shape autofit requires a direct unrotated top-anchored textbox');
+        const growth=measureSlideShapeGrowth(shape);
+        if(growth.width!==model.geometry.width||growth.height!==model.geometry.height)extra.push({op:'set',path:[...location.path,'geometry'],value:{...model.geometry,...growth}});
+        continue;
+      }
       // Explicit Fit/Reset already carries its selected scale.
       if(JSON.stringify(old.textFrame?.autofit)!==JSON.stringify(newFit)&&ops.every(op=>op.path.at(-1)==='textFrame'))continue;
       if(JSON.stringify(old)===JSON.stringify(model))continue;

@@ -9,9 +9,10 @@ import type { Inspection } from '@office-ex/format-service';
 import type { DesktopBridge, OpenFileResult, PublicSettings, RecoveryItem, MenuAction } from './desktop-api.js';
 import { availableLocales, TARGET_LOCALES, REGIONAL_LOCALES, resolveLocale, resolveRegion, localeDirection, localeLabel, isMessageKey, message as translate, diagnosticKey, errorKey, formatNumber, formatDate, type MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
+import {xlsxValueView,type XlsxPreviewState} from './xlsx-value-preview.js';
 
 type WorkerType='inspect'|'serialize'|'recover'|'image'|'convert-doc'|'convert-docx'|'convert-xls'|'convert-xlsx'|'convert-ppt'|'convert-pptx';
-interface Tab {id:string;name:string;token?:string;session?:DocumentSession;inspection?:Inspection;busy:boolean;error?:{code:string;message:string};lastCheckpoint?:string;slidesState?:SlidesViewState;pdfState?:PdfViewState;writerState?:WriterViewState;sheetsState?:SheetsViewState;format?:'docx'|'doc'|'xls'|'xlsx'|'pptx'|'ppt'|'oex'}
+interface Tab {id:string;name:string;token?:string;session?:DocumentSession;inspection?:Inspection;xlsxPreviewState?:XlsxPreviewState;textPreviewPage?:number;busy:boolean;error?:{code:string;message:string};lastCheckpoint?:string;slidesState?:SlidesViewState;pdfState?:PdfViewState;writerState?:WriterViewState;sheetsState?:SheetsViewState;format?:'docx'|'doc'|'xls'|'xlsx'|'pptx'|'ppt'|'oex'}
 const $=<T extends HTMLElement>(selector:string):T=>document.querySelector<T>(selector)!;
 const bridge:DesktopBridge=window.office;
 const tabs=new Map<string,Tab>();
@@ -145,14 +146,28 @@ function documentView(tab:Tab):void{
   const measured=measureText(new CanvasFontMetrics(),'Office EX 中文',{fontFamily:'sans-serif',fontSize:152400});details.append(text('span',`${t('canvas')}: ${number(measured.metrics.advance/EMU_PER_CSS_PIXEL,{maximumFractionDigits:1,minimumFractionDigits:1})} px`));content.append(details);
 }
 function inspectionView(tab:Tab):void{
-  const content=$('#content'),view=tab.inspection!;content.replaceChildren(text('div',t('readOnly'),'eyebrow'),text('h1',tab.name));
+  const content=$('#content'),view=tab.inspection!;content.replaceChildren(text('div',t(view.xlsxValuePreview?'xlsxPreviewTitle':view.officeTextPreview?'officeTextPreviewTitle':'readOnly'),'eyebrow'),text('h1',tab.name));
   const row=document.createElement('div');row.className='info-row';row.append(text('span',`${t('format')}: ${view.detection.format.toUpperCase()}`),text('span',`${t('version')}: ${view.detection.version}`));content.append(row);
   const diags=document.createElement('div');diags.className='diagnostics';for(const diagnostic of view.report.diagnostics){const label=t(diagnosticKey(diagnostic.messageKey));diags.append(text('div',`${label}  [${diagnostic.featureId}]`,`diagnostic ${diagnostic.severity==='error'?'error':''}`));}content.append(diags);
+  if(view.semanticFailure){const detail=document.createElement('details');detail.className='compatibility-detail';detail.open=!view.xlsxValuePreview&&!view.officeTextPreview;detail.append(text('summary',t('semanticFailureDetail')),text('p',view.semanticFailure.detail,'muted'));content.append(detail);}
+  if(view.xlsxValuePreview){const first=view.xlsxValuePreview.sheets[0]!;tab.xlsxPreviewState??={sheet:0,row:first.firstRow,column:first.firstColumn};content.append(xlsxValueView(view.xlsxValuePreview,tab.xlsxPreviewState,t));}
+  if(view.officeTextPreview){const preview=document.createElement('section');preview.className='office-text-preview workspace-card';preview.id='office-text-preview';
+    preview.append(text('p',t('officeTextPreviewNotice'),'boundary-note'));if(view.officeTextPreview.truncated)preview.append(text('p',t('xlsxPreviewLimited'),'diagnostic'));
+    const pages=view.officeTextPreview.pages;let activePage=Math.min(pages.length-1,tab.textPreviewPage??0);const body=document.createElement('div');body.className='office-text-body';
+    const select=document.createElement('select');select.id='office-text-preview-page';select.setAttribute('aria-label',t('officeTextPreviewTitle'));
+    pages.forEach((p,i)=>{const o=text('option',number(i+1)+(p.title?' · '+p.title:''));o.value=String(i);select.append(o);});
+    const paint=()=>{const p=pages[activePage]!;body.replaceChildren();if(!p.blocks.length)body.append(text('p','—','muted'));
+      for(const block of p.blocks){if(block.kind==='paragraph'){const e=text('p',block.text||' ');e.dir='auto';body.append(e);}
+        else{const viewport=document.createElement('div');viewport.className='office-text-table-wrap';const table=document.createElement('table');const tb=document.createElement('tbody');for(const row of block.rows){const tr=document.createElement('tr');for(const value of row){const cell=text('td',value);cell.dir='auto';tr.append(cell);}tb.append(tr);}table.append(tb);viewport.append(table);body.append(viewport);}}
+    };
+    if(view.officeTextPreview.kind==='slides'){select.value=String(activePage);select.onchange=()=>{activePage=Number(select.value);tab.textPreviewPage=activePage;paint();};preview.append(select);}preview.append(body);paint();content.append(preview);
+  }
   if(view.legacyDocText){content.append(text('p',t('docTextPreview'),'boundary-note'));const preview=text('pre',view.legacyDocText.text.replace(/\r/g,'\n').replace(/[\x00-\x08\x0b-\x1f]/g,'�').slice(0,200000));preview.style.whiteSpace='pre-wrap';preview.dir='auto';preview.className='workspace-card';content.append(preview);}
-  const heading=document.createElement('div');heading.className='section-heading';heading.append(text('h2',`${t('parts')} (${view.entries.length})`),text('span',`${view.sha256.slice(0,16)}…`));content.append(heading);
-  if(!view.entries.length){content.append(text('p',t('noEntries'),'muted'));return;}
+  const parts=document.createElement('details');parts.className='compatibility-detail';parts.open=!view.xlsxValuePreview&&!view.officeTextPreview;
+  parts.append(text('summary',`${t('parts')} (${view.entries.length}) · ${view.sha256.slice(0,16)}…`));content.append(parts);
+  if(!view.entries.length){parts.append(text('p',t('noEntries'),'muted'));return;}
   const table=document.createElement('table');table.className='parts-table';const thead=document.createElement('thead'),tr=document.createElement('tr');for(const value of [t('part'),t('size'),t('digest')])tr.append(text('th',value));thead.append(tr);table.append(thead);const body=document.createElement('tbody');
-  for(const entry of view.entries.slice(0,500)){const tr=document.createElement('tr');tr.append(text('td',entry.name),text('td',`${number(entry.size)} B`),text('td',entry.sha256));body.append(tr);}table.append(body);content.append(table);if(view.entries.length>500)content.append(text('p',t('entriesLimited',{count:number(view.entries.length)}),'muted'));
+  for(const entry of view.entries.slice(0,500)){const tr=document.createElement('tr');tr.append(text('td',entry.name),text('td',`${number(entry.size)} B`),text('td',entry.sha256));body.append(tr);}table.append(body);parts.append(table);if(view.entries.length>500)parts.append(text('p',t('entriesLimited',{count:number(view.entries.length)}),'muted'));
 }
 function render():void{if(composing)return;for(const previous of tabs.values()){previous.slidesState?.dispose?.();previous.pdfState?.detach?.();}applyLanguage();recent();chrome();const tab=current();if(!tab){home();return;}if(tab.busy){const content=$('#content');const loading=document.createElement('div');loading.className='loading';loading.append(text('span','','spinner'),text('span',t('reading')),button(t('cancel'),()=>{cancelTask(tab.id);tab.busy=false;render();}));content.replaceChildren(loading);return;}if(tab.error){$('#content').replaceChildren(text('h1',tab.name),text('p',t(errorKey(tab.error.code)),'diagnostic error'));return;}if(tab.session)documentView(tab);else if(tab.pdfState){const content=$('#content');content.replaceChildren(pdfWorkspace({t,error:errorMessage,isCurrent:()=>current()===tab,print:()=>printCurrent(tab)},tab.pdfState));}else if(tab.inspection)inspectionView(tab);}
 async function refreshSettings():Promise<void>{const init=unwrap(await bridge.initialize());settings=init.settings;systemLocales=init.systemLocales;applyLanguage();recent();}

@@ -69,7 +69,7 @@ export function readInlinePicture(drawing:Element,graph:MediaGraph,id:string):Im
   attrs(sp!);const [transform,geometry]=seq(sp!,[[A,'xfrm'],[A,'prstGeom']]);attrs(transform!);
   const [off,ext]=seq(transform!,[[A,'off'],[A,'ext']]);zeros(off!,['x','y']);const second=positiveSize(ext!);
   valid(second.width===size.width&&second.height===size.height,'Picture transform and extent disagree');
-  attrs(geometry!,['prst']);valid(geometry!.getAttribute('prst')==='rect','Only rectangular picture geometry');const [av]=seq(geometry!,[[A,'avLst']]);attrs(av!);empty(av!);
+  attrs(geometry!,['prst']);valid(geometry!.getAttribute('prst')==='rect','Only rectangular picture geometry');const av=children(geometry!);valid(av.length<=1,'Custom picture geometry');if(av.length){element(av[0]!,A,'avLst');attrs(av[0]!);empty(av[0]!);}
   return {id,type:'image',resourceId,...size,drawingName:drawingProps.name,pictureName:pictureProps.name};
 }
 function relationshipPath(main:string):string{const i=main.lastIndexOf('/');return main.slice(0,i+1)+'_rels/'+main.slice(i+1)+'.rels';}

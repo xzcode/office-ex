@@ -61,7 +61,7 @@ export interface SlideChildSpace {x:number;y:number;width:number;height:number}
 export interface SlideConnection {shapeId:string;site:0|1|2|3}
 export interface SlideConnections {start:SlideConnection;end:SlideConnection}
 interface ShapeBase { id: string; geometry: Geometry; fill?: Color; stroke?: SlideStroke; flipH?:boolean; flipV?:boolean }
-export interface SlideTextFrame { autofit?:{mode:'none'}|{mode:'normal';fontScale:number;lineReduction:number}; wrap?: boolean; verticalAlignment?: 'top'|'center'|'bottom'; margins?: {top:number;right:number;bottom:number;left:number}; direction?: 'ltr'|'rtl'|'auto' }
+export interface SlideTextFrame { autofit?:{mode:'none'}|{mode:'shape'}|{mode:'normal';fontScale:number;lineReduction:number}; wrap?: boolean; verticalAlignment?: 'top'|'center'|'bottom'; margins?: {top:number;right:number;bottom:number;left:number}; direction?: 'ltr'|'rtl'|'auto' }
 export interface SlideThemeFontDetails { eastAsia?:string; complex?:string; scripts?:Record<string,string> }
 export interface SlideTheme { name:string; colors:Record<string,Extract<Color,{kind:'rgba'}>>; majorFont?:string; minorFont?:string; majorFontDetails?:SlideThemeFontDetails; minorFontDetails?:SlideThemeFontDetails }
 export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: SlidePreset; connector?:true; connections?:SlideConnections }) | (ShapeBase & { type: 'image'; resourceId: string; crop?:SlideCrop }) | (ShapeBase & {type:'group';childSpace:SlideChildSpace;children:Shape[]});
@@ -395,7 +395,11 @@ export function validateDocument(value: unknown): OfficeDocument {
           if(shape.textStyle!==undefined)validateTextStyle(shape.textStyle);
           if(shape.textFrame!==undefined){
             const frame=object(shape.textFrame,['wrap','verticalAlignment','margins','direction','autofit']);
-            if(frame.autofit!==undefined){const fit=object(frame.autofit,['mode','fontScale','lineReduction']);if(fit.mode==='none')assert(Object.keys(fit).length===1,'invalid','Unexpected fixed text fit values');else{assert(fit.mode==='normal','invalid','Unsupported text fit mode');integer(fit.fontScale,1000,100000);integer(fit.lineReduction,0,99000);}}
+            if(frame.autofit!==undefined){const fit=object(frame.autofit,['mode','fontScale','lineReduction']);if(fit.mode==='none'||fit.mode==='shape')assert(Object.keys(fit).length===1,'invalid','Unexpected text fit values');else{assert(fit.mode==='normal','invalid','Unsupported text fit mode');integer(fit.fontScale,1000,100000);integer(fit.lineReduction,0,99000);}}
+            if((frame.autofit as {mode?:string}|undefined)?.mode==='shape'){
+              const geometry=shape.geometry as Geometry;
+              assert(depth===0&&geometry.rotation===0&&(!frame.verticalAlignment||frame.verticalAlignment==='top'),'unsupported','Shape-growing textbox must be top-level, unrotated and top-anchored');
+            }
             if(frame.wrap!==undefined)bool(frame.wrap);
             if(frame.verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(frame.verticalAlignment)),'invalid','Invalid text frame alignment');
             if(frame.direction!==undefined)assert(['ltr','rtl','auto'].includes(String(frame.direction)),'invalid','Invalid text frame direction');

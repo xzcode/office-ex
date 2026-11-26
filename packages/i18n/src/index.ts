@@ -68,7 +68,7 @@ export function validateCatalogs():void{
   }
 }
 const diagnosticKeys:Readonly<Record<string,MessageKey>>={
-  'format.semanticPending':'diagSemanticPending','format.macrosDisabled':'diagMacrosDisabled','format.signedReadOnly':'diagSignedReadOnly',
+  'format.semanticPending':'diagSemanticPending','format.xlsxValuePreview':'xlsxPreviewReadOnly','format.officeTextPreview':'officeTextPreviewReadOnly','format.macrosDisabled':'diagMacrosDisabled','format.signedReadOnly':'diagSignedReadOnly',
   'format.externalDisabled':'diagExternalDisabled','format.strictReadOnly':'diagStrictReadOnly','format.encryptedUnsupported':'diagEncryptedUnsupported',
   'format.extensionMismatch':'diagExtensionMismatch','format.docxProfile':'docxNote','format.docProfile':'docNote','format.xlsxProfile':'xlsxNote','format.xlsProfile':'xlsNote'
 };

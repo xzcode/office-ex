@@ -9,3 +9,7 @@ export * from './writer-docx.js';
 export * from './sheets-xlsx.js';
 
 export * from "./slides-pptx.js";
+
+export * from './sheets-xlsx-preview.js';
+
+export * from './office-text-preview.js';

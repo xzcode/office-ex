@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "source": "Independent XlsxWriter, python-docx and python-pptx samples, no user data",
+  "checks": [
+    "Independent source XLSX opens as actual readonly worksheet values, with hidden data excluded",
+    "Cached formulas, address navigation and worksheet switching work",
+    "Specific incompatibility diagnostic retained; editing remains disabled",
+    "Original-copy save is byte exact; source remains unchanged",
+    "Protected Word document shows main-story text and table cells",
+    "Protected PPTX shows individual slide text and table cells",
+    "Native PowerPoint shape-autofit text edit grows geometry and retains spAutoFit on save"
+  ],
+  "status": "passed"
+}

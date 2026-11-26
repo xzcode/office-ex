@@ -2,7 +2,7 @@
 import { OfficeError } from '@office-ex/contracts';
 import { validateDocument, type OfficeDocument, type WriterDocument, type SheetsDocument, type SlidesDocument } from '@office-ex/core';
 import { BoundedReader, sniffContainer, sortedDiagnostics, type Detection, type FormatId, type FormatDiagnostic, type CompatibilityReport } from '@office-ex/format-common';
-import { openOpc, openWriterDocx, writeWriterDocx, saveWriterDocx, openSheetsXlsx, writeSheetsXlsx, saveSheetsXlsx, openSlidesPptx, writeSlidesPptx, saveSlidesPptx } from '@office-ex/ooxml';
+import { openOpc, openWriterDocx, writeWriterDocx, saveWriterDocx, openSheetsXlsx, previewSheetsXlsx, type XlsxValuePreview, previewOfficeText, type OfficeTextPreview, writeSheetsXlsx, saveSheetsXlsx, openSlidesPptx, writeSlidesPptx, saveSlidesPptx } from '@office-ex/ooxml';
 import type { CalculatedValue } from '@office-ex/sheets';
 import { openLegacyXls, writeLegacyXls, saveLegacyXls } from './legacy-xls.js';
 export { openLegacyXls, writeLegacyXls, saveLegacyXls } from './legacy-xls.js';
@@ -13,7 +13,26 @@ import { inspectLegacyDocText, openLegacyDoc, writeLegacyDoc, saveLegacyDoc, typ
 export { inspectLegacyDocText, openLegacyDoc, writeLegacyDoc, saveLegacyDoc } from './legacy-doc.js';
 
 export interface ContainerEntry { name: string; size: number; sha256: string }
-export interface Inspection { detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument; editableWriterFormat?: 'doc'|'docx'; legacyDocText?: LegacyDocText; editableSheets?: SheetsDocument; editableSheetsFormat?: 'xls'|'xlsx'; sheetsTemplateConversionBlocked?:boolean; sheetsCachedValues?: [string,CalculatedValue][]; editableSlides?: SlidesDocument; editableSlidesFormat?: 'ppt'|'pptx'; slidesTemplateConversionBlocked?: boolean }
+export interface Inspection { semanticFailure?:{code:string;detail:string};xlsxValuePreview?:XlsxValuePreview;officeTextPreview?:OfficeTextPreview; detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument; editableWriterFormat?: 'doc'|'docx'; legacyDocText?: LegacyDocText; editableSheets?: SheetsDocument; editableSheetsFormat?: 'xls'|'xlsx'; sheetsTemplateConversionBlocked?:boolean; sheetsCachedValues?: [string,CalculatedValue][]; editableSlides?: SlidesDocument; editableSlidesFormat?: 'ppt'|'pptx'; slidesTemplateConversionBlocked?: boolean }
+/** Keep actionable diagnostics in the local inspection DTO, not server logs. */
+function semanticFailure(inspection:Inspection,error:OfficeError):Inspection{
+ return {...inspection,semanticFailure:{code:error.code,detail:error.message.slice(0,512)}};
+}
+function addOfficeTextPreview(result:Inspection,bytes:Uint8Array,signal?:AbortSignal):void{
+ try{
+  result.officeTextPreview=previewOfficeText(bytes,{signal});
+  const diagnostics=sortedDiagnostics([...result.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),diagnostic('OFFICE_TEXT_PREVIEW','FMT-04','format.officeTextPreview')]);
+  result.report={...result.report,diagnostics};result.detection={...result.detection,diagnostics};
+ }catch(error){if(!(error instanceof OfficeError)||!['unsupported','invalid','limit','unsafe'].includes(error.code))throw error;}
+}
+function addXlsxPreview(result:Inspection,bytes:Uint8Array,signal?:AbortSignal):void{
+ try{
+  result.xlsxValuePreview=previewSheetsXlsx(bytes,{signal});
+  const diagnostics=sortedDiagnostics([...result.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),diagnostic('XLSX_VALUE_PREVIEW','SHT-05','format.xlsxValuePreview')]);
+  result.report={...result.report,diagnostics};result.detection={...result.detection,diagnostics};
+ }catch(error){if(!(error instanceof OfficeError)||!['unsupported','invalid','limit','unsafe'].includes(error.code))throw error;}
+}
+
 const MAX_INPUT = 100 * 1024 * 1024;
 const MAX_DRAFT = 32 * 1024 * 1024;
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -165,7 +184,7 @@ export async function inspectForEditor(bytes:Uint8Array,filename:string,document
       const editableSlides=validateDocument(source.document) as SlidesDocument,featureId=format==='ppt'?'LEG-04':'SLD-03';
       const diagnostics=sortedDiagnostics([...inspection.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),{code:format==='ppt'?'PPT_PROFILE_ACTIVE':'PPTX_PROFILE_ACTIVE',featureId,messageKey:format==='ppt'?'format.pptProfile':'format.pptxProfile',severity:'info',safeAction:'none'}]);
       return {...inspection,editableSlides,editableSlidesFormat:format,...('native' in source&&(source.native.layoutPaths.length>1||source.native.auxiliaryPaths.some(path=>path!==source.native.presPropsPath)||Boolean(source.document.theme?.majorFontDetails||source.document.theme?.minorFontDetails))?{slidesTemplateConversionBlocked:true}:{}),detection:{...inspection.detection,diagnostics},report:{...inspection.report,readOnly:false,diagnostics,features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]}};
-    }catch(error){if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code))return inspection;throw error;}
+    }catch(error){if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code)){const result=semanticFailure(inspection,error);if(format==='pptx')addOfficeTextPreview(result,bytes,signal);return result;}throw error;}
   }
   if((format==='xls'||format==='xlsx')&&filename.toLowerCase().endsWith('.'+format)&&bytes.byteLength<=MAX_DRAFT&&!inspection.detection.encrypted){
     try{
@@ -174,7 +193,17 @@ export async function inspectForEditor(bytes:Uint8Array,filename:string,document
       const editableSheets=validateDocument(source.document) as SheetsDocument,featureId=format==='xls'?'LEG-03':'SHT-05';
       const diagnostics=sortedDiagnostics([...inspection.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),{code:format==='xls'?'XLS_PROFILE_ACTIVE':'XLSX_PROFILE_ACTIVE',featureId,messageKey:format==='xls'?'format.xlsProfile':'format.xlsxProfile',severity:'info',safeAction:'none'}]);
       return {...inspection,editableSheets,editableSheetsFormat:format,...(xlsxSource?.native.conversionBlocked?{sheetsTemplateConversionBlocked:true}:{}),sheetsCachedValues:source.cachedValues,detection:{...inspection.detection,diagnostics},report:{...inspection.report,readOnly:false,diagnostics,features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]}};
-    }catch(error){if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code))return inspection;throw error;}
+    }catch(error){
+      if(!(error instanceof OfficeError)||!['unsupported','invalid','limit'].includes(error.code))throw error;
+      const result=semanticFailure(inspection,error);
+      if(format==='xlsx')addXlsxPreview(result,bytes,signal);
+      return result;
+    }
+  }
+  if(format==='xlsx'&&filename.toLowerCase().endsWith('.xlsx')&&!inspection.detection.encrypted&&bytes.byteLength>MAX_DRAFT){
+    const result=semanticFailure(inspection,new OfficeError('limit','Workbook exceeds the editable model input budget'));
+    addXlsxPreview(result,bytes,signal);
+    return result;
   }
   if((format!=='docx'&&format!=='doc')||!filename.toLowerCase().endsWith('.'+format)||bytes.byteLength>MAX_DRAFT||inspection.detection.encrypted)return inspection;
   if(format==='doc'){
@@ -193,7 +222,7 @@ export async function inspectForEditor(bytes:Uint8Array,filename:string,document
       features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]
     }};
   }catch(error){
-    if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code))return inspection;
+    if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code)){const result=semanticFailure(inspection,error);if(format==='docx')addOfficeTextPreview(result,bytes,signal);return result;}
     throw error;
   }
 }
