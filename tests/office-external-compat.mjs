@@ -73,13 +73,35 @@ for(const mutate of [
 const normal=await inspect('normal-table.docx');assert.equal(normal.result.report.readOnly,false,normal.result.semanticFailure?.detail);
 const normalDoc=cloneData(normal.result.editableWriter);tableOf(normalDoc).rows[0].cells[0].blocks[0].runs[0].text='Normal edited';
 await write('normal-table-edited.docx',prepareWriterDocxSave(serializeDraft(normalDoc),'compat-corpus',normal.bytes));
+for(const [name,edits]of [
+ ['merged-table.docx',[[0,0,'Merged edited',1,2]]],
+ ['complex-merged-table.docx',[[0,0,'矩形已编辑',2,2],[0,2,'纵向已编辑',3,1],[3,0,'横向已编辑',1,3]]]
+]){
+ const file=await inspect(name);assert.equal(file.result.report.readOnly,false,file.result.semanticFailure?.detail);
+ const source=openWriterDocx(file.bytes,'compat-corpus','Merged'),session=new DocumentSession(source.document,{saved:true});
+ assert.deepEqual(saveWriterDocx(source,source.document),file.bytes);
+ for(const [row,col,text,rows,columns]of edits){
+  const anchor=tableOf(session.snapshot().document).rows[row].cells[col];
+  assert.deepEqual({...anchor.merge},{rows,columns});
+  const p=anchor.blocks[0],old=p.runs.map(r=>r.text??'').join('');
+  session.execute(replaceParagraphRange(session.snapshot(),p.id,0,old.length,text,'merge-'+row+'-'+col));
+ }
+ const edited=prepareWriterDocxSave(serializeDraft(session.snapshot().document),'compat-corpus',file.bytes);
+ const reopened=tableOf(openWriterDocx(edited,'compat-corpus','Merged').document);
+ for(const [row,col,text,rows,columns]of edits){
+  const a=reopened.rows[row].cells[col];assert.deepEqual({...a.merge},{rows,columns});assert.equal(a.blocks[0].runs.map(r=>r.text).join(''),text);
+  for(let r=row;r<row+rows;r++)for(let c=col;c<col+columns;c++)if(r!==row||c!==col){assert.equal(reopened.rows[r].cells[c].coveredBy,a.id);assert.equal(reopened.rows[r].cells[c].blocks.length,0);}
+ }
+ await write(name.replace('.docx','-edited.docx'),edited);
+}
+const invalidMerge=await inspect('invalid-merged-table.docx');assert.equal(invalidMerge.result.report.readOnly,true);assert.ok(invalidMerge.result.semanticFailure?.detail);assert.throws(()=>openWriterDocx(invalidMerge.bytes,'invalid','Invalid'));
 const ppt=await inspect('ordinary-shapes.pptx');assert.equal(ppt.result.report.readOnly,false,ppt.result.semanticFailure?.detail);
 const slides=cloneData(ppt.result.editableSlides);
 assert.equal(slides.slides[0].shapes[0].textFrame.autofit.mode,'shape');
 slides.slides[0].shapes[0].runs[0].text='编辑普通文本框';
 await write('shapes-edited.pptx',prepareSlidesSave('pptx',serializeDraft(slides),'compat-corpus',ppt.bytes));
 assert.throws(()=>writeLegacyPpt(slides));
-for(const [name,kind,expected]of [['merged-table.docx','word','Merged cell'],['advanced.docx','word','Read-only content'],['advanced.pptx','slides','文件']]){
+for(const [name,kind,expected]of [['advanced.docx','word','Read-only content'],['advanced.pptx','slides','文件']]){
  const {bytes,result}=await inspect(name);assert.equal(result.report.readOnly,true,name);assert.equal(result.editableWriter,undefined);assert.equal(result.editableSlides,undefined);
  assert.ok(result.semanticFailure?.detail,name);assert.equal(result.officeTextPreview.kind,kind);
  const paragraphs=result.officeTextPreview.pages.flatMap(p=>p.blocks.flatMap(b=>b.kind==='paragraph'?[b.text]:b.rows.flat()));

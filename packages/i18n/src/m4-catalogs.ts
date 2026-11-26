@@ -2,6 +2,8 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "writerMergeCells": "Merge cells",
+    "writerSplitCell": "Split merged cell",
     "homeNew": "New",
     "homeOtherFormats": "Other formats",
     "homeMore": "View all",
@@ -192,6 +194,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "writerMergeCells": "合并单元格",
+    "writerSplitCell": "拆分单元格",
     "homeNew": "新建",
     "homeOtherFormats": "其他格式",
     "homeMore": "查看全部",
@@ -382,6 +386,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "writerMergeCells": "合併儲存格",
+    "writerSplitCell": "分割儲存格",
     "homeNew": "新增",
     "homeOtherFormats": "其他格式",
     "homeMore": "查看全部",
@@ -572,6 +578,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "writerMergeCells": "セルの結合",
+    "writerSplitCell": "結合セルの分割",
     "homeNew": "新規",
     "homeOtherFormats": "その他の形式",
     "homeMore": "すべて表示",
@@ -762,6 +770,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "writerMergeCells": "셀 병합",
+    "writerSplitCell": "병합된 셀 분할",
     "homeNew": "새로 만들기",
     "homeOtherFormats": "기타 형식",
     "homeMore": "모두 보기",
@@ -952,6 +962,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "writerMergeCells": "Fusionner les cellules",
+    "writerSplitCell": "Fractionner la cellule fusionnée",
     "homeNew": "Nouveau",
     "homeOtherFormats": "Autres formats",
     "homeMore": "Tout afficher",
@@ -1142,6 +1154,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "writerMergeCells": "Zellen verbinden",
+    "writerSplitCell": "Verbundene Zelle teilen",
     "homeNew": "Neu",
     "homeOtherFormats": "Weitere Formate",
     "homeMore": "Alle anzeigen",
@@ -1332,6 +1346,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "writerMergeCells": "Combinar celdas",
+    "writerSplitCell": "Dividir celda combinada",
     "homeNew": "Nuevo",
     "homeOtherFormats": "Otros formatos",
     "homeMore": "Ver todo",
@@ -1522,6 +1538,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "writerMergeCells": "Mesclar células",
+    "writerSplitCell": "Dividir célula mesclada",
     "homeNew": "Novo",
     "homeOtherFormats": "Outros formatos",
     "homeMore": "Ver todos",
@@ -1712,6 +1730,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "writerMergeCells": "Unisci celle",
+    "writerSplitCell": "Dividi cella unita",
     "homeNew": "Nuovo",
     "homeOtherFormats": "Altri formati",
     "homeMore": "Mostra tutto",
@@ -1902,6 +1922,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "writerMergeCells": "Объединить ячейки",
+    "writerSplitCell": "Разделить объединённую ячейку",
     "homeNew": "Создать",
     "homeOtherFormats": "Другие форматы",
     "homeMore": "Показать все",
@@ -2092,6 +2114,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "writerMergeCells": "دمج الخلايا",
+    "writerSplitCell": "تقسيم الخلية المدمجة",
     "homeNew": "جديد",
     "homeOtherFormats": "تنسيقات أخرى",
     "homeMore": "عرض الكل",
@@ -2282,6 +2306,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "writerMergeCells": "מיזוג תאים",
+    "writerSplitCell": "פיצול תא ממוזג",
     "homeNew": "חדש",
     "homeOtherFormats": "פורמטים נוספים",
     "homeMore": "הצג הכול",
@@ -2472,6 +2498,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "writerMergeCells": "सेल मर्ज करें",
+    "writerSplitCell": "मर्ज किए गए सेल को विभाजित करें",
     "homeNew": "नया",
     "homeOtherFormats": "अन्य प्रारूप",
     "homeMore": "सभी देखें",
@@ -2662,6 +2690,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "writerMergeCells": "ผสานเซลล์",
+    "writerSplitCell": "แยกเซลล์ที่ผสาน",
     "homeNew": "สร้างใหม่",
     "homeOtherFormats": "รูปแบบอื่น",
     "homeMore": "ดูทั้งหมด",
@@ -2852,6 +2882,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "writerMergeCells": "Gộp ô",
+    "writerSplitCell": "Tách ô đã gộp",
     "homeNew": "Tạo mới",
     "homeOtherFormats": "Định dạng khác",
     "homeMore": "Xem tất cả",
@@ -3042,6 +3074,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "writerMergeCells": "Gabungkan sel",
+    "writerSplitCell": "Pisahkan sel gabungan",
     "homeNew": "Baru",
     "homeOtherFormats": "Format lainnya",
     "homeMore": "Lihat semua",
@@ -3232,6 +3266,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "writerMergeCells": "Gabungkan sel",
+    "writerSplitCell": "Pisahkan sel gabungan",
     "homeNew": "Baharu",
     "homeOtherFormats": "Format lain",
     "homeMore": "Lihat semua",
@@ -3422,6 +3458,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "writerMergeCells": "Hücreleri birleştir",
+    "writerSplitCell": "Birleştirilmiş hücreyi böl",
     "homeNew": "Yeni",
     "homeOtherFormats": "Diğer biçimler",
     "homeMore": "Tümünü göster",
@@ -3612,6 +3650,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "writerMergeCells": "Cellen samenvoegen",
+    "writerSplitCell": "Samengevoegde cel splitsen",
     "homeNew": "Nieuw",
     "homeOtherFormats": "Andere indelingen",
     "homeMore": "Alles weergeven",
@@ -3802,6 +3842,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "writerMergeCells": "Scal komórki",
+    "writerSplitCell": "Podziel scaloną komórkę",
     "homeNew": "Nowy",
     "homeOtherFormats": "Inne formaty",
     "homeMore": "Pokaż wszystkie",
@@ -3992,6 +4034,8 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "writerMergeCells": "Об’єднати клітинки",
+    "writerSplitCell": "Розділити об’єднану клітинку",
     "homeNew": "Створити",
     "homeOtherFormats": "Інші формати",
     "homeMore": "Показати всі",

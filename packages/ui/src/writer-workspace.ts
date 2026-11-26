@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, EMU_PER_TWIP, graphemeBoundaries, OfficeError } from '@office-ex/contracts';
 import { resolveTextStyle, writerEffectiveStyle, inlineText, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterBlock, type Paragraph, type Table, type ImageResource } from '@office-ex/core';
-import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation, insertImageAfter, insertImageAt, resizeInlineImage, removeInlineImage, setWriterPage, splitWriterSectionAfter, setParagraphMetrics, setWriterList, restartWriterList, setParagraphDirection, locateParagraph, writerTextGroup, textGroupPoint, textGroupOffset, replaceWriterRange, resolveWriterRange, formatWriterRange, type WriterRange, type WriterTextGroup } from '@office-ex/writer';
+import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation, hasMergedTableCells, mergeTableCells, splitTableCell, insertImageAfter, insertImageAt, resizeInlineImage, removeInlineImage, setWriterPage, splitWriterSectionAfter, setParagraphMetrics, setWriterList, restartWriterList, setParagraphDirection, locateParagraph, writerTextGroup, textGroupPoint, textGroupOffset, replaceWriterRange, resolveWriterRange, formatWriterRange, type WriterRange, type WriterTextGroup } from '@office-ex/writer';
 import { layoutWriter, hitTestWriterPage, writerCaretBox, writerSelectionBoxes, type WriterLayout } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
@@ -211,7 +211,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   }
   function effectiveSelectedStyle():DeepReadonly<TextStyle>|undefined{
     const selection=currentSelection(),p=selectedParagraph();if(!selection||!p)return undefined;
-    const doc=modelOf(host.snapshot()),base=resolveTextStyle(doc.defaultTextStyle,doc.styles,(p.styleId??doc.defaultParagraphStyleId)?[p.styleId??doc.defaultParagraphStyleId!]:[],p.style??{}).style;
+    const doc=modelOf(host.snapshot()),base=writerEffectiveStyle(doc,p);
     let cursor=0;
     for(const r of p.runs){const end=cursor+inlineText(r).length;
       if(r.type==='text'&&selection.start<=end&&(selection.start<end||selection.start===selection.end))return resolveTextStyle(base,doc.styles,r.styleId?[r.styleId]:[],r.style??{}).style;cursor=end;
@@ -223,7 +223,16 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     for(const action of actions)action.button.disabled=!selection||host.composing()||!!action.range&&selection.start===selection.end&&!selection.cross||!!action.enabled&&!action.enabled();
     nativeImageSync?.();
     const tableContext=contextTable();
-    for(const input of tableInputs)input.disabled=host.composing()||!selection||(input.id==='writer-table-width'?!tableContext:!!tableContext);
+    for(const input of tableInputs){
+      const mergeField=input.id==='writer-table-merge-rows'||input.id==='writer-table-merge-columns';
+      input.disabled=host.composing()||!selection||(mergeField?!mergeAnchor():input.id==='writer-table-width'?!tableContext:!!tableContext);
+      if(mergeField&&tableContext&&document.activeElement!==input){
+        const count=input.id==='writer-table-merge-rows'?tableContext.table.rows.length-tableContext.row:tableContext.table.columnWidths.length-tableContext.column;
+        input.max=String(count);if(input.valueAsNumber>count)input.value=String(count);
+      }
+    }
+    const mergeButton=root.querySelector<HTMLButtonElement>('#writer-table-merge');
+    if(mergeButton)mergeButton.disabled=!selection||host.composing()||!canMerge();
     const width=root.querySelector<HTMLInputElement>('#writer-table-width');if(width&&document.activeElement!==width)width.value=tableContext?String(tableContext.table.columnWidths[tableContext.column]!/EMU_PER_POINT):'';
     const border=root.querySelector<HTMLButtonElement>('#writer-table-border');if(border)border.setAttribute('aria-pressed',String(!!tableContext?.table.border));
     for(const field of formatFields)field.element.disabled=!selection||host.composing()||field.range&&selection.start===selection.end&&!selection.cross||!!host.legacyWriter&&field.element.dataset.modernOnly==='true';
@@ -340,8 +349,9 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   function focusTable(tableId:string,row=0,column=0):void{
     const table=modelOf(host.snapshot()).sections.flatMap(s=>s.blocks).find(b=>b.id===tableId);
     if(table?.type!=='table')return;
-    const cell=table.rows[Math.min(row,table.rows.length-1)]!.cells[Math.min(column,table.columnWidths.length-1)]!;
-    const paragraph=cell.blocks.find(b=>b.type==='paragraph');
+    const slot=table.rows[Math.min(row,table.rows.length-1)]!.cells[Math.min(column,table.columnWidths.length-1)]!;
+    const cell=slot.coveredBy?table.rows.flatMap(r=>r.cells).find(c=>c.id===slot.coveredBy):slot;
+    const paragraph=cell?.blocks.find(b=>b.type==='paragraph');
     if(paragraph){state.paragraphId=paragraph.id;state.start=0;state.end=0;state.focus=true;}
   }
   function changeTable(make:(c:NonNullable<ReturnType<typeof contextTable>>)=>DocumentCommand,rowDelta=0,colDelta=0):void{
@@ -355,10 +365,31 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
       focusTable(prefix+'-1');host.render();
     }
   },false,()=>!contextTable(),tableBar);
-  tool('writerAddRow','writer-table-add-row',()=>changeTable(c=>insertTableRow(host.snapshot(),c.tableId,c.row+1,crypto.randomUUID()),1),false,()=>!!contextTable(),tableBar);
-  tool('writerDeleteRow','writer-table-delete-row',()=>changeTable(c=>deleteTableRow(host.snapshot(),c.tableId,c.row)),false,()=>!!contextTable()&&contextTable()!.table.rows.length>1,tableBar);
-  tool('writerAddColumn','writer-table-add-column',()=>changeTable(c=>insertTableColumn(host.snapshot(),c.tableId,c.column+1,crypto.randomUUID()),0,1),false,()=>!!contextTable(),tableBar);
-  tool('writerDeleteColumn','writer-table-delete-column',()=>changeTable(c=>deleteTableColumn(host.snapshot(),c.tableId,c.column)),false,()=>!!contextTable()&&contextTable()!.table.columnWidths.length>1,tableBar);
+  function unmergedTable(){const c=contextTable();return c&&!hasMergedTableCells(c.table)?c:undefined;}
+  tool('writerAddRow','writer-table-add-row',()=>changeTable(c=>insertTableRow(host.snapshot(),c.tableId,c.row+1,crypto.randomUUID()),1),false,()=>!!unmergedTable(),tableBar);
+  tool('writerDeleteRow','writer-table-delete-row',()=>changeTable(c=>deleteTableRow(host.snapshot(),c.tableId,c.row)),false,()=>!!unmergedTable()&&unmergedTable()!.table.rows.length>1,tableBar);
+  tool('writerAddColumn','writer-table-add-column',()=>changeTable(c=>insertTableColumn(host.snapshot(),c.tableId,c.column+1,crypto.randomUUID()),0,1),false,()=>!!unmergedTable(),tableBar);
+  tool('writerDeleteColumn','writer-table-delete-column',()=>changeTable(c=>deleteTableColumn(host.snapshot(),c.tableId,c.column)),false,()=>!!unmergedTable()&&unmergedTable()!.table.columnWidths.length>1,tableBar);
+  // The current cell is the top-left of a merge rectangle. Keep the two
+  // dimensions explicit, so no ambiguous cross-cell text selection is needed.
+  function mergeAnchor(){
+    const c=contextTable();if(!c||host.legacyWriter)return undefined;
+    const anchor=c.table.rows[c.row]!.cells[c.column]!;
+    return !anchor.merge&&!anchor.coveredBy?c:undefined;
+  }
+  const mergeRows=tableField('writerTableRows','writer-table-merge-rows','1',1,500,'1');
+  const mergeCols=tableField('writerTableColumns','writer-table-merge-columns','2',1,64,'1');
+  function canMerge(){
+    const c=mergeAnchor(),rows=mergeRows.valueAsNumber,cols=mergeCols.valueAsNumber;
+    if(!c||!Number.isInteger(rows)||!Number.isInteger(cols)||rows<1||cols<1||rows*cols<2||c.row+rows>c.table.rows.length||c.column+cols>c.table.columnWidths.length)return false;
+    for(let r=c.row;r<c.row+rows;r++)for(let col=c.column;col<c.column+cols;col++){const slot=c.table.rows[r]!.cells[col]!;if(slot.merge||slot.coveredBy)return false;}
+    return true;
+  }
+  mergeRows.oninput=syncControls;mergeCols.oninput=syncControls;
+  tool('writerMergeCells','writer-table-merge',()=>changeTable(c=>mergeTableCells(host.snapshot(),c.tableId,c.row,c.column,mergeRows.valueAsNumber,mergeCols.valueAsNumber)),false,canMerge,tableBar);
+  tool('writerSplitCell','writer-table-split-cell',()=>changeTable(c=>splitTableCell(host.snapshot(),c.tableId,c.row,c.column,crypto.randomUUID())),false,()=>{
+    const c=contextTable();return !host.legacyWriter&&!!c?.table.rows[c.row]!.cells[c.column]!.merge;
+  },tableBar);
   const widthField=tableField('writerColumnWidth','writer-table-width','',12,1584,'0.05');
   widthField.onchange=()=>safe(()=>{const n=widthField.valueAsNumber;if(!Number.isFinite(n)||n<12)throw new OfficeError('invalid','Invalid column width');changeTable(c=>resizeTableColumn(host.snapshot(),c.tableId,c.column,Math.round(n*20)*EMU_PER_TWIP));});
   tool('writerTableBorder','writer-table-border',()=>changeTable(c=>setTableBorder(host.snapshot(),c.tableId,c.table.border?null:{width:6350,color:{kind:'rgba',red:0,green:0,blue:0,alpha:255}})),false,()=>!!contextTable(),tableBar);
@@ -552,8 +583,10 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     for(let row=0;row<table.rows.length;row++){
       const tr=node('tr');body.append(tr);
       for(let column=0;column<table.columnWidths.length;column++){
-        const cell=table.rows[row]!.cells[column]!,td=node('td');td.dataset.cellId=cell.id;tr.append(td);
-        for(const p of cell.blocks)renderParagraph(p,td,{row,column});
+        const cell=table.rows[row]!.cells[column]!;if(cell.coveredBy)continue;
+        const td=node('td');td.dataset.cellId=cell.id;
+        if(cell.merge){td.rowSpan=cell.merge.rows;td.colSpan=cell.merge.columns;}
+        tr.append(td);for(const p of cell.blocks)renderParagraph(p,td,{row,column});
       }
     }
     wrap.append(grid);edit.append(wrap);
@@ -660,6 +693,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     ]},
     {id:'insert',label:'ribbonInsert',groups:[
       {label:'writerTable',rows:[pick('writer-table-rows','writer-table-columns','writer-insert-table'),pick('writer-table-add-row','writer-table-delete-row','writer-table-add-column','writer-table-delete-column')]},
+      {label:'writerMergeCells',rows:[pick('writer-table-merge-rows','writer-table-merge-columns'),pick('writer-table-merge','writer-table-split-cell')]},
       {label:'ribbonTableFormat',rows:[pick('writer-table-width','writer-table-border'),pick('writer-table-delete')]},
       {label:'ribbonPictures',rows:[pick('writer-insert-image','writer-insert-inline-image','writer-native-image-remove'),pick('writer-native-image-width')]},
       {label:'ribbonBreaks',rows:[pick('writer-split','writer-section-break')]}

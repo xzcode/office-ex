@@ -31,7 +31,9 @@ export interface DocumentBase {
 export interface TextRun { id: string; type: 'text'; text: string; styleId?: string; style?: TextStyle }
 export type Inline = TextRun | { id: string; type: 'tab' | 'line-break' } | { id: string; type: 'image'; resourceId: string; width: number; height: number; drawingName?:string; pictureName?:string };
 export interface Paragraph { id: string; type: 'paragraph'; styleId?: string; style?: TextStyle; runs: Inline[] }
-export interface TableCell { id: string; blocks: WriterBlock[] }
+/** Merged cells occupy a rectangular grid; only the top-left anchor owns
+ * content. Covered slots reference that anchor and never hold hidden blocks. */
+export interface TableCell { id: string; blocks: WriterBlock[]; merge?: {rows:number;columns:number}; coveredBy?:string }
 export interface Table { id: string; type: 'table'; nativeTable?: {styleId?:'TableNormal'|'TableGrid'; autoWidth?:true; autoLayout?:true; directPadding?:true; directBorder?:true; look?:number}; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[]; cellPadding?: {top:number;right:number;bottom:number;left:number}; border?: {width:number;color:Color} }
 export type WriterBlock = Paragraph | Table | { id: string; type: 'page-break' };
 export interface WriterSection { id: string; pageExtras?: {headerDistance?:number;footerDistance?:number;columnSpace?:number;docGridLinePitch?:number}; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
@@ -302,10 +304,29 @@ export function validateDocument(value: unknown): OfficeDocument {
       assert(widths.length<=64&&widths.reduce<number>((sum,w)=>sum+Number(w),0)<=Number.MAX_SAFE_INTEGER,'limit','Table width budget exceeded');
       if(value.cellPadding!==undefined){const pad=object(value.cellPadding,['top','right','bottom','left']);for(const key of ['top','right','bottom','left'])integer(pad[key],0,12_700*144);}
       if(value.border!==undefined){const border=object(value.border,['width','color']);integer(border.width,1,12_700*12);validateColor(border.color);}
-      const rows=list(value.rows,1);assert(rows.length<=500&&rows.length*widths.length<=10000,'limit','Table cell budget exceeded');rows.forEach((candidate) => {
+      const rows=list(value.rows,1);assert(rows.length<=500&&rows.length*widths.length<=10000,'limit','Table cell budget exceeded');
+      const coverage:(string|undefined)[][]=rows.map(()=>Array<string|undefined>(widths.length).fill(undefined));
+      rows.forEach((candidate,ri) => {
         const row = object(candidate, ['id', 'cells']); id(row.id);
         const cells = list(row.cells); assert(cells.length === widths.length, 'invalid', 'Non-rectangular table');
-        cells.forEach((candidate) => { const cell = object(candidate, ['id', 'blocks']); id(cell.id); list(cell.blocks, 1).forEach((item) => block(item, depth + 1)); });
+        cells.forEach((candidate,ci) => {
+          const cell = object(candidate, ['id', 'blocks','merge','coveredBy']); id(cell.id);
+          const expected=coverage[ri]![ci];
+          if(expected!==undefined){
+            assert(cell.coveredBy===expected&&cell.merge===undefined&&list(cell.blocks).length===0,'invalid','Invalid or content-bearing covered table slot');
+            return;
+          }
+          assert(cell.coveredBy===undefined,'invalid','Dangling covered table slot');
+          if(cell.merge!==undefined){
+            const m=object(cell.merge,['rows','columns']);integer(m.rows,1,rows.length-ri);integer(m.columns,1,widths.length-ci);
+            const h=Number(m.rows),w=Number(m.columns);assert(h*w>1,'invalid','Empty table merge');
+            for(let r=ri;r<ri+h;r++)for(let c=ci;c<ci+w;c++){
+              if(r===ri&&c===ci)continue;
+              assert(coverage[r]![c]===undefined,'invalid','Overlapping table merges');coverage[r]![c]=String(cell.id);
+            }
+          }
+          list(cell.blocks,1).forEach(item=>block(item,depth+1));
+        });
       });
     } else assert(value.type === 'page-break' && Object.keys(value).length === 2, 'invalid', 'Invalid writer block');
   };

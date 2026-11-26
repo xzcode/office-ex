@@ -253,13 +253,20 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
       assert(totalWidth<=usableWidth,'unsupported','Table exceeds page content width');
       assert(table.columnWidths.every(w=>w>pad.left+pad.right),'unsupported','Table cell has no content width');
       warnings.add('writer.table-row-pagination');
-      for(const row of table.rows){
+      // Lay out only owning cells. A row-spanning anchor is a single
+      // rectangle; covered slots have neither text nor interior borders.
+      const xPositions=[m.left];
+      for(const width of table.columnWidths)xPositions.push(xPositions.at(-1)!+width);
+      type LaidCell={box:WriterTableCellBox;lines:WriterLine[];height:number;rowSpan:number};
+      const laidRows:LaidCell[][]=table.rows.map(()=>[]);
+      const heights=table.rows.map(()=>Math.max(1,pad.top+pad.bottom));
+      for(const [ri,row] of table.rows.entries()){
         check();assert(++blocks<=10000,'limit','Writer table row budget exceeded');
-        const rowCells:{box:WriterTableCellBox;lines:WriterLine[];height:number}[]=[];
-        let x=m.left,rowHeight=0;
         for(let col=0;col<row.cells.length;col++){
-          const cell=row.cells[col]!,width=table.columnWidths[col]!,lines:WriterLine[]=[];let localY=pad.top;
-          const addSpace=(n:number)=>{localY+=n;assert(localY+pad.bottom<=usableHeight,'unsupported','Table row exceeds page content height');};
+          const cell=row.cells[col]!;if(cell.coveredBy)continue;
+          const rowSpan=cell.merge?.rows??1,colSpan=cell.merge?.columns??1;
+          const x=xPositions[col]!,width=xPositions[col+colSpan]!-x,lines:WriterLine[]=[];let localY=pad.top;
+          const addSpace=(n:number)=>{localY+=n;assert(localY+pad.bottom<=usableHeight,'unsupported','Table cell exceeds page content height');};
           const place=(line:WriterLine)=>{
             assert(line.x+line.width<=x+width-pad.right,'unsupported','Table cell line exceeds content width');
             lines.push({...line,y:localY,baseline:localY+line.baseline,images:line.images.map(image=>({...image,y:image.y+localY}))});addSpace(line.height);
@@ -269,18 +276,37 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
             layParagraph(child,x+pad.left,width-pad.left-pad.right,addSpace,place,cell.blocks[childIndex-1],cell.blocks[childIndex+1]);
           }
           const h=localY+pad.bottom;
-          assert(h>0&&h<=usableHeight,'unsupported','Table row exceeds page content height');
-          rowHeight=Math.max(rowHeight,h);
+          assert(h>0&&h<=usableHeight,'unsupported','Table cell exceeds page content height');
+          if(rowSpan===1)heights[ri]=Math.max(heights[ri]!,h);
           const box:WriterTableCellBox={tableId:table.id,rowId:row.id,cellId:cell.id,paragraphIds:cell.blocks.map(b=>b.id),x,y:0,width,height:0,...(table.border?{border:table.border}:{})};
-          rowCells.push({box,lines,height:h});x+=width;
+          laidRows[ri]!.push({box,lines,height:h,rowSpan});
         }
-        // Keep every row together. Oversized rows are rejected rather than clipped.
-        if(y+rowHeight>spec.height-m.bottom)advancePage();
-        for(const item of rowCells){
-          page.tableCells.push({...item.box,y,height:rowHeight});
-          for(const line of item.lines){const images=line.images.map(image=>({...image,y:image.y+y}));page.lines.push({...line,y:y+line.y,baseline:y+line.baseline,images});page.images.push(...images);}
+      }
+      // Satisfy all spanning height constraints without shrinking rows.
+      // Share deficits evenly; subsequent spans can only increase heights.
+      for(const [ri,cells] of laidRows.entries())for(const item of cells){
+        if(item.rowSpan===1)continue;
+        const current=heights.slice(ri,ri+item.rowSpan).reduce((a,b)=>a+b,0),extra=Math.max(0,item.height-current);
+        if(extra)for(let k=ri;k<ri+item.rowSpan;k++)heights[k]!+=extra/item.rowSpan;
+      }
+      const offsets=[0];for(const h of heights)offsets.push(offsets.at(-1)!+h);
+      // A vertical merge connects rows transitively. Keep each connected
+      // row group on a single page; fail explicitly instead of clipping
+      // or splitting a merged cell across pages.
+      for(let start=0;start<table.rows.length;){
+        check();let end=start+1;
+        for(let r=start;r<end;r++)for(const item of laidRows[r]!)end=Math.max(end,r+item.rowSpan);
+        const groupHeight=offsets[end]!-offsets[start]!;
+        assert(groupHeight<=usableHeight,'unsupported','Merged table row group exceeds page content height');
+        if(y+groupHeight>spec.height-m.bottom)advancePage();
+        for(let r=start;r<end;r++){
+          const top=y+offsets[r]!-offsets[start]!;
+          for(const item of laidRows[r]!){
+            page.tableCells.push({...item.box,y:top,height:offsets[r+item.rowSpan]!-offsets[r]!});
+            for(const line of item.lines){const images=line.images.map(image=>({...image,y:image.y+top}));page.lines.push({...line,y:top+line.y,baseline:top+line.baseline,images});page.images.push(...images);}
+          }
         }
-        y+=rowHeight;
+        y+=groupHeight;start=end;
       }
     };
     for(const [blockIndex,block] of section.blocks.entries()){

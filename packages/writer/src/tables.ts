@@ -26,11 +26,20 @@ function counts(rows:number,cols:number):void{
 function index(n:number,max:number,allowEnd=false):void{assert(Number.isInteger(n)&&n>=0&&n<(allowEnd?max+1:max),'invalid','Invalid table index');}
 function allocate(prefix:string):()=>string{assertId(prefix);assert(prefix.length<=105,'invalid','Table operation ID too long');let n=0;return ()=>prefix+'-'+(++n);}
 function cell(next:()=>string,styleId?:string):TableCell{return {id:next(),blocks:[{id:next(),type:'paragraph',...(styleId?{styleId}:{}),runs:[{id:next(),type:'text',text:''}]}]};}
+/** Structural row/column editing is deliberately unavailable until it can
+ * adjust spans without losing source cells. Cell content and column widths
+ * remain editable. */
+export function hasMergedTableCells(table:DeepReadonly<Table>):boolean{return table.rows.some(row=>row.cells.some(c=>!!c.merge));}
+function requireUnmerged(table:DeepReadonly<Table>):void{assert(!hasMergedTableCells(table),'unsupported','Split merged cells before inserting or deleting table rows or columns');}
 function widthBounds(table:DeepReadonly<Table>,widths:readonly number[],max:number):void{
   const pad=table.cellPadding??DEFAULT_TABLE_PADDING;
   assert(widths.every(w=>Number.isSafeInteger(w)&&w%EMU_PER_TWIP===0&&w>=Math.max(TABLE_LIMITS.minWidth,pad.left+pad.right+EMU_PER_TWIP)),'invalid','Column width is too small or not a whole twip');
   assert(widths.reduce((a,b)=>a+b,0)<=max,'invalid','Table width exceeds page content width');
-  for(const row of table.rows)for(let col=0;col<row.cells.length;col++)for(const block of row.cells[col]!.blocks)if(block.type==='paragraph')for(const run of block.runs)if(run.type==='image')assert(run.width<=(widths[col]??0)-pad.left-pad.right,'unsupported','Resize the image before narrowing its column');
+  for(const row of table.rows)for(let col=0;col<row.cells.length;col++){
+    const c=row.cells[col]!;if(c.coveredBy)continue;
+    const width=widths.slice(col,col+(c.merge?.columns??1)).reduce((a,b)=>a+b,0);
+    for(const block of c.blocks)if(block.type==='paragraph')for(const run of block.runs)if(run.type==='image')assert(run.width<=width-pad.left-pad.right,'unsupported','Resize the image before narrowing its cell');
+  }
 }
 function replace(snapshot:DocumentSnapshot,loc:TableLocation,table:Table):DocumentCommand{
   return patchCommand(snapshot,'WRT-03',[{op:'set',path:loc.path,value:table}]);
@@ -49,18 +58,18 @@ export function insertTableAfter(snapshot:DocumentSnapshot,paragraphId:string,ro
   assert(false,'invalid','Table insertion paragraph not found');
 }
 export function insertTableRow(snapshot:DocumentSnapshot,id:string,at:number,operationId:string):DocumentCommand{
-  const loc=get(snapshot,id),table=cloneData(loc.table) as Table;index(at,table.rows.length,true);counts(table.rows.length+1,table.columnWidths.length);
+  const loc=get(snapshot,id),table=cloneData(loc.table) as Table;requireUnmerged(table);index(at,table.rows.length,true);counts(table.rows.length+1,table.columnWidths.length);
   const next=allocate(operationId);
   table.rows.splice(at,0,{id:next(),cells:table.columnWidths.map(()=>cell(next,model(snapshot).defaultParagraphStyleId))});
   return replace(snapshot,loc,table);
 }
 export function deleteTableRow(snapshot:DocumentSnapshot,id:string,at:number):DocumentCommand{
-  const loc=get(snapshot,id),table=cloneData(loc.table) as Table;index(at,table.rows.length);assert(table.rows.length>1,'invalid','Delete the table explicitly to remove its final row');
+  const loc=get(snapshot,id),table=cloneData(loc.table) as Table;requireUnmerged(table);index(at,table.rows.length);assert(table.rows.length>1,'invalid','Delete the table explicitly to remove its final row');
   table.rows.splice(at,1);return replace(snapshot,loc,table);
 }
 /** Split an adjacent column to insert one without expanding the table. */
 export function insertTableColumn(snapshot:DocumentSnapshot,id:string,at:number,operationId:string):DocumentCommand{
-  const loc=get(snapshot,id),table=cloneData(loc.table) as Table;index(at,table.columnWidths.length,true);counts(table.rows.length,table.columnWidths.length+1);
+  const loc=get(snapshot,id),table=cloneData(loc.table) as Table;requireUnmerged(table);index(at,table.columnWidths.length,true);counts(table.rows.length,table.columnWidths.length+1);
   const neighbor=at===table.columnWidths.length?at-1:at,original=table.columnWidths[neighbor]!,half=Math.floor(original/(2*EMU_PER_TWIP))*EMU_PER_TWIP;
   table.columnWidths[neighbor]=original-half;table.columnWidths.splice(at,0,half);
   const next=allocate(operationId);for(const row of table.rows)row.cells.splice(at,0,cell(next,model(snapshot).defaultParagraphStyleId));
@@ -68,7 +77,7 @@ export function insertTableColumn(snapshot:DocumentSnapshot,id:string,at:number,
   return replace(snapshot,loc,table);
 }
 export function deleteTableColumn(snapshot:DocumentSnapshot,id:string,at:number):DocumentCommand{
-  const loc=get(snapshot,id),table=cloneData(loc.table) as Table;index(at,table.columnWidths.length);assert(table.columnWidths.length>1,'invalid','Delete the table explicitly to remove its final column');
+  const loc=get(snapshot,id),table=cloneData(loc.table) as Table;requireUnmerged(table);index(at,table.columnWidths.length);assert(table.columnWidths.length>1,'invalid','Delete the table explicitly to remove its final column');
   const removed=table.columnWidths.splice(at,1)[0]!,neighbor=Math.min(at,table.columnWidths.length-1);
   table.columnWidths[neighbor]!+=removed;for(const row of table.rows)row.cells.splice(at,1);
   return replace(snapshot,loc,table);
@@ -91,6 +100,42 @@ export function deleteTable(snapshot:DocumentSnapshot,id:string):DocumentCommand
   const loc=get(snapshot,id),section=model(snapshot).sections[loc.section]!;
   assert(section.blocks.length>1,'invalid','A section needs at least one block');
   return patchCommand(snapshot,'WRT-03',[{op:'splice',path:['sections',loc.section,'blocks'],index:loc.index,deleteCount:1,items:[]}]);
+}
+/** Merge an unmerged rectangle, retaining every original paragraph and
+ * its ID in row-major order. Covered cells contain no duplicate content. */
+export function mergeTableCells(snapshot:DocumentSnapshot,id:string,row:number,column:number,rows:number,columns:number):DocumentCommand{
+  const loc=get(snapshot,id),table=cloneData(loc.table) as Table;
+  index(row,table.rows.length);index(column,table.columnWidths.length);counts(rows,columns);
+  assert(rows*columns>1&&row+rows<=table.rows.length&&column+columns<=table.columnWidths.length,'invalid','Merge exceeds table bounds');
+  const anchor=table.rows[row]!.cells[column]!,blocks:TableCell['blocks']=[];
+  for(let r=row;r<row+rows;r++)for(let c=column;c<column+columns;c++){
+    const cell=table.rows[r]!.cells[c]!;assert(!cell.merge&&!cell.coveredBy,'unsupported','Merge overlaps an existing merge');
+    blocks.push(...cell.blocks);
+  }
+  anchor.blocks=blocks;anchor.merge={rows,columns};
+  for(let r=row;r<row+rows;r++)for(let c=column;c<column+columns;c++){
+    if(r===row&&c===column)continue;
+    const cell=table.rows[r]!.cells[c]!;cell.blocks=[];cell.coveredBy=anchor.id;
+  }
+  widthBounds(table,table.columnWidths,loc.maxWidth);
+  return replace(snapshot,loc,table);
+}
+/** Split a merged rectangle. All existing content stays in its top-left
+ * cell; the other cells receive new empty paragraphs. Undo restores the
+ * original merge and exact stable content identities. */
+export function splitTableCell(snapshot:DocumentSnapshot,id:string,row:number,column:number,operationId:string):DocumentCommand{
+  const loc=get(snapshot,id),table=cloneData(loc.table) as Table;
+  index(row,table.rows.length);index(column,table.columnWidths.length);
+  const anchor=table.rows[row]!.cells[column]!,m=anchor.merge;
+  assert(m&&!anchor.coveredBy,'invalid','Select the merged cell anchor');
+  const next=allocate(operationId),styleId=model(snapshot).defaultParagraphStyleId;
+  delete anchor.merge;
+  for(let r=row;r<row+m.rows;r++)for(let c=column;c<column+m.columns;c++){
+    if(r===row&&c===column)continue;
+    const slot=table.rows[r]!.cells[c]!;delete slot.coveredBy;slot.blocks=[{id:next(),type:'paragraph',...(styleId?{styleId}:{}),runs:[{id:next(),type:'text',text:''}]}];
+  }
+  widthBounds(table,table.columnWidths,loc.maxWidth);
+  return replace(snapshot,loc,table);
 }
 /** Locate a cell by paragraph ID; source coordinates stay stable until a structural edit. */
 export function tableCellLocation(snapshot:DocumentSnapshot,paragraphId:string):{tableId:string;row:number;column:number;cellId:string}|undefined{

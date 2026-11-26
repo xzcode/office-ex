@@ -26,7 +26,9 @@ export function locateParagraph(snapshot:DocumentSnapshot,id:string):Location{
       }
       if(p.type==='table'&&!inCell)for(let row=0;row<p.rows.length;row++)for(let col=0;col<p.rows[row]!.cells.length;col++){
         const pad=p.cellPadding??{top:38100,bottom:38100,left:57150,right:57150};
-        const found=find(p.rows[row]!.cells[col]!.blocks,section,[...parent,block,'rows',row,'cells',col,'blocks'],true,p.columnWidths[col]!-pad.left-pad.right,contentHeight-pad.top-pad.bottom);
+        const cell=p.rows[row]!.cells[col]!;if(cell.coveredBy)continue;
+        const width=p.columnWidths.slice(col,col+(cell.merge?.columns??1)).reduce((a,b)=>a+b,0);
+        const found=find(cell.blocks,section,[...parent,block,'rows',row,'cells',col,'blocks'],true,width-pad.left-pad.right,contentHeight-pad.top-pad.bottom);
         if(found)return found;
       }
     }

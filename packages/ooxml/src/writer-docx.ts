@@ -236,18 +236,50 @@ function readTable(el:Element,id:string,maxWidth:number,read:(p:Element)=>Writer
   const gridWidth=columnWidths.reduce((a,b)=>a+b,0);
   valid((native.autoWidth||gridWidth===width)&&gridWidth<=maxWidth&&columnWidths.every(w=>w>padding!.left+padding!.right),'Invalid table grid or content width');
   const rows=children.slice(2);valid(rows.length>=1&&rows.length<=500&&rows.length*columns.length<=10000,'Table cell budget exceeded');charge(rows.length*columns.length);
-  return {id,type:'table',columnWidths,cellPadding:padding,...(border?{border}:{}),...(Object.keys(native).length?{nativeTable:native}:{}),rows:rows.map((row,ri)=>{
-    requireElement(row,'tr');attrs(row);const cells=elements(row);valid(cells.length===columns.length,'Non-rectangular or merged table');
-    return {id:id+'-row-'+ri,cells:cells.map((cell,ci)=>{
+  type Cell=Table['rows'][number]['cells'][number];
+  type Vertical={anchor:Cell;span:number};
+  let previous=new Map<number,Vertical>();
+  const started:Cell[]=[];
+  const resultRows:Table['rows']=rows.map((row,ri)=>{
+    requireElement(row,'tr');attrs(row);const cells=elements(row);valid(cells.length>0&&cells.length<=columns.length,'Invalid table row cell count');
+    const slots:Cell[]=[],active=new Map<number,Vertical>();let ci=0;
+    for(const cell of cells){
       requireElement(cell,'tc');attrs(cell);const body=elements(cell);
       valid(body.length>=2&&isW(body[0]!,'tcPr'),'Explicit cell properties and paragraph required');
-      const tcPr=body[0]!;attrs(tcPr);const items=elements(tcPr);
-      valid(items.length===1&&isW(items[0]!,'tcW')&&dxa(items[0]!,1)===columnWidths[ci],'Cell width differs from grid or unsupported cell properties');
-      const blocks=body.slice(1).map(p=>{requireElement(p,'p');const block=read(p);valid(block.type==='paragraph','Page break in table cell');
-        for(const run of block.runs)if(run.type==='image')valid(run.width<=columnWidths[ci]!-padding!.left-padding!.right,'Image exceeds cell width');return block;});
-      return {id:id+'-cell-'+ri+'-'+ci,blocks};
-    })};
-  })};
+      const tcPr=body[0]!;attrs(tcPr);let cellWidth:number|undefined,span=1,vertical:'restart'|'continue'|undefined;
+      const seen=new Set<string>();
+      for(const item of elements(tcPr)){
+        const n=item.localName;valid(item.namespaceURI===W&&n!==null&&!seen.has(n),'Duplicate or foreign cell property');seen.add(n);
+        if(n==='tcW')cellWidth=dxa(item,1);
+        else if(n==='gridSpan'){attrs(item,['w:val']);empty(item);span=numberProp(item,'val',1,64);}
+        else if(n==='vMerge'){attrs(item,['w:val']);empty(item);const v=prop(item,'val')??'continue';valid(v==='restart'||v==='continue','Unsupported vertical merge mode');vertical=v;}
+        else unsupported('Unsupported table cell property '+n);
+      }
+      valid(ci+span<=columns.length,'Cell span exceeds table grid');
+      const width=columnWidths.slice(ci,ci+span).reduce((a,b)=>a+b,0);
+      valid(cellWidth===width,'Cell width differs from its grid span');
+      const slotId=(c:number)=>id+'-cell-'+ri+'-'+c;
+      if(vertical==='continue'){
+        const chain=previous.get(ci);valid(chain&&chain.span===span&&chain.anchor.merge,'Vertical merge has no matching preceding anchor');
+        // A continuation may not hide text, drawings, paragraph styling, or
+        // nested content. Only Word's empty continuation paragraph is admitted.
+        valid(body.length===2&&isW(body[1]!,'p'),'Non-empty vertical merge continuation');attrs(body[1]!);empty(body[1]!);
+        chain.anchor.merge.rows++;active.set(ci,chain);
+        for(let c=ci;c<ci+span;c++)slots.push({id:slotId(c),blocks:[],coveredBy:chain.anchor.id});
+      }else{
+        const blocks=body.slice(1).map(p=>{requireElement(p,'p');const block=read(p);valid(block.type==='paragraph','Page break in table cell');
+          for(const run of block.runs)if(run.type==='image')valid(run.width<=width-padding!.left-padding!.right,'Image exceeds cell width');return block;});
+        const anchor:Cell={id:slotId(ci),blocks,...(span>1||vertical==='restart'?{merge:{rows:1,columns:span}}:{})};
+        slots.push(anchor);for(let c=ci+1;c<ci+span;c++)slots.push({id:slotId(c),blocks:[],coveredBy:anchor.id});
+        if(vertical==='restart'){active.set(ci,{anchor,span});started.push(anchor);}
+      }
+      ci+=span;
+    }
+    valid(ci===columns.length,'Non-rectangular table row');previous=active;
+    return {id:id+'-row-'+ri,cells:slots};
+  });
+  valid(started.every(c=>c.merge!.rows>1),'Vertical merge restart without continuation');
+  return {id,type:'table',columnWidths,cellPadding:padding,...(border?{border}:{}),...(Object.keys(native).length?{nativeTable:native}:{}),rows:resultRows};
 }
 function writeTable(table:DeepReadonly<Table>,maxWidth:number,write:(p:DeepReadonly<Paragraph>)=>string,charge:(n:number)=>void,profile?:DocxStyleProfile):string{
   const pad=table.cellPadding??TABLE_DEFAULT_PADDING;
@@ -268,10 +300,22 @@ function writeTable(table:DeepReadonly<Table>,maxWidth:number,write:(p:DeepReado
   properties+=tag('tblLayout',{type:native?.autoLayout?'autofit':'fixed'});
   if(!builtin||native?.directPadding||canonicalData(pad)!==canonicalData(BUILTIN_TABLE_PADDING))properties+='<w:tblCellMar>'+CELL_EDGES.map(edge=>tag(edge,{w:exact(pad[edge]),type:'dxa'})).join('')+'</w:tblCellMar>';
   if(native?.look!==undefined)properties+=lookTag(native.look);
-  return '<w:tbl><w:tblPr>'+properties+'</w:tblPr><w:tblGrid>'+widths.map(w=>tag('gridCol',{w})).join('')+'</w:tblGrid>'+table.rows.map(row=>'<w:tr>'+row.cells.map((cell,i)=>{
+  const anchors=new Map<string,{row:number;column:number;cell:DeepReadonly<Table['rows'][number]['cells'][number]>}>();
+  for(const [ri,row] of table.rows.entries())for(const [ci,cell] of row.cells.entries())if(cell.merge)anchors.set(cell.id,{row:ri,column:ci,cell});
+  function cellProperties(i:number,span:number,vertical?:'restart'|'continue'):string{
+    const width=widths.slice(i,i+span).reduce((a,b)=>a+b,0);
+    return '<w:tcPr>'+tag('tcW',{w:width,type:'dxa'})+(span>1?tag('gridSpan',{val:span}):'')+(vertical?tag('vMerge',vertical==='restart'?{val:'restart'}:{}):'')+'</w:tcPr>';
+  }
+  return '<w:tbl><w:tblPr>'+properties+'</w:tblPr><w:tblGrid>'+widths.map(w=>tag('gridCol',{w})).join('')+'</w:tblGrid>'+table.rows.map((row,ri)=>'<w:tr>'+row.cells.map((cell,i)=>{
+    if(cell.coveredBy){
+      const anchor=anchors.get(cell.coveredBy);valid(anchor&&anchor.cell.merge,'Invalid covered table slot');
+      if(i!==anchor.column||ri===anchor.row)return '';
+      return '<w:tc>'+cellProperties(i,anchor.cell.merge.columns,'continue')+'<w:p/></w:tc>';
+    }
     valid(cell.blocks.length>0&&cell.blocks.every(b=>b.type==='paragraph'),'Nested tables or non-paragraph cell blocks unsupported');
-    for(const block of cell.blocks)if(block.type==='paragraph')for(const run of block.runs)if(run.type==='image')valid(run.width<=table.columnWidths[i]!-pad.left-pad.right,'Image exceeds cell width');
-    return '<w:tc><w:tcPr>'+tag('tcW',{w:widths[i]!,type:'dxa'})+'</w:tcPr>'+cell.blocks.map(b=>write(b as DeepReadonly<Paragraph>)).join('')+'</w:tc>';
+    const span=cell.merge?.columns??1,width=table.columnWidths.slice(i,i+span).reduce((a,b)=>a+b,0);
+    for(const block of cell.blocks)if(block.type==='paragraph')for(const run of block.runs)if(run.type==='image')valid(run.width<=width-pad.left-pad.right,'Image exceeds cell width');
+    return '<w:tc>'+cellProperties(i,span,cell.merge&&cell.merge.rows>1?'restart':undefined)+cell.blocks.map(b=>write(b as DeepReadonly<Paragraph>)).join('')+'</w:tc>';
   }).join('')+'</w:tr>').join('')+'</w:tbl>';
 }
 

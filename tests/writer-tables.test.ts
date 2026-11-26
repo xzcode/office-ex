@@ -2,8 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {OfficeError,EMU_PER_TWIP,graphemeBoundaries} from '@office-ex/contracts';
-import {createDocument,DocumentSession,cloneData,type WriterDocument} from '@office-ex/core';
-import {insertTableAfter,insertTableRow,deleteTableRow,insertTableColumn,deleteTableColumn,resizeTableColumn,setTableBorder,deleteTable,tableCellLocation,replaceParagraphRange,paragraphText,joinParagraphs,insertPageBreakAfter} from '@office-ex/writer';
+import {createDocument,DocumentSession,cloneData,validateDocument,type WriterDocument,type Table} from '@office-ex/core';
+import {insertTableAfter,insertTableRow,deleteTableRow,insertTableColumn,deleteTableColumn,resizeTableColumn,setTableBorder,deleteTable,tableCellLocation,replaceParagraphRange,paragraphText,joinParagraphs,insertPageBreakAfter,mergeTableCells,splitTableCell,locateParagraph,hasMergedTableCells} from '@office-ex/writer';
 import {layoutWriter,hitTestWriterPage,writerCaretBox,type FontMetrics} from '@office-ex/render';
 import {writeWriterDocx,openWriterDocx,saveWriterDocx,openOpc,writeZip} from '@office-ex/ooxml';
 import {inspectForEditor,prepareWriterDocxSave,serializeDraft} from '@office-ex/format-service';
@@ -93,7 +93,7 @@ test('WRT-04 rectangular DOCX table roundtrip preserves widths, margins, border,
   const before=openOpc(original),after=openOpc(updated);
   for(const [name,data] of before.parts)if(name!==before.mainPart)assert.deepEqual(after.parts.get(name),data);
 });
-test('WRT-04 table merge, nesting, unequal grid widths and unknown properties stay read-only',async()=>{
+test('WRT-04 malformed table merges, nesting, unequal grid widths and unknown properties stay read-only',async()=>{
   const source=writeWriterDocx(writerModel(makeTableFixture())),opc=openOpc(source),dec=new TextDecoder(),enc=new TextEncoder();
   for(const mutate of [
     (x:string)=>x.replace('</w:tcPr>','<w:gridSpan w:val="2"/></w:tcPr>'),
@@ -118,4 +118,67 @@ test('WRT-04 source named styles stay preserved and new table cells inherit the 
   const updated=saveWriterDocx(source,s.snapshot().document),next=openWriterDocx(updated,'styled-table','Styled');
   assert.equal(tableOf(next.document).rows.length,1);const a=openOpc(bytes),b=openOpc(updated);
   for(const [path,data] of a.parts)if(path!==a.mainPart)assert.deepEqual(b.parts.get(path),data);
+});
+
+test('M6.1 merge and split are atomic, preserve every paragraph and reject overlapping or hidden content',()=>{
+  const s=makeTableFixture(),before=s.snapshot().document,t=tableOf(writerModel(s)),id=t.id;
+  const ids=t.rows.flatMap(r=>r.cells.flatMap(c=>c.blocks.map(p=>p.id)));
+  s.execute(mergeTableCells(s.snapshot(),id,0,0,2,2));
+  const merged=tableOf(writerModel(s)),anchor=merged.rows[0]!.cells[0]!;
+  assert.equal(hasMergedTableCells(merged),true);assert.deepEqual({...anchor.merge},{rows:2,columns:2});
+  assert.deepEqual(anchor.blocks.map(p=>p.id),ids);
+  assert.deepEqual(merged.rows.flatMap(r=>r.cells).filter(c=>c.coveredBy).map(c=>[c.coveredBy,c.blocks.length]),Array(3).fill([anchor.id,0]));
+  assert.equal(locateParagraph(s.snapshot(),ids[0]!).contentWidth,total(t.columnWidths)-t.cellPadding!.left-t.cellPadding!.right);
+  assert.throws(()=>mergeTableCells(s.snapshot(),id,0,1,2,1),fails('unsupported'));
+  assert.throws(()=>insertTableRow(s.snapshot(),id,1,'blocked'),fails('unsupported'));
+  assert.throws(()=>deleteTableColumn(s.snapshot(),id,0),fails('unsupported'));
+  const bad=cloneData(s.snapshot().document) as WriterDocument;
+  (tableOf(bad) as Table).rows[1]!.cells[1]!.coveredBy='missing';assert.throws(()=>validateDocument(bad),fails('invalid'));
+  const hidden=cloneData(s.snapshot().document) as WriterDocument;
+  (tableOf(hidden) as Table).rows[1]!.cells[1]!.blocks=[{id:'hidden-p',type:'paragraph',runs:[{id:'hidden-r',type:'text',text:'hidden'}]}];assert.throws(()=>validateDocument(hidden),fails('invalid'));
+  const saved=s.snapshot().document;
+  s.execute(splitTableCell(s.snapshot(),id,0,0,'split-merge'));
+  const split=tableOf(writerModel(s));assert.equal(hasMergedTableCells(split),false);assert.deepEqual(split.rows[0]!.cells[0]!.blocks.map(p=>p.id),ids);
+  assert.equal(paragraphText(s.snapshot(),split.rows[1]!.cells[1]!.blocks[0]!.id),'');
+  s.undo();assert.deepEqual(s.snapshot().document,saved);s.undo();assert.deepEqual(s.snapshot().document,before);
+});
+test('M6.1 horizontal and vertical merges render owning rectangles, paginate connected rows, and hit the anchor',()=>{
+  const s=layoutFixture(),id=tableOf(writerModel(s)).id;
+  s.execute(mergeTableCells(s.snapshot(),id,0,0,1,2));
+  s.execute(mergeTableCells(s.snapshot(),id,1,0,2,1));
+  const t=tableOf(writerModel(s)),horizontal=t.rows[0]!.cells[0]!,vertical=t.rows[1]!.cells[0]!;
+  const layout=layoutWriter(s.snapshot(),font);
+  const cells=layout.pages.flatMap((p,page)=>p.tableCells.map(c=>({...c,page})));
+  assert.equal(cells.length,6);assert.equal(new Set(cells.map(c=>c.cellId)).size,6);
+  const h=cells.find(c=>c.cellId===horizontal.id)!,v=cells.find(c=>c.cellId===vertical.id)!;
+  const above=cells.find(c=>c.cellId===t.rows[1]!.cells[1]!.id)!,below=cells.find(c=>c.cellId===t.rows[2]!.cells[1]!.id)!;
+  assert.equal(h.width,total(t.columnWidths));assert.equal(v.page,above.page);assert.equal(v.page,below.page);assert.equal(v.height,above.height+below.height);
+  assert.ok(v.paragraphIds.includes(vertical.blocks[1]!.id));assert.ok(v.height>above.height);
+  const hit=hitTestWriterPage(layout,v.page,{x:v.x+v.width/2,y:v.y+v.height-1});
+  assert.ok(hit&&v.paragraphIds.includes(hit.paragraphId));
+});
+test('M6.1 a merged row group taller than the usable page fails instead of clipping',()=>{
+  const s=layoutFixture(),id=tableOf(writerModel(s)).id;
+  s.execute(mergeTableCells(s.snapshot(),id,0,0,4,1));
+  assert.throws(()=>layoutWriter(s.snapshot(),font),fails('unsupported'));
+});
+test('M6.1 native DOCX saves horizontal, vertical, and rectangular merge chains without duplicate content',()=>{
+  const s=makeTableFixture(),id=tableOf(writerModel(s)).id;
+  s.execute(mergeTableCells(s.snapshot(),id,0,0,2,2));
+  const bytes=writeWriterDocx(writerModel(s)),source=openWriterDocx(bytes,'merged','Merged');
+  const t=tableOf(source.document),a=t.rows[0]!.cells[0]!;
+  assert.deepEqual({...a.merge},{rows:2,columns:2});
+  assert.equal(t.rows[1]!.cells[1]!.coveredBy,a.id);assert.equal(t.rows[1]!.cells[1]!.blocks.length,0);
+  const opc=openOpc(bytes),xml=new TextDecoder().decode(opc.parts.get(opc.mainPart!)!);
+  assert.equal(xml.split('<w:gridSpan w:val="2"/>').length-1,2);
+  assert.equal((xml.match(/<w:vMerge/g)??[]).length,2);
+  assert.deepEqual(saveWriterDocx(source,source.document),bytes);
+  const session=new DocumentSession(source.document),p=a.blocks[0]!;
+  assert.equal(p.type,'paragraph');
+  session.execute(replaceParagraphRange(session.snapshot(),p.id,0,0,'Edited ','merged-edit'));
+  const updated=saveWriterDocx(source,session.snapshot().document);
+  const reopened=tableOf(openWriterDocx(updated,'merged','Merged').document);
+  assert.deepEqual({...reopened.rows[0]!.cells[0]!.merge},{rows:2,columns:2});
+  const second=new DocumentSession(openWriterDocx(updated,'merged','Merged').document);
+  assert.match(paragraphText(second.snapshot(),reopened.rows[0]!.cells[0]!.blocks[0]!.id),/^Edited /);
 });

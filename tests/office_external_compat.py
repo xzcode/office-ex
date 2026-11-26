@@ -38,6 +38,25 @@ def generate(p):
     d.save(p/'normal-table.docx')
     d=Document();t=d.add_table(rows=2,cols=2);t.style='Table Grid'
     t.cell(0,0).merge(t.cell(0,1)).text='Merged cell';d.save(p/'merged-table.docx')
+    d=Document();t=d.add_table(rows=4,cols=4);t.style='Table Grid'
+    t.cell(0,0).merge(t.cell(1,1)).text='矩形合并'
+    t.cell(0,2).merge(t.cell(2,2)).text='纵向合并'
+    t.cell(3,0).merge(t.cell(3,2)).text='横向合并'
+    t.cell(2,0).text='独立单元格'
+    d.save(p/'complex-merged-table.docx')
+    # Unsupported continuation content must never disappear during save.
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    for tr in t._tbl.findall(qn('w:tr')):
+        for tc in tr.findall(qn('w:tc')):
+            vm=tc.find(qn('w:tcPr')).find(qn('w:vMerge'))
+            if vm is not None and vm.get(qn('w:val')) in (None,'continue'):
+                run=OxmlElement('w:r');text=OxmlElement('w:t');text.text='Protected continuation';run.append(text);tc.find(qn('w:p')).append(run)
+                break
+        else:continue
+        break
+    d.save(p/'invalid-merged-table.docx')
+    d=Document();d.add_table(rows=2,cols=2).cell(0,0).text='办公软件'
     d.sections[0].header.paragraphs[0].text='Report Header';d.sections[0].footer.paragraphs[0].text='Footer';d.add_paragraph('Read-only content');d.save(p/'advanced.docx')
     d=Document();d.add_picture(str(p/'sample.png'),width=Inches(1));d.save(p/'ordinary-image.docx')
     r=Presentation();s=r.slides.add_slide(r.slide_layouts[0]);s.shapes.title.text='项目报告';s.placeholders[1].text='Office EX'
@@ -65,6 +84,18 @@ def verify(p):
         for name in before.namelist():
             if name!='word/document.xml':assert before.read(name)==after.read(name),name
     d=Document(p/'normal-table-edited.docx');assert d.tables[0].cell(0,0).text=='Normal edited' and d.tables[0].autofit
+    d=Document(p/'merged-table-edited.docx');t=d.tables[0]
+    assert t.cell(0,0).text==t.cell(0,1).text=='Merged edited'
+    assert t.cell(0,0)._tc is t.cell(0,1)._tc
+    d=Document(p/'complex-merged-table-edited.docx');t=d.tables[0]
+    assert t.style.style_id=='TableGrid' and len(t.rows)==4 and len(t.columns)==4
+    assert t.cell(0,0).text==t.cell(1,1).text=='矩形已编辑'
+    assert t.cell(0,2).text==t.cell(2,2).text=='纵向已编辑'
+    assert t.cell(3,0).text==t.cell(3,2).text=='横向已编辑'
+    assert t.cell(2,0).text=='独立单元格'
+    with ZipFile(p/'complex-merged-table.docx') as before,ZipFile(p/'complex-merged-table-edited.docx') as after:
+        for name in before.namelist():
+            if name!='word/document.xml':assert before.read(name)==after.read(name),name
     r=Presentation(p/'shapes-edited.pptx');assert r.slides[0].shapes[0].text=='编辑普通文本框'
     assert r.slides[0].shapes[0].text_frame.auto_size==MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT and len(r.slides[0].shapes)==2
     print('Independent Excel, Word and PowerPoint readback of edited files passed')
