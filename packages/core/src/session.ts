@@ -164,7 +164,7 @@ export class DocumentSession {
       assert(operations.length <= 10_000, 'limit', 'Command operation budget exceeded');
     }
     this.#assertEditable(featureId);
-    const permittedRoots: Record<string, readonly string[]> = { 'MOD-01': ['resources', 'styles', 'defaultTextStyle'], 'MOD-03': ['title'], 'WRT-02': ['sections'], 'WRT-03': ['sections', 'resources','numbering'], 'SHT-02': ['sheets', 'dateSystem'], 'SLD-02': ['slides', 'size', 'theme', 'resources'] };
+    const permittedRoots: Record<string, readonly string[]> = { 'MOD-01': ['resources', 'styles', 'defaultTextStyle'], 'MOD-03': ['title'], 'WRT-02': ['sections'], 'WRT-03': ['sections', 'resources','numbering','pageStories'], 'SHT-02': ['sheets', 'dateSystem'], 'SLD-02': ['slides', 'size', 'theme', 'resources'] };
     const requiredKind: Record<string, string> = { 'WRT-02': 'writer', 'WRT-03': 'writer', 'SHT-02': 'sheets', 'SLD-02': 'slides' };
     assert(!requiredKind[featureId] || requiredKind[featureId] === this.#document.kind, 'invalid', 'Command feature does not match document kind');
     const newImages=new Set<string>();let numberingAdded=false;

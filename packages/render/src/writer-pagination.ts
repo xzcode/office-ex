@@ -2,7 +2,7 @@
 import {assert} from '@office-ex/contracts';
 import {freezeData,paragraphBoundaries,buildWriterNumberingMarkers,type DocumentSnapshot,type DeepReadonly,type WriterDocument,type WriterSection} from '@office-ex/core';
 import type {FontMetrics} from './index.js';
-import {layoutWriter,type WriterLayout,type WriterLayoutOptions,type WriterPage} from './writer-layout.js';
+import {layoutWriter,layoutRunningStories,type WriterLayout,type WriterLayoutOptions,type WriterPage} from './writer-layout.js';
 
 /** A section is an independent page sequence. Immutable section identity and
  * style/resource identity permit reuse; changed sections reflow and retain
@@ -52,7 +52,7 @@ export class WriterPaginationEngine {
       }else{
         const counts=cost(section);assert(clusters+counts.clusters<=maxClusters&&blocks+counts.blocks<=10000,'limit','Writer layout budget exceeded');
         assert(pages.length<maxPages,'limit','Writer page budget exceeded');
-        const computed=layoutWriter({...snapshot,document:{...model,sections:[section]}},provider,{...options,maxPages:Math.max(1,maxPages-pages.length),maxClusters:Math.max(1,maxClusters-clusters),numberingMarkers});
+        const computed=layoutWriter({...snapshot,document:{...model,sections:[section]}},provider,{...options,maxPages:Math.max(1,maxPages-pages.length),maxClusters:Math.max(1,maxClusters-clusters),numberingMarkers,skipRunningStories:true});
         const retained=computed.pages.map((p,i)=>{
           const prior=old?.layout.pages[i];
           // A page is reusable only when every geometry/semantic field agrees.
@@ -66,7 +66,7 @@ export class WriterPaginationEngine {
       pages.push(...entry.layout.pages);for(const w of entry.layout.warnings)warnings.add(w);next.set(section.id,entry);
     }
     options.cancellation?.throwIfCancelled();this.entries=next;
-    return freezeData({revision:snapshot.revision,contentId:snapshot.contentId,environmentId:options.paragraphShaper?.environmentId??provider.environmentId,pages,warnings:[...warnings].sort()});
+    return freezeData({revision:snapshot.revision,contentId:snapshot.contentId,environmentId:options.paragraphShaper?.environmentId??provider.environmentId,pages:layoutRunningStories(model,pages,provider,options,warnings),warnings:[...warnings].sort()});
   }
 }
 

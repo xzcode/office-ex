@@ -85,6 +85,11 @@ export async function prepareDocumentPdfOutput(snapshot: DocumentSnapshot, conta
         }
       }
       for(const line of source.lines){const rule=writerParagraphRule(line);if(rule)page.append(rule);}
+      for(const story of source.runningStories??[]){
+        paragraphFonts(model,story.paragraph);
+        const clip=document.createElement('div');at(clip,story.x,story.y,story.width,story.height);clip.style.overflow='hidden';
+        clip.dataset.story=story.kind;clip.append(shaper.render(model,story.paragraph,story.paragraphWidth));page.append(clip);
+      }
     }
   } else {
     assert(model.slides.length <= PDF_LIMITS.pages, 'limit', 'PDF slide budget exceeded');

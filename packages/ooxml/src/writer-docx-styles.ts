@@ -27,6 +27,7 @@ export interface DocxStyleProfile{
   defaultParagraph?:string;
   tableDefaultsSafe:boolean;
   builtinTableStyles?:ReadonlySet<'TableNormal'|'TableGrid'>;
+  builtinStoryStyles?:ReadonlySet<'Header'|'Footer'>;
   numbering?:NumberingSource;
 }
 type RunReader=(el:Element,reference?:((id:string)=>void),theme?:ThemeProfile,named?:boolean,toggles?:('bold'|'italic')[])=>TextStyle;
@@ -125,6 +126,27 @@ function builtinTableStyle(node:Element,id:'TableNormal'|'TableGrid'):boolean{
   return true;
  }catch(error){if(error instanceof OfficeError&&error.code==='unsupported')return false;throw error;}
 }
+/** Default-template Header/Footer definitions have tab stops which are
+ * inactive in the admitted tab-free single paragraph profile. Validate
+ * the whole definition, not just the built-in name. */
+function builtinStoryStyle(node:Element,id:'Header'|'Footer'):boolean{
+ try{
+  attrs(node,W,['styleId','type']);allowed(attribute(node,'styleId')===id&&attribute(node,'type')==='paragraph','Invalid story style');
+  const items=new Map<string,Element>();
+  for(const c of children(node)){const n=c.localName;allowed(c.namespaceURI===W&&n&&!items.has(n),'Unexpected story style property');items.set(n,c);}
+  const take=(key:string)=>{const e=items.get(key);allowed(e,'Missing story style '+key);items.delete(key);return e;};
+  value(take('name'));allowed(value(take('basedOn'))==='Normal','Unsupported story style ancestor');
+  if(items.has('link'))allowed(value(take('link'))===id+'Char','Unsupported story style link');
+  for(const key of ['uiPriority','rsid'])if(items.has(key)){const v=value(take(key));allowed(key==='rsid'?/^[0-9a-f]{8}$/i.test(v):/^\d+$/.test(v),'Unexpected story style metadata');}
+  if(items.has('unhideWhenUsed')){const e=take('unhideWhenUsed');attrs(e,W,['val']);allowed(!children(e).length,'Nested style flag');flag(attribute(e,'val'));}
+  const p=take('pPr');attrs(p,W,[]);const a=children(p);allowed(a.length===2&&name(a[0]!,W,'tabs')&&name(a[1]!,W,'spacing'),'Unsupported story paragraph style');
+  const tabs=a[0]!;attrs(tabs,W,[]);const stops=children(tabs);allowed(stops.length===2,'Unexpected story tab stops');
+  for(const [i,stop]of stops.entries()){allowed(name(stop,W,'tab'),'Unexpected story tab');attrs(stop,W,['val','pos']);allowed(!children(stop).length&&attribute(stop,'val')===(i?'right':'center')&&attribute(stop,'pos')===(i?'9360':'4680'),'Unsupported story tab geometry');}
+  const sp=a[1]!;attrs(sp,W,['after','line','lineRule']);allowed(!children(sp).length&&attribute(sp,'after')==='0'&&attribute(sp,'line')==='240'&&attribute(sp,'lineRule')==='auto'&&items.size===0,'Unsupported story spacing or properties');
+  return true;
+ }catch(error){if(error instanceof OfficeError&&error.code==='unsupported')return false;throw error;}
+}
+export interface DocxStorySource{kind:'header'|'footer';path:string}
 function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,readParagraph:ParagraphReader,theme?:ThemeProfile,numbering?:NumberingSource):DocxStyleProfile{
   const root=parseXml(bytes,options).documentElement!;
   allowed(name(root,W,'styles'),'Expected Word styles root');attrs(root,W,[]);
@@ -209,22 +231,25 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,
     builtinTableStyles.add('TableNormal');
     if(grid&&builtinTableStyle(grid.node,'TableGrid'))builtinTableStyles.add('TableGrid');
   }
-  return {styles,defaults,...(defaultParagraph?{defaultParagraph}:{}),tableDefaultsSafe:tables.length===0||builtinTableStyles.has('TableNormal'),builtinTableStyles};
+  const builtinStoryStyles=new Set<'Header'|'Footer'>();
+  if(defaultParagraph==='Normal')for(const kind of ['Header','Footer'] as const){const entry=entries.get(kind);if(entry&&builtinStoryStyle(entry.node,kind))builtinStoryStyles.add(kind);}
+  return {styles,defaults,...(defaultParagraph?{defaultParagraph}:{}),tableDefaultsSafe:tables.length===0||builtinTableStyles.has('TableNormal'),builtinTableStyles,builtinStoryStyles};
 }
 function relationPath(main:string):string{
   const i=main.lastIndexOf('/');return main.slice(0,i+1)+'_rels/'+main.slice(i+1)+'.rels';
 }
 /** Permit only the explicit style/theme relationship graph and passive package properties.
- * No settings, numbering, drawings, comments, macros, signatures, external links,
- * headers, footers or other relationship dependencies are admitted.
+ * Running story parts are admitted without any auxiliary relationships;
+ * their semantic payload is verified by the main DOCX adapter. Unknown
+ * active content, external links, signatures and other graphs remain blocked.
  */
-export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun:RunReader,readParagraph:ParagraphReader):{part:string;profile?:DocxStyleProfile}{
+export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun:RunReader,readParagraph:ParagraphReader):{part:string;profile?:DocxStyleProfile;stories:ReadonlyMap<string,DocxStorySource>}{
   allowed(pkg.kind==='docx'&&pkg.conformance==='transitional'&&pkg.mainPart,'Expected Transitional DOCX');
   allowed(!pkg.hasMacros&&!pkg.hasSignatures&&!pkg.externalRelationships,'Protected or linked document');
   const main=pkg.mainPart,expected=new Set<string>(['[Content_Types].xml','_rels/.rels',main]);
   const root=pkg.relationships.get('')??[];
   let mainCount=0,stylePath:string|undefined,themePath:string|undefined,hasMetadata=false,settingsPath:string|undefined,numberingPath:string|undefined;
-  const customParts:string[]=[];const extraSources=new Set<string>();
+  const customParts:string[]=[];const extraSources=new Set<string>(),stories=new Map<string,DocxStorySource>();
   const typesSeen=new Set<string>();
   function admit(rel:OpcRelationship,type:string):string{
     const path=rel.targetPart;allowed(rel.mode==='Internal'&&path&&rel.fragment===null&&!expected.has(path)&&pkg.contentTypes.get(path)===type,'Unsupported or duplicate relationship target');
@@ -254,6 +279,11 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
       else if(rel.type===R+'numbering'){allowed(!numberingPath,'Duplicate numbering');numberingPath=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml');hasMetadata=true;}
       else if(rel.type==='http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects'){const path=admit(rel,'application/vnd.ms-word.stylesWithEffects+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'styles');hasMetadata=true;}
       else if(rel.type===R+'customXml'){const type=rel.targetPart?pkg.contentTypes.get(rel.targetPart):undefined;allowed(type==='application/xml'||type==='text/xml','Unsupported custom XML type');const path=admit(rel,type);verifyAuxiliaryXml(pkg.parts.get(path)!,options);customParts.push(path);hasMetadata=true;}
+      else if(rel.type===R+'header'||rel.type===R+'footer'){
+        const kind=rel.type===R+'header'?'header':'footer';
+        allowed(stories.size<256&&stableId(rel.id)&&/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(rel.id),'Invalid running story relationship');
+        const path=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.'+kind+'+xml');stories.set(rel.id,{kind,path});
+      }
       else if(rel.type===R+'image'){const type=rel.targetPart?pkg.contentTypes.get(rel.targetPart):undefined;allowed(type==='image/png'||type==='image/jpeg','Unsupported image type');admit(rel,type);}
       else allowed(false,'Unsupported document relationship');
     }
@@ -266,10 +296,10 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
   }
   allowed([...pkg.relationships.keys()].every(k=>k===''||k===main||extraSources.has(k)),'Unexpected auxiliary relationship graph');
   allowed(pkg.parts.size===expected.size&&[...pkg.parts.keys()].every(k=>expected.has(k)),'Additional package parts require a later adapter');
-  if(!stylePath&&!themePath&&!hasMetadata)return {part:main};
+  if(!stylePath&&!themePath&&!hasMetadata)return {part:main,stories};
   const theme=themePath?readTheme(pkg.parts.get(themePath)!,options):undefined;
   const numbering=numberingPath?readNumbering(numberingPath,pkg.parts.get(numberingPath)!,options):undefined;
   const profile:DocxStyleProfile=stylePath?readStyles(pkg.parts.get(stylePath)!,options,readRun,readParagraph,theme,numbering):{styles:{},defaults:{},tableDefaultsSafe:true};
   if(numbering)profile.numbering=numbering;
-  return {part:main,profile};
+  return {part:main,profile,stories};
 }

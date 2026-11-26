@@ -42,3 +42,25 @@ Baseline `85ee48862146267fdd256289d93f36a5aa261ac0` passed all four verification
 - New-source three-platform CI is still required. No new preview release, version bump, tag or master merge.
 
 Next: extend M6.2 with bounded source-owned section header/footer stories, page numbering and independent DOCX samples; continue complex table styles and structural operations as separate M6.1 follow-ups. Do not describe the current subset as full Word compatibility. All formal M5 gates remain open.
+
+
+## M6.2 batch A — default running headers, footers and PAGE fields
+
+Previous merged-cell source `59e89055aa38d65fc4f7dddc5b8ca86c10d4cc01` passed verify plus all three native package jobs in [CI 45775804320](https://github.com/xzcode/office-ex/actions/runs/45775804320).
+
+### Implementation
+
+- A bounded, independently validated running-story registry and per-section default header/footer relationship references. Section splits inherit preceding stories and continue numbering. Editing an inherited or multiply referenced story creates an independent part for the selected section; later linked sections inherit it. Separate undoable section page-number start supports decimal restart/continue.
+- DOCX imports source-owned default headers and footers, verified stock Header/Footer styles, one uniformly formatted tab-free paragraph, direct alignment and one optional PAGE field (simple or complex form). Cached PAGE values are not used for rendering; other field instructions, first/even-page variants, multi-paragraph/complex stories, external relationships and unsupported formatting remain protected.
+- Source relationships and unchanged ancillary parts remain byte exact. New stories receive explicit content types, relationship IDs and dedicated XML parts; source-backed edits rewrite only supported changed story parts and the necessary package graph. Reopening validates output. New DOCX also supports running stories. Legacy DOC remains explicitly unsupported for these semantics.
+- A dedicated Layout ribbon dialog edits section, header/footer text, optional automatic page number with suffix, alignment, distance from page edge and page-number start. Candidate translations in 22 locales. Running stories do not enter body text, selection or clipboard.
+- Shared layout derives actual decimal page numbers only after assembling the complete page sequence, including cached section bodies. Headers/footers occupy their own margin geometry, with native page projection and PDF projection integration. One-line fit and margin limits are explicit; overflowing or complex stories are not clipped into body content.
+
+### Verification
+
+- Final local typecheck, architecture (14 workspaces / 95 source files), 272/272 full core tests with no skips or failures, targeted running-story/section 8/8, desktop build and dependency audit passed.
+- Independent python-docx corpus: multi-section linked header/footer, complex PAGE with stale cached 999, first section start 5, subsequent detached header and restart at 20, preserved unchanged ancillary bytes, independent readback; unsupported DATE field and multi-paragraph header stay protected. Existing Excel/PowerPoint corpus also passed.
+- Actual Linux native sandboxed desktop 3/3: computed PAGE 5/6/7, dialog detachment and restart 20, original-source preservation and save/reopen without renderer errors. [Native evidence](verification/m6/native-running-stories.json). Reproduce with `python tests/office_external_compat.py .work/m6-running-corpus`, build, then `node --import tsx scripts/smoke-m6-running-stories.mjs .work/m6-running-corpus`.
+- PDF projection code is integrated and built; a new dedicated running-story PDF output/readback test has not yet been performed. Exact new-source three-platform CI still required. No dependency additions, new release or tag.
+
+Next: M6.2 further coverage (multiple paragraphs, first/even-page variants, other page-number formats and field types, complex header/footer content); M6.3 layout/pagination fidelity, including independent reference documents and dedicated PDF header/footer verification. Formal six-format compatibility, physical printing/IME and human translation review remain open.

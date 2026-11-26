@@ -4,7 +4,7 @@
  * Document coordinates are EMU. No derived geometry is persisted in the source model.
  */
 import { assert, graphemeBoundaries, type Cancellation } from '@office-ex/contracts';
-import { resolveTextStyle, writerEffectiveStyle, buildWriterNumberingMarkers, type WriterNumberingMarker, freezeData, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterParagraphRule, type WriterSection, type Paragraph, type WriterDocument, type Table, type Inline } from '@office-ex/core';
+import { resolveTextStyle, writerEffectiveStyle, buildWriterNumberingMarkers, type WriterNumberingMarker, freezeData, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterParagraphRule, type WriterSection, type WriterPageStory, type Paragraph, type WriterDocument, type Table, type Inline } from '@office-ex/core';
 import { measureText, type FontMetrics, type FontRequest, type Point } from './index.js';
 
 export interface WriterPosition {paragraphId:string;offset:number}
@@ -17,14 +17,15 @@ export interface WriterListMarkerBox {text:string;x:number;width:number;style:De
 export interface WriterLine {paragraphId:string;start:number;end:number;x:number;y:number;width:number;height:number;baseline:number;carets:WriterCaret[];fragments:WriterFragment[];images:WriterImageBox[];visualClusters?:WriterVisualCluster[];native?:WriterNativeSlice;contentHeight?:number;bottomBorder?:WriterParagraphDecoration;listMarker?:WriterListMarkerBox}
 export interface WriterTableCellBox {tableId:string;rowId:string;cellId:string;paragraphIds:string[];x:number;y:number;width:number;height:number;border?:DeepReadonly<NonNullable<Table['border']>>}
 export interface WriterImageBox {paragraphId:string;imageId:string;resourceId:string;x:number;y:number;width:number;height:number}
-export interface WriterPage {sectionId:string;width:number;height:number;margins:DeepReadonly<WriterSection['page']['margins']>;lines:WriterLine[];tableCells:WriterTableCellBox[];images:WriterImageBox[]}
+export interface WriterRunningStoryBox {kind:'header'|'footer';storyId:string;paragraph:Paragraph;paragraphWidth:number;x:number;y:number;width:number;height:number;text:string;fragment?:WriterFragment;baseline?:number}
+export interface WriterPage {displayPageNumber?:number;runningStories?:WriterRunningStoryBox[];sectionId:string;width:number;height:number;margins:DeepReadonly<WriterSection['page']['margins']>;lines:WriterLine[];tableCells:WriterTableCellBox[];images:WriterImageBox[]}
 export interface WriterLayout {revision:number;contentId:string;environmentId:string;pages:WriterPage[];warnings:string[]}
 /** Optional native shaping backend. All geometry is relative to the paragraph
  * content box in EMU. The display backend uses the identical native paragraph
  * projection clipped to the page's line ranges. */
 export interface NativeParagraphShape {lines:readonly WriterLine[];warnings:readonly string[];spaceBefore:number;spaceAfter:number;clusters:number}
 export interface WriterParagraphShaper {readonly environmentId:string;shape(model:DeepReadonly<WriterDocument>,paragraph:DeepReadonly<Paragraph>,width:number):NativeParagraphShape}
-export interface WriterLayoutOptions {maxPages?:number;maxClusters?:number;cancellation?:Cancellation;paragraphShaper?:WriterParagraphShaper;numberingMarkers?:ReadonlyMap<string,WriterNumberingMarker>}
+export interface WriterLayoutOptions {maxPages?:number;maxClusters?:number;cancellation?:Cancellation;paragraphShaper?:WriterParagraphShaper;numberingMarkers?:ReadonlyMap<string,WriterNumberingMarker>;skipRunningStories?:boolean}
 type ImageRun=DeepReadonly<Extract<Inline,{type:'image'}>>;
 type Glyph={start:number;end:number;text:string;advance:number;ascent:number;descent:number;style:DeepReadonly<TextStyle>;request:FontRequest;kind:'text'|'tab'|'break'|'image';image?:ImageRun};
 const COMPLEX=/[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Devanagari}\p{Script=Bengali}\p{Script=Gujarati}\p{Script=Gurmukhi}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Kannada}\p{Script=Malayalam}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\u202a-\u202e\u2066-\u2069]/u;
@@ -316,7 +317,57 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
       layParagraph(block,m.left,usableWidth,space,placeTop,section.blocks[blockIndex-1],section.blocks[blockIndex+1]);
     }
   }
-  return freezeData({revision:snapshot.revision,contentId:snapshot.contentId,environmentId:options.paragraphShaper?.environmentId??provider.environmentId,pages,warnings:[...warnings].sort()});
+  const decorated=options.skipRunningStories?pages:layoutRunningStories(model,pages,provider,options,warnings);
+  return freezeData({revision:snapshot.revision,contentId:snapshot.contentId,environmentId:options.paragraphShaper?.environmentId??provider.environmentId,pages:decorated,warnings:[...warnings].sort()});
+}
+/** Recompute running decorations only after the complete page sequence is
+ * assembled. A reused section body may have a different absolute page
+ * number when an earlier section grows. Stories never enter body caret
+ * or clipboard geometry. */
+export function layoutRunningStories(model:DeepReadonly<WriterDocument>,pages:readonly DeepReadonly<WriterPage>[],provider:FontMetrics,options:WriterLayoutOptions,warnings:Set<string>):readonly DeepReadonly<WriterPage>[] {
+  if(!model.pageStories&&!model.sections.some(s=>s.pageNumberStart!==undefined))return pages;
+  const refs=new Map<string,{header?:string;footer?:string}>();
+  let inherited:{header?:string;footer?:string}={};
+  const sections=new Map(model.sections.map(s=>[s.id,s]));
+  for(const section of model.sections){inherited={...inherited,...section.storyRefs};refs.set(section.id,inherited);}
+  let previous='',number=0,clusters=0;
+  return pages.map((page,index)=>{
+    options.cancellation?.throwIfCancelled();
+    const section=sections.get(page.sectionId);assert(section,'invalid','Running story section not found');
+    number=previous!==page.sectionId&&section.pageNumberStart!==undefined?section.pageNumberStart:number+1;previous=page.sectionId;
+    const decorations:WriterRunningStoryBox[]=[];
+    for(const kind of ['header','footer'] as const){
+      const id=refs.get(section.id)?.[kind];if(!id)continue;
+      const story=model.pageStories?.[id];assert(story&&story.kind===kind,'invalid','Missing running story');
+      const text=story.text+(story.pageNumber?String(number)+(story.after??''):'');if(!text)continue;
+      clusters+=graphemeBoundaries(text).length-1;assert(clusters<=100000,'limit','Running story layout cluster budget exceeded');
+      const p:Paragraph={id:'running-'+index+'-'+kind,type:'paragraph',runs:[{id:'running-'+index+'-'+kind+'-run',type:'text',text,...(story.runStyle?{style:story.runStyle}:{})}],style:{...(story.styleId?{spaceAfter:0,lineMultiple:240}:{}),...(story.alignment?{alignment:story.alignment}:{})}};
+      const style=writerEffectiveStyle(model,p);
+      assert(!style.writerList&&!style.paragraphBottomBorder,'unsupported','Numbered or decorated running story paragraph is unsupported');
+      const width=page.width-page.margins.left-page.margins.right,geometry=writerParagraphGeometry(style,width);
+      const before=style.spaceBefore??0,after=style.spaceAfter??0;
+      let height:number,x=page.margins.left+geometry.origin,boxWidth=geometry.boxWidth,fragment:WriterFragment|undefined,baseline:number|undefined;
+      if(options.paragraphShaper){
+        const shaped=options.paragraphShaper.shape(model,p,width);
+        assert(shaped.lines.length===1&&shaped.lines[0]?.native,'unsupported','Running story must fit one line');
+        const l=shaped.lines[0]!,native=l.native!;height=l.height;x=page.margins.left+native.originX;boxWidth=native.boxWidth;
+        for(const warning of shaped.warnings)warnings.add(warning);
+      }else{
+        const run=resolveTextStyle(style,model.styles,[],story.runStyle??{}).style;
+        const measured=requestFor(provider,text,run,warnings),advance=measured.metrics.advance;
+        assert(advance<=geometry.bodyWidth-Math.max(0,geometry.first),'unsupported','Running story must fit one line');
+        height=Math.ceil(Math.max(measured.metrics.ascent+measured.metrics.descent,(run.fontSize??152400)*1.55,style.lineHeight??0,style.minLineHeight??0));
+        const available=geometry.bodyWidth-Math.max(0,geometry.first),offset=style.alignment==='center'?(available-advance)/2:style.alignment==='end'?available-advance:0;
+        fragment={text,x:x+geometry.padLeft+Math.max(0,geometry.first)+offset,width:advance,request:measured.request,style:run};
+        baseline=height/2+(measured.metrics.ascent-measured.metrics.descent)/2;
+      }
+      const distance=section.pageExtras?.[kind==='header'?'headerDistance':'footerDistance']??0,total=before+height+after;
+      const margin=page.margins[kind==='header'?'top':'bottom'];assert(distance+total<=margin,'unsupported','Running story exceeds its page margin');
+      const y=kind==='header'?distance+before:page.height-distance-after-height;
+      decorations.push({kind,storyId:id,paragraph:p,paragraphWidth:width,x,y,width:boxWidth,height,text,...(fragment?{fragment,baseline:y+baseline!}:{})});
+    }
+    return {...page,displayPageNumber:number,...(decorations.length?{runningStories:decorations}:{})};
+  });
 }
 type ReadLayout=DeepReadonly<WriterLayout>;
 export function hitTestWriterPage(layout:ReadLayout,pageIndex:number,point:Point):WriterPosition|undefined{

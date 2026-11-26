@@ -5,20 +5,22 @@
  */
 import type { Element, Document } from '@xmldom/xmldom';
 import { OfficeError, assert, EMU_PER_TWIP } from '@office-ex/contracts';
-import { createDocument, validateDocument, buildWriterNumberingMarkers, freezeData, isDocumentLanguageTag, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type Inline, type TextStyle, type WriterSection, type NamedStyle, type Table } from '@office-ex/core';
+import { createDocument, validateDocument, buildWriterNumberingMarkers, freezeData, isDocumentLanguageTag, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type Inline, type TextStyle, type WriterSection, type WriterPageStory, type NamedStyle, type Table } from '@office-ex/core';
 import { openOpc, writeOpc, type OpcPackage } from './opc.js';
-import { parseXml } from './xml.js';
+import { parseXml, serializeXml } from './xml.js';
 import { writeZip } from './zip.js';
 import type { ContainerOptions } from './limits.js';
 import { loadMedia, planMedia, readInlinePicture, writeInlinePicture, addMediaParts, saveMediaPackage, type MediaGraph, type MediaPlan } from './writer-docx-images.js';
-import { readStyleProfile, type DocxStyleProfile, type ThemeProfile, requireStyleReference } from './writer-docx-styles.js';
+import { readStyleProfile, type DocxStyleProfile, type DocxStorySource, type ThemeProfile, requireStyleReference } from './writer-docx-styles.js';
 
 import {readNumberingReference,numberingChanged,addNumberingParts} from './writer-docx-numbering.js';
 
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const XML='http://www.w3.org/XML/1998/namespace';
 const XMLNS='http://www.w3.org/2000/xmlns/';
-const ROOT_REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument';
+const REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const ROOT_REL=REL+'/officeDocument';
+const CT='http://schemas.openxmlformats.org/package/2006/content-types',PKG='http://schemas.openxmlformats.org/package/2006/relationships';
 const MAIN_TYPE='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml';
 const DECL='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const CHAR_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'];
@@ -33,11 +35,12 @@ function attrs(el:Element,allowed:readonly string[]=[]):void{
   for(let i=0;i<el.attributes.length;i++){
     const a=el.attributes.item(i)!;
     if(a.namespaceURI===XMLNS)continue;
+    if(a.namespaceURI==='http://schemas.openxmlformats.org/markup-compatibility/2006'&&a.localName==='Ignorable'&&['hdr','ftr'].includes(el.localName??'')&&a.value.split(/\s+/).every(p=>p&&el.lookupNamespaceURI(p)?.startsWith('http://schemas.microsoft.com/office/')))continue;
     // rsid identifies an editing session, not tracked-change content. No
     // revision markup is admitted. Ignore only the enumerated metadata attrs.
     if(a.namespaceURI===W&&['rsidR','rsidRPr','rsidRDefault','rsidP','rsidDel','rsidSect'].includes(a.localName??'')&&['p','r','sectPr'].includes(el.localName??'')&&/^[0-9A-Fa-f]{8}$/.test(a.value))continue;
     if(a.namespaceURI==='http://schemas.openxmlformats.org/markup-compatibility/2006'&&a.localName==='Ignorable'&&el.localName==='document'&&a.value.split(/\s+/).every(prefix=>prefix&&el.lookupNamespaceURI(prefix)?.startsWith('http://schemas.microsoft.com/office/')))continue;
-    const name=a.namespaceURI===W?'w:'+a.localName:a.namespaceURI===XML?'xml:'+a.localName:'?'+a.name;
+    const name=a.namespaceURI===W?'w:'+a.localName:a.namespaceURI===XML?'xml:'+a.localName:a.namespaceURI===REL?'r:'+a.localName:'?'+a.name;
     valid(allowed.includes(name),'Unrecognized attribute on '+el.localName);
   }
 }
@@ -139,8 +142,14 @@ export function readParagraphStyle(el:Element,reference?:(id:string)=>void,secti
   }
   return style;
 }
-function readPage(el:Element):Pick<WriterSection,'page'|'pageExtras'>{
+function readPage(el:Element,stories:Record<string,WriterPageStory>):Pick<WriterSection,'page'|'pageExtras'|'storyRefs'|'pageNumberStart'>{
   requireElement(el,'sectPr');attrs(el);const items=elements(el);let i=0;
+  const refs:NonNullable<WriterSection['storyRefs']>={};
+  while(items[i]&&(isW(items[i]!,'headerReference')||isW(items[i]!,'footerReference'))){
+    const ref=items[i++]!,kind=isW(ref,'headerReference')?'header':'footer';
+    attrs(ref,['w:type','r:id']);empty(ref);const id=ref.getAttributeNS(REL,'id');
+    valid(prop(ref,'type')==='default'&&id&&!refs[kind]&&Object.hasOwn(stories,id)&&stories[id]!.kind===kind,'Unsupported first/even or invalid running story reference');refs[kind]=id;
+  }
   if(items[i]&&isW(items[i]!,'type')){const type=items[i++]!;attrs(type,['w:val']);empty(type);valid(prop(type,'val')==='nextPage','Only next-page sections are supported');}
   const size=items[i++]!,margins=items[i++]!;
   valid(size&&margins&&isW(size,'pgSz')&&isW(margins,'pgMar'),'Explicit section page size and margins required');
@@ -150,7 +159,12 @@ function readPage(el:Element):Pick<WriterSection,'page'|'pageExtras'>{
   valid(prop(margins,'gutter')===undefined||prop(margins,'gutter')==='0','Unsupported gutter');
   const extras:NonNullable<WriterSection['pageExtras']>={};
   for(const [name,key] of [['header','headerDistance'],['footer','footerDistance']] as const){
-    if(prop(margins,name)!==undefined){const amount=numberProp(margins,name,0,31680)*EMU_PER_TWIP;if(amount)extras[key]=amount;}
+    if(prop(margins,name)!==undefined){const amount=numberProp(margins,name,0,31680)*EMU_PER_TWIP;if(amount||refs[name as 'header'|'footer'])extras[key]=amount;}
+  }
+  let pageNumberStart:number|undefined;
+  if(items[i]&&isW(items[i]!,'pgNumType')){
+    const num=items[i++]!;attrs(num,['w:start','w:fmt']);empty(num);valid(prop(num,'fmt')===undefined||prop(num,'fmt')==='decimal','Only decimal page numbering is supported');
+    if(prop(num,'start')!==undefined)pageNumberStart=numberProp(num,'start',1,32767);
   }
   if(items[i]&&isW(items[i]!,'cols')){
     const cols=items[i++]!;attrs(cols,['w:num','w:space','w:equalWidth','w:sep']);empty(cols);
@@ -159,7 +173,7 @@ function readPage(el:Element):Pick<WriterSection,'page'|'pageExtras'>{
   }
   if(items[i]&&isW(items[i]!,'docGrid')){const grid=items[i++]!;attrs(grid,['w:type','w:linePitch']);empty(grid);valid(prop(grid,'type')===undefined||prop(grid,'type')==='default','Active document grid unsupported');if(prop(grid,'linePitch')!==undefined)extras.docGridLinePitch=numberProp(grid,'linePitch',0,31680)*EMU_PER_TWIP;}
   valid(i===items.length,'Unsupported section properties');
-  return {page:{width:width*EMU_PER_TWIP,height:height*EMU_PER_TWIP,margins:{top:numberProp(margins,'top',0,31680)*EMU_PER_TWIP,right:numberProp(margins,'right',0,31680)*EMU_PER_TWIP,bottom:numberProp(margins,'bottom',0,31680)*EMU_PER_TWIP,left:numberProp(margins,'left',0,31680)*EMU_PER_TWIP}},...(Object.keys(extras).length?{pageExtras:extras}:{})};
+  return {page:{width:width*EMU_PER_TWIP,height:height*EMU_PER_TWIP,margins:{top:numberProp(margins,'top',0,31680)*EMU_PER_TWIP,right:numberProp(margins,'right',0,31680)*EMU_PER_TWIP,bottom:numberProp(margins,'bottom',0,31680)*EMU_PER_TWIP,left:numberProp(margins,'left',0,31680)*EMU_PER_TWIP}},...(Object.keys(extras).length?{pageExtras:extras}:{}),...(Object.keys(refs).length?{storyRefs:refs}:{}),...(pageNumberStart!==undefined?{pageNumberStart}:{})};
 }
 function simpleText(el:Element):string{
   attrs(el,['xml:space']);let text='';
@@ -168,6 +182,61 @@ function simpleText(el:Element):string{
   valid(!/^[ \t\r\n]|[ \t\r\n]$/.test(text)||space==='preserve','Ambiguous unpreserved whitespace');
   valid(!/[\r\n\t]/.test(text),'Raw line/tab control inside w:t');
   return text;
+}
+/** Only a single, uniformly formatted, tab-free paragraph is admitted.
+ * PAGE is the only supported field; its cached result is never executed.
+ * No other active markup, drawing, alternate story or nested relationship. */
+function readPageStory(bytes:Uint8Array,kind:'header'|'footer',profile:DocxStyleProfile|undefined,options:ContainerOptions):WriterPageStory{
+  const root=parseXml(bytes,options).documentElement!;requireElement(root,kind==='header'?'hdr':'ftr');attrs(root);
+  const nodes=elements(root);valid(nodes.length===1&&isW(nodes[0]!,'p'),'Running story must contain one paragraph');
+  const p=nodes[0]!;attrs(p);const items=elements(p);let i=0;
+  const story:WriterPageStory={kind,text:''};
+  if(items[i]&&isW(items[i]!,'pPr')){
+    const pr=items[i++]!;attrs(pr);const seen=new Set<string>();
+    for(const e of elements(pr)){
+      const n=e.localName;valid(e.namespaceURI===W&&n&&!seen.has(n),'Duplicate or foreign story paragraph property');seen.add(n);
+      if(n==='pStyle'){
+        attrs(e,['w:val']);empty(e);const id=prop(e,'val'),expected=kind==='header'?'Header':'Footer';
+        valid(id,'Missing running story style identifier');if(id!==profile?.defaultParagraph){valid(id===expected&&profile?.builtinStoryStyles?.has(expected),'Unsupported running story style');story.styleId=expected;}
+      }else if(n==='jc'){
+        attrs(e,['w:val']);empty(e);const v=prop(e,'val');valid(v==='left'||v==='center'||v==='right','Unsupported running story alignment');story.alignment=v==='left'?'start':v==='right'?'end':'center';
+      }else unsupported('Unsupported running story paragraph property '+n);
+    }
+  }
+  let uniform:TextStyle|undefined,haveStyle=false;
+  const recordStyle=(style:TextStyle)=>{if(!haveStyle){uniform=style;haveStyle=true;}else valid(canonicalData(uniform??{})===canonicalData(style),'Mixed running story run formatting');};
+  const readRun=(r:Element):{style:TextStyle;items:Element[]}=>{
+    requireElement(r,'r');attrs(r);const nodes=elements(r);let style:TextStyle={};
+    if(nodes[0]&&isW(nodes[0]!,'rPr'))style=readRunStyle(nodes.shift()!);
+    return {style,items:nodes};
+  };
+  const plain=(nodes:Element[])=>nodes.map(n=>{requireElement(n,'t');return simpleText(n);}).join('');
+  const field=(r:Element,type:string)=>{const data=readRun(r);valid(!Object.keys(data.style).length&&data.items.length===1&&isW(data.items[0]!,'fldChar'),'Unsupported field marker run');const e=data.items[0]!;attrs(e,['w:fldCharType']);empty(e);valid(prop(e,'fldCharType')===type,'Invalid PAGE field chain');};
+  const isMarker=(r:Element|undefined,type:string)=>!!r&&isW(r,'r')&&elements(r).some(e=>isW(e,'fldChar')&&prop(e,'fldCharType')===type);
+  const setField=(result:string)=>{valid(!story.pageNumber&&/^\d{0,10}$/.test(result),'Only one decimal PAGE field per story');story.pageNumber=true;};
+  const append=(s:string)=>{if(story.pageNumber)story.after=(story.after??'')+s;else story.text+=s;};
+  while(i<items.length){
+    const e=items[i++]!;
+    if(isW(e,'fldSimple')){
+      attrs(e,['w:instr']);valid((prop(e,'instr')??'').trim().toUpperCase()==='PAGE','Unsupported running story field');
+      let value='';for(const r of elements(e)){const d=readRun(r),t=plain(d.items);if(t)recordStyle(d.style);value+=t;}setField(value);continue;
+    }
+    if(isMarker(e,'begin')){
+      field(e,'begin');let instruction='';
+      while(i<items.length&&!isMarker(items[i],'separate')&&!isMarker(items[i],'end')){
+        const d=readRun(items[i++]!);valid(!Object.keys(d.style).length&&d.items.length===1&&isW(d.items[0]!,'instrText'),'Unsupported PAGE instruction');
+        const ins=d.items[0]!;attrs(ins,['xml:space']);let raw='';for(let n=ins.firstChild;n;n=n.nextSibling){valid(n.nodeType===3,'Nested instruction');raw+=n.nodeValue??'';}instruction+=raw;
+      }
+      valid(instruction.trim().toUpperCase()==='PAGE'&&instruction.length<=64,'Unsupported running story field instruction');
+      let value='';
+      if(isMarker(items[i],'separate')){field(items[i++]!,'separate');while(i<items.length&&!isMarker(items[i],'end')){const d=readRun(items[i++]!),t=plain(d.items);if(t)recordStyle(d.style);value+=t;}}
+      valid(i<items.length&&isMarker(items[i],'end'),'Unterminated PAGE field');field(items[i++]!,'end');setField(value);continue;
+    }
+    const d=readRun(e),t=plain(d.items);if(t)recordStyle(d.style);append(t);
+  }
+  if(story.after==='')delete story.after;
+  if(uniform&&Object.keys(uniform).length)story.runStyle=uniform;
+  return story;
 }
 /** Rectangular table profile, including verified default-template table styles.
  * The editor projects the stored grid; native autofit is preserved, not simulated.
@@ -319,7 +388,7 @@ function writeTable(table:DeepReadonly<Table>,maxWidth:number,write:(p:DeepReado
   }).join('')+'</w:tr>').join('')+'</w:tbl>';
 }
 
-function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleProfile|undefined,media:MediaGraph):WriterDocument{
+function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleProfile|undefined,media:MediaGraph,stories:Record<string,WriterPageStory>):WriterDocument{
   const root=xml.documentElement!;requireElement(root,'document');attrs(root);
   for(let n=xml.firstChild;n;n=n.nextSibling)if(n!==root)valid(n.nodeType===3&&!(n.nodeValue??'').trim()||n.nodeType===7&&n.nodeName==='xml','Unsupported document-level node');
   const contents=elements(root);valid(contents.length===1&&isW(contents[0]!,'body'),'Single body required');
@@ -374,7 +443,7 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
   let start=0;
   for(const end of ends){
     valid(end.index>=start,'Empty section is not supported');
-    const geometry=readPage(end.properties);page=geometry.page;const blocks:WriterBlock[]=[];
+    const geometry=readPage(end.properties,stories);page=geometry.page;const blocks:WriterBlock[]=[];
     for(let bi=start;bi<=end.index;bi++){
       const block=children[bi]!;
       if(isW(block,'tbl')){
@@ -385,7 +454,7 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
     }
     sections.push({id:'section-'+(sections.length+1),...geometry,blocks});start=end.index+1;
   }
-  const result=createDocument('writer',documentId,title);result.defaultTextStyle=profile?.defaults??{};result.styles=profile?.styles??{};result.resources=media.resources;if(profile?.defaultParagraph)result.defaultParagraphStyleId=profile.defaultParagraph;result.sections=sections;if(profile?.numbering)result.numbering=profile.numbering.numbering;
+  const result=createDocument('writer',documentId,title);result.defaultTextStyle=profile?.defaults??{};result.styles=profile?.styles??{};result.resources=media.resources;if(profile?.defaultParagraph)result.defaultParagraphStyleId=profile.defaultParagraph;result.sections=sections;if(Object.keys(stories).length)result.pageStories=stories;if(profile?.numbering)result.numbering=profile.numbering.numbering;
   const checked=validateDocument(result) as WriterDocument;buildWriterNumberingMarkers(checked);return checked;
 }
 function escapeXml(value:string):string{
@@ -481,8 +550,10 @@ function mainXml(candidate:unknown,profile:DocxStyleProfile|undefined,media:Medi
   };
   const sectionXml=(s:DeepReadonly<WriterSection>):string=>{
     const p=s.page,width=twip(p.width,1,31680),height=twip(p.height,1,31680),m=p.margins,extra=s.pageExtras;
-    return '<w:sectPr>'+tag('pgSz',{w:width,h:height,...(width>height?{orient:'landscape'}:{})})+
+    const refs=(['header','footer'] as const).map(kind=>s.storyRefs?.[kind]?'<w:'+kind+'Reference w:type="default" r:id="'+escapeXml(s.storyRefs[kind]!)+'"/>':'').join('');
+    return '<w:sectPr>'+refs+tag('pgSz',{w:width,h:height,...(width>height?{orient:'landscape'}:{})})+
       tag('pgMar',{top:twip(m.top,0,31680),right:twip(m.right,0,31680),bottom:twip(m.bottom,0,31680),left:twip(m.left,0,31680),header:twip(extra?.headerDistance??0,0,31680),footer:twip(extra?.footerDistance??0,0,31680),gutter:0})+
+      (s.pageNumberStart===undefined?'':tag('pgNumType',{start:s.pageNumberStart,fmt:'decimal'}))+
       (extra?.columnSpace===undefined?'':tag('cols',{num:1,space:twip(extra.columnSpace,0,31680)}))+(extra?.docGridLinePitch===undefined?'':tag('docGrid',{type:'default',linePitch:twip(extra.docGridLinePitch,0,31680)}))+'</w:sectPr>';
   };
   for(let si=0;si<checked.sections.length;si++){
@@ -498,14 +569,58 @@ function mainXml(candidate:unknown,profile:DocxStyleProfile|undefined,media:Medi
     }
     if(final)body+=end;
   }
-  return {model:checked,xml:DECL+'<w:document xmlns:w="'+W+'"><w:body>'+body+'</w:body></w:document>'};
+  return {model:checked,xml:DECL+'<w:document xmlns:w="'+W+'"'+(checked.sections.some(s=>s.storyRefs)?' xmlns:r="'+REL+'"':'')+'><w:body>'+body+'</w:body></w:document>'};
+}
+function storyXml(story:DeepReadonly<WriterPageStory>,profile:DocxStyleProfile|undefined,defaults:DeepReadonly<TextStyle>):string{
+  if(story.styleId)valid(profile?.builtinStoryStyles?.has(story.styleId),'Running story requires verified source style');
+  const p=(story.styleId?tag('pStyle',{val:story.styleId}):'')+(story.alignment?tag('jc',{val:({start:'left',center:'center',end:'right'})[story.alignment]}):'');
+  const style=writeRunStyle(profile?story.runStyle??{}:{...defaults,...story.runStyle});
+  const run=(text:string)=>'<w:r>'+style+writeText(text)+'</w:r>';
+  const root=story.kind==='header'?'hdr':'ftr';
+  return DECL+'<w:'+root+' xmlns:w="'+W+'"><w:p>'+(p?'<w:pPr>'+p+'</w:pPr>':'')+run(story.text)+(story.pageNumber?'<w:fldSimple w:instr=" PAGE ">'+run('1')+'</w:fldSimple>'+(story.after?run(story.after):''):'')+'</w:p></w:'+root+'>';
+}
+type StoryPlan={changes:Map<string,Uint8Array>;additions:{id:string;path:string;kind:'header'|'footer';bytes:Uint8Array}[];canonical:Record<string,string>};
+function planStories(model:DeepReadonly<WriterDocument>,main:string,profile:DocxStyleProfile|undefined,source?:OpcPackage,baseline?:ReadonlyMap<string,DocxStorySource>,prior?:Readonly<Record<string,string>>):StoryPlan{
+  const result:StoryPlan={changes:new Map(),additions:[],canonical:Object.create(null)};
+  // Previously admitted relationships remain source-owned. Undo after a save
+  // may omit a newly created, now unreferenced story: preserve the part.
+  for(const [id,story]of Object.entries(model.pageStories??{})){
+    const xml=storyXml(story,profile,model.defaultTextStyle);result.canonical[id]=xml;
+    const old=baseline?.get(id);
+    if(old){valid(old.kind===story.kind,'Cannot change source running story kind');if(prior?.[id]!==xml)result.changes.set(old.path,encoder.encode(xml));continue;}
+    valid(!source?.relationships.get(main)?.some(r=>r.id===id),'Running story relationship collision');
+    const path=main.slice(0,main.lastIndexOf('/')+1)+story.kind+'-oex-'+id+'.xml';
+    valid(![...source?.parts.keys()??[]].some(p=>p.toLowerCase()===path.toLowerCase())&&!result.additions.some(p=>p.path.toLowerCase()===path.toLowerCase()),'Running story part collision');
+    result.additions.push({id,path,kind:story.kind,bytes:encoder.encode(xml)});
+  }
+  // Keep orphaned source stories byte-exact (relationships may be inherited
+  // or restored by undo); don't silently remove parts from existing files.
+  for(const id of baseline?.keys()??[]){if(!Object.hasOwn(result.canonical,id))result.canonical[id]=prior![id]!;}
+  return result;
+}
+function addStoryParts(parts:Map<string,Uint8Array>,main:string,plan:StoryPlan,options:ContainerOptions):void{
+  for(const [path,bytes]of plan.changes)parts.set(path,bytes);
+  if(!plan.additions.length)return;
+  const i=main.lastIndexOf('/'),expected=main.slice(0,i+1)+'_rels/'+main.slice(i+1)+'.rels',actual=[...parts.keys()].find(p=>p.toLowerCase()===expected.toLowerCase())??expected;
+  const rels=parseXml(parts.get(actual)??'<Relationships xmlns="'+PKG+'"/>',options),types=parseXml(parts.get('[Content_Types].xml')!,options);
+  const relRoot=rels.documentElement!,typeRoot=types.documentElement!,ids=new Set(elements(relRoot).map(e=>e.getAttribute('Id')));
+  for(const item of plan.additions){
+    valid(!ids.has(item.id)&&!parts.has(item.path),'Running story part or relationship collision');ids.add(item.id);
+    const rel=rels.createElementNS(PKG,'Relationship');rel.setAttribute('Id',item.id);rel.setAttribute('Type',REL+'/'+item.kind);rel.setAttribute('Target','/'+item.path);relRoot.appendChild(rel);
+    const override=types.createElementNS(CT,'Override');override.setAttribute('PartName','/'+item.path);override.setAttribute('ContentType','application/vnd.openxmlformats-officedocument.wordprocessingml.'+item.kind+'+xml');typeRoot.appendChild(override);
+    parts.set(item.path,item.bytes);
+  }
+  parts.set(actual,serializeXml(rels,options));parts.set('[Content_Types].xml',serializeXml(types,options));
 }
 export interface WriterDocxSource{readonly document:DeepReadonly<WriterDocument>;readonly mainPart:string}
-const sources=new WeakMap<WriterDocxSource,{pkg:OpcPackage;canonical:string;documentId:string;profile?:DocxStyleProfile;media:MediaGraph}>();
+const sources=new WeakMap<WriterDocxSource,{pkg:OpcPackage;canonical:string;documentId:string;profile?:DocxStyleProfile;media:MediaGraph;storySources:ReadonlyMap<string,DocxStorySource>;storyCanonical:Readonly<Record<string,string>>}>();
 export function openWriterDocx(bytes:Uint8Array,documentId:string,title:string,options:ContainerOptions={}):WriterDocxSource{
-  const pkg=openOpc(bytes,options),{part,profile}=readStyleProfile(pkg,options,readRunStyle,readParagraphStyle),media=loadMedia(pkg,part),document=readMain(parseXml(pkg.parts.get(part)!,options),documentId,title,profile,media);
-  const source=Object.freeze({document:freezeData(document),mainPart:part});
-  sources.set(source,{pkg,canonical:mainXml(document,profile,planMedia(document.resources,part,pkg,media)).xml,documentId,profile,media});
+  const pkg=openOpc(bytes,options),{part,profile,stories:storySources}=readStyleProfile(pkg,options,readRunStyle,readParagraphStyle),media=loadMedia(pkg,part);
+  const stories:Record<string,WriterPageStory>=Object.create(null);
+  for(const [id,item]of storySources)stories[id]=readPageStory(pkg.parts.get(item.path)!,item.kind,profile,options);
+  const document=readMain(parseXml(pkg.parts.get(part)!,options),documentId,title,profile,media,stories);
+  const source=Object.freeze({document:freezeData(document),mainPart:part}),storyCanonical=Object.fromEntries(Object.entries(stories).map(([id,s])=>[id,storyXml(s,profile,document.defaultTextStyle)]));
+  sources.set(source,{pkg,canonical:mainXml(document,profile,planMedia(document.resources,part,pkg,media)).xml,documentId,profile,media,storySources,storyCanonical});
   return source;
 }
 const encoder=new TextEncoder();
@@ -516,9 +631,10 @@ export function writeWriterDocx(candidate:unknown,options:ContainerOptions={}):U
     ['_rels/.rels',encoder.encode(DECL+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="'+ROOT_REL+'" Target="'+part+'"/></Relationships>')],
     [part,encoder.encode(xml)]
   ]);
+  const stories=planStories(model,part,undefined);addStoryParts(parts,part,stories,options);
   addMediaParts(parts,part,media,options);addNumberingParts(parts,part,undefined,model.numbering,options);const bytes=writeZip(parts,options);
   const checked=openWriterDocx(bytes,model.documentId,model.title,options),saved=sources.get(checked)!;
-  valid(canonicalData(checked.document.numbering??null)===canonicalData(model.numbering??null)&&saved.canonical===xml&&canonicalData(checked.document.resources)===canonicalData(model.resources),'Semantic output verification failed');
+  valid(canonicalData(checked.document.numbering??null)===canonicalData(model.numbering??null)&&saved.canonical===xml&&canonicalData(saved.storyCanonical)===canonicalData(stories.canonical)&&canonicalData(checked.document.resources)===canonicalData(model.resources),'Semantic output verification failed');
   return bytes;
 }
 /** No-edit returns original archive bytes. Edited copy changes only the supported main part.
@@ -528,12 +644,12 @@ export function saveWriterDocx(source:WriterDocxSource,candidate:unknown,options
   const saved=sources.get(source);assert(saved,'invalid','Unknown DOCX source capability');
   const model=validateDocument(candidate);valid(model.kind==='writer','Expected Writer model');assert(model.documentId===saved.documentId,'conflict','Document identity mismatch');
   const media=planMedia(model.resources,source.mainPart,saved.pkg,saved.media),{xml}=mainXml(model,saved.profile,media);
-  const changed=numberingChanged(saved.profile?.numbering,model.numbering);
-  if(xml===saved.canonical&&!media.additions.length&&!changed)return writeOpc(saved.pkg,new Map(),options);
+  const changed=numberingChanged(saved.profile?.numbering,model.numbering),stories=planStories(model,source.mainPart,saved.profile,saved.pkg,saved.storySources,saved.storyCanonical);
+  if(xml===saved.canonical&&!media.additions.length&&!changed&&!stories.changes.size&&!stories.additions.length)return writeOpc(saved.pkg,new Map(),options);
   let bytes:Uint8Array;
-  if(changed){writeOpc(saved.pkg,new Map(),options);const parts=new Map(saved.pkg.parts);parts.set(source.mainPart,encoder.encode(xml));addMediaParts(parts,source.mainPart,media,options);addNumberingParts(parts,source.mainPart,saved.profile?.numbering,model.numbering,options);bytes=writeZip(parts,options);}
+  if(changed||stories.changes.size||stories.additions.length){writeOpc(saved.pkg,new Map(),options);const parts=new Map(saved.pkg.parts);parts.set(source.mainPart,encoder.encode(xml));addStoryParts(parts,source.mainPart,stories,options);addMediaParts(parts,source.mainPart,media,options);addNumberingParts(parts,source.mainPart,saved.profile?.numbering,model.numbering,options);bytes=writeZip(parts,options);}
   else bytes=saveMediaPackage(saved.pkg,source.mainPart,xml,media,options);
   const checked=openWriterDocx(bytes,model.documentId,model.title,options);
-  valid(canonicalData(checked.document.numbering??null)===canonicalData(model.numbering??null)&&sources.get(checked)?.canonical===xml&&canonicalData(checked.document.resources)===canonicalData({...saved.media.resources,...model.resources})&&canonicalData(checked.document.styles)===canonicalData(model.styles)&&canonicalData(checked.document.defaultTextStyle)===canonicalData(saved.profile?.defaults??{}),'Edited DOCX verification failed');
+  valid(canonicalData(checked.document.numbering??null)===canonicalData(model.numbering??null)&&sources.get(checked)?.canonical===xml&&canonicalData(sources.get(checked)?.storyCanonical)===canonicalData(stories.canonical)&&canonicalData(checked.document.resources)===canonicalData({...saved.media.resources,...model.resources})&&canonicalData(checked.document.styles)===canonicalData(model.styles)&&canonicalData(checked.document.defaultTextStyle)===canonicalData(saved.profile?.defaults??{}),'Edited DOCX verification failed');
   return bytes;
 }

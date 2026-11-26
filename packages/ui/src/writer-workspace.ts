@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, EMU_PER_TWIP, graphemeBoundaries, OfficeError } from '@office-ex/contracts';
 import { resolveTextStyle, writerEffectiveStyle, inlineText, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterBlock, type Paragraph, type Table, type ImageResource } from '@office-ex/core';
-import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation, hasMergedTableCells, mergeTableCells, splitTableCell, insertImageAfter, insertImageAt, resizeInlineImage, removeInlineImage, setWriterPage, splitWriterSectionAfter, setParagraphMetrics, setWriterList, restartWriterList, setParagraphDirection, locateParagraph, writerTextGroup, textGroupPoint, textGroupOffset, replaceWriterRange, resolveWriterRange, formatWriterRange, type WriterRange, type WriterTextGroup } from '@office-ex/writer';
+import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation, hasMergedTableCells, mergeTableCells, splitTableCell, insertImageAfter, insertImageAt, resizeInlineImage, removeInlineImage, setWriterPage, splitWriterSectionAfter, effectivePageStory, setWriterPageStory, setParagraphMetrics, setWriterList, restartWriterList, setParagraphDirection, locateParagraph, writerTextGroup, textGroupPoint, textGroupOffset, replaceWriterRange, resolveWriterRange, formatWriterRange, type WriterRange, type WriterTextGroup } from '@office-ex/writer';
 import { layoutWriter, hitTestWriterPage, writerCaretBox, writerSelectionBoxes, type WriterLayout } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import { CanvasFontMetrics } from './font-metrics.js';
@@ -105,7 +105,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
     const unit=EMU_PER_CSS_PIXEL,px=(value:number)=>value/unit;
     ctx.setTransform(canvas.width/px(page.width),0,0,canvas.height/px(page.height),0,0);
-    ctx.beginPath();ctx.rect(px(page.margins.left),px(page.margins.top),px(page.width-page.margins.left-page.margins.right),px(page.height-page.margins.top-page.margins.bottom));ctx.clip();
+    ctx.save();ctx.beginPath();ctx.rect(px(page.margins.left),px(page.margins.top),px(page.width-page.margins.left-page.margins.right),px(page.height-page.margins.top-page.margins.bottom));ctx.clip();
     if(state.paragraphId){
       try{
         ctx.fillStyle='#dce8ff';
@@ -130,6 +130,13 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     if(state.paragraphId&&state.start===state.end){
       const caret=writerCaretBox(layout,{paragraphId:state.paragraphId,offset:state.end},state.pageIndex);
       if(caret?.pageIndex===state.pageIndex){ctx.fillStyle='#245bca';ctx.fillRect(px(caret.x),px(caret.y),Math.max(1,px(page.width/canvas.width*1.5)),px(caret.height));}
+    }
+    ctx.restore();
+    for(const story of page.runningStories??[]){
+      const f=story.fragment;if(!f||story.baseline===undefined)continue;
+      const r=f.request,family=/^(sans-serif|serif|monospace|system-ui)$/.test(r.family)?r.family:JSON.stringify(r.family);
+      ctx.font=(r.italic?'italic ':'')+(r.bold?'bold ':'')+px(r.size)+'px '+family;ctx.textBaseline='alphabetic';ctx.textAlign='left';ctx.direction=r.direction;
+      ctx.fillStyle=safeColor(f.style);ctx.fillText(f.text,px(f.x),px(story.baseline));
     }
     pageText.textContent=t('writerPageNumber',{current:host.number(state.pageIndex+1),total:host.number(layout.pages.length)});
     previous.disabled=state.pageIndex===0;next.disabled=state.pageIndex===layout.pages.length-1;
@@ -454,6 +461,46 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     const values={width:emu(pw),height:emu(ph),margins:{top:emu(top),right:emu(right),bottom:emu(bottom),left:emu(left)}};
     if(host.execute(setWriterPage(host.snapshot(),docSection.id,values)))host.render();
   }),'writer-apply-page');pageBarControls.append(apply);
+  const storyDialog=node('dialog');storyDialog.id='writer-story-dialog';storyDialog.setAttribute('aria-labelledby','writer-story-title');
+  const storyHead=node('header'),storyTitle=node('h2',t('writerRunningStories'));storyTitle.id='writer-story-title';storyHead.append(storyTitle);
+  const closeStory=button(t('close'),()=>storyDialog.close());storyHead.append(closeStory);storyDialog.append(storyHead);
+  const storyField=<T extends HTMLInputElement|HTMLSelectElement>(label:MessageKey,input:T):T=>{
+    const wrapper=node('label');wrapper.append(node('span',t(label)),input);input.setAttribute('aria-label',t(label));storyDialog.append(wrapper);return input;
+  };
+  const storySection=storyField('writerSection',node('select'));storySection.id='writer-story-section';
+  const storyKind=storyField('writerRunningStories',node('select'));storyKind.id='writer-story-kind';
+  for(const [value,key] of [['header','writerHeader'],['footer','writerFooter']] as const){const o=node('option',t(key));o.value=value;storyKind.append(o);}
+  const storyText=storyField('ribbonText',node('input'));storyText.id='writer-story-text';storyText.maxLength=4096;
+  const pageField=storyField('writerAutoPageNumber',node('input'));pageField.type='checkbox';pageField.id='writer-story-page-number';
+  const suffix=storyField('writerAfterPageNumber',node('input'));suffix.id='writer-story-after';suffix.maxLength=4096;
+  const storyAlign=storyField('ribbonAlignment',node('select'));storyAlign.id='writer-story-align';
+  for(const [value,key]of [['','writerStoryDefaultAlign'],['start','writerAlignLeft'],['center','writerAlignCenter'],['end','writerAlignRight']] as const){const o=node('option',t(key));o.value=value;storyAlign.append(o);}
+  const distance=storyField('writerStoryDistance',node('input'));distance.id='writer-story-distance';distance.type='number';distance.min='0';distance.max='1584';distance.step='0.05';
+  const pageStart=storyField('writerPageStart',node('input'));pageStart.id='writer-story-page-start';pageStart.type='number';pageStart.min='1';pageStart.max='32767';pageStart.step='1';
+  const storyNote=node('p',t('writerStoryInheritance'),'muted');storyDialog.append(storyNote);
+  const storyButtons=node('div','','writer-story-actions');
+  const storyCancel=button(t('cancel'),()=>storyDialog.close());
+  const storyApply=button(t('writerApplyPage'),()=>safe(()=>{
+    if(host.composing()||host.legacyWriter)return;
+    const kind=storyKind.value as 'header'|'footer';
+    const command=setWriterPageStory(host.snapshot(),storySection.value,kind,{text:storyText.value,...(pageField.checked?{pageNumber:true,...(suffix.value?{after:suffix.value}:{})}:{}),...(storyAlign.value?{alignment:storyAlign.value as 'start'|'center'|'end'}:{}),pageNumberStart:pageStart.value===''?null:pageStart.valueAsNumber,distance:Math.round(distance.valueAsNumber*20)*EMU_PER_TWIP},crypto.randomUUID());
+    if(host.execute(command)){storyDialog.close();host.render();}
+  }),'writer-story-apply');storyApply.classList.add('solid');storyButtons.append(storyCancel,storyApply);storyDialog.append(storyButtons);root.append(storyDialog);
+  function loadStory(){
+    const doc=modelOf(host.snapshot()),s=doc.sections.find(v=>v.id===storySection.value)!;
+    const kind=storyKind.value as 'header'|'footer',ref=effectivePageStory(doc,s.id,kind),story=ref?doc.pageStories?.[ref]:undefined;
+    storyText.value=story?.text??'';pageField.checked=!!story?.pageNumber;suffix.value=story?.after??'';suffix.disabled=!pageField.checked;
+    storyAlign.value=story?.alignment??'';pageStart.value=s.pageNumberStart===undefined?'':String(s.pageNumberStart);
+    const key=kind==='header'?'headerDistance':'footerDistance',margin=s.page.margins[kind==='header'?'top':'bottom'];
+    distance.max=String(Math.floor(margin/EMU_PER_TWIP)/20);
+    distance.value=String((s.pageExtras?.[key]??(ref?0:Math.min(457200,Math.floor(margin/2/EMU_PER_TWIP)*EMU_PER_TWIP)))/EMU_PER_TWIP/20);
+  }
+  storySection.onchange=loadStory;storyKind.onchange=loadStory;pageField.onchange=()=>{suffix.disabled=!pageField.checked;};
+  const storyButton=button(t('writerRunningStories'),()=>safe(()=>{
+    if(host.legacyWriter||host.composing())return;
+    storySection.replaceChildren();for(const [index,s]of modelOf(host.snapshot()).sections.entries()){const o=node('option',t('writerSectionNumber',{number:host.number(index+1)}));o.value=s.id;storySection.append(o);}
+    storySection.value=state.pageSectionId??modelOf(host.snapshot()).sections[0]!.id;loadStory();storyDialog.showModal();
+  }),'writer-running-stories');storyButton.disabled=!!host.legacyWriter;pageBarControls.append(storyButton);
   root.insertBefore(pageBarControls,note);
   const metricsBar=node('div','','writer-table-controls');
   for(const [key,label] of [['indent','writerIndent'],['rightIndent','writerRightIndent'],['firstLineIndent','writerFirstLineIndent'],['spaceBefore','writerSpaceBefore'],['spaceAfter','writerSpaceAfter'],['lineHeight','writerLineHeight']] as const){
@@ -701,6 +748,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     {id:'layout',label:'ribbonLayout',groups:[
       {label:'ribbonPageSetup',rows:[pick('writer-section','writer-paper','writer-orientation'),pick('writer-page-width','writer-page-height','writer-apply-page')]},
       {label:'ribbonMargins',rows:[pick('writer-margin-top','writer-margin-bottom'),pick('writer-margin-left','writer-margin-right')]},
+      {label:'writerRunningStories',rows:[pick('writer-running-stories')]},
       {label:'ribbonIndent',rows:[pick('writer-indent','writer-rightIndent'),pick('writer-firstLineIndent')]},
       {label:'ribbonSpacing',rows:[pick('writer-spaceBefore','writer-spaceAfter'),pick('writer-lineHeight','writer-contextual-spacing')]}
     ]},

@@ -139,6 +139,7 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState,external?
         const mini=node('canvas');mini.width=84;mini.height=Math.min(180,Math.max(22,Math.round(84*p.height/p.width)));mini.setAttribute('aria-hidden','true');const ctx=mini.getContext('2d');
         if(ctx){ctx.fillStyle='#fff';ctx.fillRect(0,0,mini.width,mini.height);ctx.fillStyle='#9eacc0';const sx=mini.width/p.width,sy=mini.height/p.height;
           for(const l of p.lines)if(l.width)ctx.fillRect(l.x*sx,l.y*sy,Math.max(1,l.width*sx),Math.max(1,Math.min(2,l.height*sy*.45)));
+          for(const s of p.runningStories??[])ctx.fillRect(s.x*sx,s.y*sy,Math.max(1,s.width*sx*.3),Math.max(1,Math.min(2,s.height*sy*.45)));
           ctx.fillStyle='#c2cbd6';for(const img of p.images)ctx.fillRect(img.x*sx,img.y*sy,img.width*sx,img.height*sy);}
         b.append(mini,node('span',host.number(i+1)));b.onclick=()=>safe(()=>{if(!composition){state.pageIndex=i;draw();}});items.push(b);
       }
@@ -171,6 +172,11 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState,external?
       }
     }
     for(const line of page.lines){const rule=writerParagraphRule(line);if(rule)content.push(rule);const marker=writerListMarker(line);if(marker)content.push(marker);}
+    for(const story of page.runningStories??[]){
+      const clip=node('div','','writer-native-running-story');clip.dataset.story=story.kind;clip.dataset.storyId=story.storyId;
+      at(clip,story.x,story.y,story.width,story.height);clip.style.overflow='hidden';
+      clip.append(cache.shaper.render(model,story.paragraph,story.paragraphWidth));content.push(clip);
+    }
     paper.replaceChildren(...content,overlays,input);
     pageNumber.textContent=t('writerPageNumber',{current:host.number(state.pageIndex+1),total:host.number(layout.pages.length)});
     previous.disabled=state.pageIndex===0;next.disabled=state.pageIndex===layout.pages.length-1;

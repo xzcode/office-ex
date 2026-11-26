@@ -36,8 +36,11 @@ export interface Paragraph { id: string; type: 'paragraph'; styleId?: string; st
 export interface TableCell { id: string; blocks: WriterBlock[]; merge?: {rows:number;columns:number}; coveredBy?:string }
 export interface Table { id: string; type: 'table'; nativeTable?: {styleId?:'TableNormal'|'TableGrid'; autoWidth?:true; autoLayout?:true; directPadding?:true; directBorder?:true; look?:number}; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[]; cellPadding?: {top:number;right:number;bottom:number;left:number}; border?: {width:number;color:Color} }
 export type WriterBlock = Paragraph | Table | { id: string; type: 'page-break' };
-export interface WriterSection { id: string; pageExtras?: {headerDistance?:number;footerDistance?:number;columnSpace?:number;docGridLinePitch?:number}; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
-export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string; numbering?:WriterNumbering }
+/** A bounded single-paragraph running story. PAGE is a typed field, never
+ * source markup or a script. Text before/after it is plain Unicode. */
+export interface WriterPageStory {kind:'header'|'footer';text:string;pageNumber?:true;after?:string;styleId?:'Header'|'Footer';alignment?:'start'|'center'|'end';runStyle?:TextStyle}
+export interface WriterSection { id: string; storyRefs?:{header?:string;footer?:string}; pageNumberStart?:number; pageExtras?: {headerDistance?:number;footerDistance?:number;columnSpace?:number;docGridLinePitch?:number}; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
+export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string; numbering?:WriterNumbering; pageStories?:Record<string,WriterPageStory> }
 
 export type CellValue = { kind: 'blank' } | { kind: 'string'; value: string } | { kind: 'number'; value: number } | { kind: 'boolean'; value: boolean } | { kind: 'error'; value: '#NULL!' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#NAME?' | '#NUM!' | '#N/A' } | { kind: 'formula'; source: string };
 export interface CellStyle extends TextStyle { fill?: Color; border?: {color:Color;width:number}; verticalAlignment?: 'top'|'center'|'bottom'; wrapText?: boolean }
@@ -209,7 +212,7 @@ export function validateDocument(value: unknown): OfficeDocument {
   assert(isRecord(value), 'invalid', 'Expected document');
   if (value.schemaVersion !== 1) throw new OfficeError('unsupported', 'Unsupported document schema version');
   const fields = ['schemaVersion', 'documentId', 'title', 'resources', 'styles', 'defaultTextStyle', 'kind'];
-  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections','defaultParagraphStyleId','numbering'] : value.kind === 'sheets' ? ['dateSystem', 'sheets'] : value.kind === 'slides' ? ['size', 'slides', 'theme'] : [])]);
+  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections','defaultParagraphStyleId','numbering','pageStories'] : value.kind === 'sheets' ? ['dateSystem', 'sheets'] : value.kind === 'slides' ? ['size', 'slides', 'theme'] : [])]);
   assertId(model.documentId); text(model.title, 1024, false);
   const ids = new Set<string>();
   const id = (candidate: unknown): void => { assertId(candidate); assert(!ids.has(candidate), 'invalid', 'Duplicate stable node identifier'); ids.add(candidate); };
@@ -333,8 +336,28 @@ export function validateDocument(value: unknown): OfficeDocument {
   if (model.kind === 'writer') {
     optionalId(model.defaultParagraphStyleId,styles);
     if(model.defaultParagraphStyleId!==undefined){const ref=styles[String(model.defaultParagraphStyleId)];assert(isRecord(ref)&&ref.kind==='paragraph','invalid','Default paragraph style must be a paragraph style');}
+    const stories=model.pageStories;
+    if(stories!==undefined){
+      assert(isRecord(stories)&&Object.keys(stories).length>0&&Object.keys(stories).length<=256,'limit','Running story budget exceeded');
+      for(const [key,item]of Object.entries(stories)){
+        assertId(key);assert(/^[A-Za-z_][A-Za-z0-9_.-]{0,127}$/.test(key)&&!['__proto__','constructor','prototype'].includes(key),'invalid','Invalid story relationship identity');
+        const s=object(item,['kind','text','pageNumber','after','styleId','alignment','runStyle']);
+        assert(s.kind==='header'||s.kind==='footer','invalid','Invalid running story kind');
+        text(s.text,4096);assert(!/[\x00-\x1f\x7f]/.test(String(s.text)),'invalid','Running story must be single-line text');
+        if(s.pageNumber!==undefined)assert(s.pageNumber===true,'invalid','Invalid page field');
+        if(s.after!==undefined){assert(s.pageNumber===true,'invalid','Text after missing PAGE field');text(s.after,4096,false);assert(!/[\x00-\x1f\x7f]/.test(String(s.after)),'invalid','Running story must be single-line text');}
+        if(s.styleId!==undefined)assert(s.styleId===(s.kind==='header'?'Header':'Footer'),'invalid','Unexpected running story style');
+        if(s.alignment!==undefined)assert(['start','center','end'].includes(String(s.alignment)),'invalid','Invalid story alignment');
+        if(s.runStyle!==undefined){validateTextStyle(s.runStyle);assert(Object.keys(s.runStyle as object).every(k=>['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'].includes(k)),'unsupported','Unsupported running story run format');}
+      }
+    }
     const sections=list(model.sections,1);assert(sections.length<=128,'limit','Writer section budget exceeded');sections.forEach((candidate) => {
-      const section = object(candidate, ['id', 'page', 'blocks', 'pageExtras']); id(section.id);
+      const section = object(candidate, ['id', 'page', 'blocks', 'pageExtras','storyRefs','pageNumberStart']); id(section.id);
+      if(section.pageNumberStart!==undefined)integer(section.pageNumberStart,1,32767);
+      if(section.storyRefs!==undefined){
+        const refs=object(section.storyRefs,['header','footer']);assert(Object.keys(refs).length>0,'invalid','Empty running story references');
+        for(const kind of ['header','footer'] as const)if(refs[kind]!==undefined){const key=refs[kind];assertId(key);assert(isRecord(stories)&&Object.hasOwn(stories,key)&&(stories[key] as WriterPageStory).kind===kind,'invalid','Missing or mismatched running story reference');}
+      }
       if(section.pageExtras!==undefined){const extra=object(section.pageExtras,['headerDistance','footerDistance','columnSpace','docGridLinePitch']);for(const n of Object.values(extra))integer(n,0,31680*635);}
       const page = object(section.page, ['width', 'height', 'margins']); integer(page.width, 1); integer(page.height, 1);
       const margins = object(page.margins, ['top', 'right', 'bottom', 'left']);

@@ -367,3 +367,9 @@
 .home-workspace{padding-top:34px}
 .home-recent-row{min-height:54px}
 @media(max-width:1050px){.home-product.product-card{min-height:88px}.home-product-copy strong{font-size:14px}.home-module-mark:not(.small){width:36px;height:36px;flex-basis:36px}}
+
+/* Running header/footer dialog: separate controls from the body editor. */
+#writer-story-dialog label input:not([type=checkbox]),#writer-story-dialog label select{width:55%;min-width:0;padding:7px 9px}
+#writer-story-dialog label input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+#writer-story-dialog .writer-story-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.writer-native-running-story{pointer-events:none}

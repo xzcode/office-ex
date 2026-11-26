@@ -57,7 +57,34 @@ def generate(p):
         break
     d.save(p/'invalid-merged-table.docx')
     d=Document();d.add_table(rows=2,cols=2).cell(0,0).text='办公软件'
-    d.sections[0].header.paragraphs[0].text='Report Header';d.sections[0].footer.paragraphs[0].text='Footer';d.add_paragraph('Read-only content');d.save(p/'advanced.docx')
+    d.sections[0].header.paragraphs[0].text='Report Header';d.sections[0].footer.paragraphs[0].text='Footer';d.add_paragraph('Read-only content')
+    d.sections[0].header.add_paragraph('Unsupported second header paragraph');d.save(p/'advanced.docx')
+    from docx.enum.section import WD_SECTION
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    d=Document();d.add_paragraph('Section one')
+    d.sections[0].header.paragraphs[0].text='Independent running header'
+    footer=d.sections[0].footer.paragraphs[0];footer.alignment=WD_ALIGN_PARAGRAPH.CENTER;footer.add_run('Page ')
+    for marker in ['begin','instruction','separate','result','end']:
+        r=OxmlElement('w:r')
+        if marker=='instruction':
+            e=OxmlElement('w:instrText');e.set(qn('xml:space'),'preserve');e.text=' PAGE '
+        elif marker=='result':
+            e=OxmlElement('w:t');e.text='999'
+        else:
+            e=OxmlElement('w:fldChar');e.set(qn('w:fldCharType'),marker)
+        r.append(e);footer._p.append(r)
+    footer.add_run(' / report')
+    num=OxmlElement('w:pgNumType');num.set(qn('w:start'),'5');num.set(qn('w:fmt'),'decimal')
+    d.sections[0]._sectPr.insert_element_before(num,'w:cols')
+    d.add_page_break();d.add_paragraph('Second page')
+    d.add_section(WD_SECTION.NEW_PAGE)
+    last=d.sections[-1]._sectPr.find(qn('w:pgNumType'))
+    if last is not None:d.sections[-1]._sectPr.remove(last)
+    d.add_paragraph('Linked section')
+    d.save(p/'running-stories.docx')
+    # A non-PAGE instruction is never evaluated or rewritten.
+    for e in d.sections[0].footer.paragraphs[0]._p.iter(qn('w:instrText')):e.text=' DATE '
+    d.save(p/'unsupported-story-field.docx')
     d=Document();d.add_picture(str(p/'sample.png'),width=Inches(1));d.save(p/'ordinary-image.docx')
     r=Presentation();s=r.slides.add_slide(r.slide_layouts[0]);s.shapes.title.text='项目报告';s.placeholders[1].text='Office EX'
     s=r.slides.add_slide(r.slide_layouts[1]);s.shapes.title.text='工作内容';s.placeholders[1].text='第一条\n第二条';r.save(p/'ordinary.pptx')
@@ -96,6 +123,21 @@ def verify(p):
     with ZipFile(p/'complex-merged-table.docx') as before,ZipFile(p/'complex-merged-table-edited.docx') as after:
         for name in before.namelist():
             if name!='word/document.xml':assert before.read(name)==after.read(name),name
+    d=Document(p/'running-stories-edited.docx')
+    assert len(d.sections)==2
+    assert d.sections[0].header.paragraphs[0].text=='Independent running header'
+    assert d.sections[1].header.paragraphs[0].text=='Detached section header'
+    assert not d.sections[1].header.is_linked_to_previous
+    assert d.sections[1].footer.is_linked_to_previous
+    assert d.sections[0]._sectPr.find(qn('w:pgNumType')).get(qn('w:start'))=='5'
+    assert d.sections[1]._sectPr.find(qn('w:pgNumType')).get(qn('w:start'))=='20'
+    fld=d.sections[0].footer.paragraphs[0]._p.find(qn('w:fldSimple'))
+    assert fld is not None and fld.get(qn('w:instr')).strip()=='PAGE'
+    assert d.sections[0].footer.paragraphs[0].text=='Updated page  / report'
+    with ZipFile(p/'running-stories.docx') as before,ZipFile(p/'running-stories-edited.docx') as after:
+        for name in before.namelist():
+            if name not in ['word/document.xml','word/footer1.xml','word/_rels/document.xml.rels','[Content_Types].xml']:
+                assert before.read(name)==after.read(name),name
     r=Presentation(p/'shapes-edited.pptx');assert r.slides[0].shapes[0].text=='编辑普通文本框'
     assert r.slides[0].shapes[0].text_frame.auto_size==MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT and len(r.slides[0].shapes)==2
     print('Independent Excel, Word and PowerPoint readback of edited files passed')
