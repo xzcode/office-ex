@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "sandbox": true,
+  "checks": [
+    "Actual native layout keeps heading and body together, starts forced paragraph on next page",
+    "Native ribbon pagination controls edit and save explicit false/true DOCX overrides",
+    "Independent PDF text readback proves three pages, body placement and repeated running page numbers"
+  ],
+  "pdfSha256": "6037edb34d75ee4071215a0bc766b2158a5834eaa0119db6eff68e38ff9408cd",
+  "pages": [
+    "Lead one\nLead two\nLead three\nIndependent PDF header\nPage 5 / report",
+    "Keep heading\nBody ﬁrst\nBody last\nIndependent PDF header\nPage 6 / report",
+    "Forced page\nIndependent PDF header\nPage 7 / report"
+  ],
+  "status": "passed"
+}

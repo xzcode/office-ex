@@ -24,7 +24,7 @@ const CT='http://schemas.openxmlformats.org/package/2006/content-types',PKG='htt
 const MAIN_TYPE='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml';
 const DECL='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const CHAR_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'];
-const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','paragraphDirection','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList'];
+const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','pageBreakBefore','outlineLevel','widowControl','paragraphDirection','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList'];
 const MAX_BLOCKS=10000;
 const MAX_RUNS=50000;
 const MAX_TEXT=4*1024*1024;
@@ -99,6 +99,7 @@ export function readParagraphStyle(el:Element,reference?:(id:string)=>void,secti
       case 'bidi':style.paragraphDirection=toggled(child)?'rtl':'ltr';break;
       case 'keepNext':style.keepNext=toggled(child);break;
       case 'keepLines':style.keepLines=toggled(child);break;
+      case 'pageBreakBefore':style.pageBreakBefore=toggled(child);break;
       case 'widowControl':style.widowControl=toggled(child);break;
       case 'outlineLvl':attrs(child,['w:val']);empty(child);style.outlineLevel=numberProp(child,'val',0,9);break;
       case 'sectPr':{valid(child===sectionEnd,'Unexpected section properties inside paragraph');break;}
@@ -490,7 +491,7 @@ function writeRunStyle(style:DeepReadonly<TextStyle>,styleId?:string):string{
 }
 function writeParagraphStyle(style:DeepReadonly<TextStyle>,styleId?:string,sectionEnd=''):string{
   valid(Object.keys(style).every(k=>PARA_KEYS.includes(k)),'Unsupported paragraph style');
-  let p=styleId?tag('pStyle',{val:styleId}):'';for(const key of ['keepNext','keepLines','widowControl'] as const)if(style[key]!==undefined)p+=tag(key,{val:style[key]?1:0});if(style.paragraphDirection!==undefined)p+=tag('bidi',{val:style.paragraphDirection==='rtl'?1:0});const spacing:Record<string,string|number>={};
+  let p=styleId?tag('pStyle',{val:styleId}):'';for(const key of ['keepNext','keepLines','pageBreakBefore','widowControl'] as const)if(style[key]!==undefined)p+=tag(key,{val:style[key]?1:0});if(style.paragraphDirection!==undefined)p+=tag('bidi',{val:style.paragraphDirection==='rtl'?1:0});const spacing:Record<string,string|number>={};
   if(style.spaceBefore!==undefined)spacing.before=twip(style.spaceBefore,0,31680);
   if(style.spaceAfter!==undefined)spacing.after=twip(style.spaceAfter,0,31680);
   if(style.lineHeight!==undefined){spacing.line=twip(style.lineHeight,1,31680);spacing.lineRule='exact';}

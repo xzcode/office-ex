@@ -80,3 +80,82 @@ test('M5 right and first-line indent constrain wrapping and preserve hanging-lin
  assert.equal(lines[0]!.x,100);assert.equal(lines[1]!.x,150);assert.equal(lines[0]!.fragments.map(f=>f.text).join(''),'ab');assert.ok(lines.every(line=>line.x+line.width<=350));
  p.style={indent:0,rightIndent:0,firstLineIndent:-100};assert.throws(()=>layoutWriter(new DocumentSession(d).snapshot(),font),fails('unsupported'));
 });
+
+function paginationDoc(paragraphs:{id:string;text:string;style?:import('@office-ex/core').TextStyle}[]):WriterDocument{
+  const d=document('');
+  // The deterministic font's natural line height is 1.2 * 100 = 120.
+  d.sections[0]!.page.height=580; // 480 EMU usable, exactly four lines.
+  d.sections[0]!.blocks=paragraphs.map(p=>({id:p.id,type:'paragraph',runs:[{id:p.id+'-r',type:'text',text:p.text}],...(p.style?{style:p.style}:{})}));
+  return d;
+}
+const counts=(layout:ReturnType<typeof layoutWriter>,id:string)=>layout.pages.map(p=>p.lines.filter(l=>l.paragraphId===id).length);
+test('M6.3 keep with next moves a heading chain and following paragraph start together',()=>{
+  const d=paginationDoc([{id:'lead',text:'a\nb\nc'},{id:'heading',text:'H',style:{keepNext:true}},{id:'sub',text:'S',style:{keepNext:true}},{id:'body',text:'x\ny'}]);
+  const result=layoutWriter(new DocumentSession(d).snapshot(),font);
+  assert.equal(result.pages.length,2);
+  assert.deepEqual(counts(result,'heading'),[0,1]);
+  assert.deepEqual(counts(result,'sub'),[0,1]);
+  assert.deepEqual(counts(result,'body'),[0,2]);
+});
+test('M6.3 keep lines together moves a complete paragraph; disabled control permits splitting',()=>{
+  const d=paginationDoc([{id:'lead',text:'a\nb'},{id:'body',text:'x\ny\nz',style:{keepLines:true,widowControl:false}}]);
+  const result=layoutWriter(new DocumentSession(d).snapshot(),font);
+  assert.deepEqual(counts(result,'body'),[0,3]);
+  const p=d.sections[0]!.blocks[1]!;assert.equal(p.type,'paragraph');p.style={keepLines:false,widowControl:false};
+  assert.deepEqual(counts(layoutWriter(new DocumentSession(d).snapshot(),font),'body'),[2,1]);
+});
+test('M6.3 default widow/orphan control prevents both a single first and a single final line',()=>{
+  const d=paginationDoc([{id:'lead',text:'a'},{id:'body',text:'w\nx\ny\nz'}]);
+  let result=layoutWriter(new DocumentSession(d).snapshot(),font);
+  assert.deepEqual(counts(result,'body'),[2,2]);
+  const p=d.sections[0]!.blocks[0]!;assert.equal(p.type,'paragraph');p.runs=[{id:'lead-r',type:'text',text:'a\nb\nc'}];
+  result=layoutWriter(new DocumentSession(d).snapshot(),font);
+  assert.deepEqual(counts(result,'body'),[0,4]);
+  const body=d.sections[0]!.blocks[1]!;assert.equal(body.type,'paragraph');body.style={widowControl:false};
+  assert.deepEqual(counts(layoutWriter(new DocumentSession(d).snapshot(),font),'body'),[1,3]);
+});
+test('M6.3 paragraph page-break-before supersedes keepNext and avoids initial blank pages',()=>{
+  const d=paginationDoc([{id:'first',text:'A',style:{pageBreakBefore:true,keepNext:true}},{id:'second',text:'B',style:{pageBreakBefore:true}},{id:'third',text:'C'}]);
+  const result=layoutWriter(new DocumentSession(d).snapshot(),font);
+  assert.deepEqual(result.pages.map(p=>p.lines.map(l=>l.paragraphId)),[['first'],['second','third']]);
+});
+test('M6.3 keepNext reserves the first actual table row group without measuring twice',()=>{
+  const d=paginationDoc([{id:'lead',text:'a\nb\nc'},{id:'caption',text:'H',style:{keepNext:true}}]);
+  d.sections[0]!.blocks.push({id:'table',type:'table',columnWidths:[400],cellPadding:{left:0,right:0,top:0,bottom:0},rows:[
+    {id:'row1',cells:[{id:'cell1',blocks:[{id:'cellp1',type:'paragraph',runs:[{id:'cellr1',type:'text',text:'R1'}]}]}]},
+    {id:'row2',cells:[{id:'cell2',blocks:[{id:'cellp2',type:'paragraph',runs:[{id:'cellr2',type:'text',text:'R2'}]}]}]}
+  ]});
+  const result=layoutWriter(new DocumentSession(d).snapshot(),font);
+  assert.deepEqual(counts(result,'caption'),[0,1]);
+  assert.equal(result.pages[0]!.tableCells.length,0);
+  assert.equal(result.pages[1]!.tableCells.length,2);
+  assert.ok(!result.warnings.includes('writer.keep-next-limited'));
+});
+test('M6.3 oversized constraints terminate without blank pages or lost lines',()=>{
+  const d=paginationDoc([{id:'body',text:'a\nb\nc\nd\ne\nf',style:{keepLines:true,keepNext:true}},{id:'next',text:'N'}]);
+  const s=new DocumentSession(d),before=s.snapshot().document,result=layoutWriter(s.snapshot(),font);
+  assert.equal(result.pages.flatMap(p=>p.lines).filter(l=>l.paragraphId==='body').length,6);
+  assert.ok(result.pages.every(p=>p.lines.length>0));
+  assert.ok(result.warnings.includes('writer.keep-lines-limited')&&result.warnings.includes('writer.keep-next-limited'));
+  assert.deepEqual(s.snapshot().document,before);
+});
+test('M6.3 trailing spacing alone cannot create blank pages',()=>{
+  const d=paginationDoc([{id:'first',text:'A',style:{spaceAfter:10000}}]);
+  const result=layoutWriter(new DocumentSession(d).snapshot(),font);
+  assert.equal(result.pages.length,1);
+  assert.equal(result.pages[0]!.lines.length,1);
+});
+
+test('M6.3 Word pagination properties survive native DOCX save and reopen, including false overrides',async()=>{
+  const {writeWriterDocx,openWriterDocx,saveWriterDocx}=await import('@office-ex/ooxml');
+  const {setParagraphMetrics}=await import('@office-ex/writer');
+  const d=createDocument('writer','pagination-roundtrip');
+  const p=d.sections[0]!.blocks[0]!;assert.equal(p.type,'paragraph');
+  p.style={keepNext:true,keepLines:true,widowControl:false,pageBreakBefore:true};
+  const bytes=writeWriterDocx(d),source=openWriterDocx(bytes,'pagination-roundtrip','Page');
+  const a=source.document.sections[0]!.blocks[0]!;assert.equal(a.type,'paragraph');
+  assert.deepEqual({...a.style},p.style);
+  const s=new DocumentSession(source.document);s.execute(setParagraphMetrics(s.snapshot(),a.id,{keepNext:false,pageBreakBefore:false,widowControl:true}));
+  const reopened=openWriterDocx(saveWriterDocx(source,s.snapshot().document),'pagination-roundtrip','Page').document.sections[0]!.blocks[0]!;
+  assert.equal(reopened.type,'paragraph');assert.deepEqual({...reopened.style},{keepNext:false,keepLines:true,widowControl:true,pageBreakBefore:false});
+});

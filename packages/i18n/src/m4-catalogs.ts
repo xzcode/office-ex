@@ -2,6 +2,10 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "writerKeepNext": "Keep with next",
+    "writerKeepLines": "Keep lines together",
+    "writerWidowControl": "Widow/orphan control",
+    "writerPageBreakBefore": "Page break before",
     "writerRunningStories": "Header & footer",
     "writerHeader": "Header",
     "writerFooter": "Footer",
@@ -203,6 +207,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "writerKeepNext": "与下段同页",
+    "writerKeepLines": "段中不分页",
+    "writerWidowControl": "孤行控制",
+    "writerPageBreakBefore": "段前分页",
     "writerRunningStories": "页眉和页脚",
     "writerHeader": "页眉",
     "writerFooter": "页脚",
@@ -404,6 +412,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "writerKeepNext": "與下段同頁",
+    "writerKeepLines": "段中不分頁",
+    "writerWidowControl": "孤行控制",
+    "writerPageBreakBefore": "段前分頁",
     "writerRunningStories": "頁首和頁尾",
     "writerHeader": "頁首",
     "writerFooter": "頁尾",
@@ -605,6 +617,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "writerKeepNext": "次の段落と分離しない",
+    "writerKeepLines": "段落内で改ページしない",
+    "writerWidowControl": "孤立行の防止",
+    "writerPageBreakBefore": "段落前で改ページ",
     "writerRunningStories": "ヘッダーとフッター",
     "writerHeader": "ヘッダー",
     "writerFooter": "フッター",
@@ -806,6 +822,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "writerKeepNext": "다음 단락과 함께",
+    "writerKeepLines": "단락 나누지 않음",
+    "writerWidowControl": "외톨이 줄 방지",
+    "writerPageBreakBefore": "단락 앞 페이지 나누기",
     "writerRunningStories": "머리글 및 바닥글",
     "writerHeader": "머리글",
     "writerFooter": "바닥글",
@@ -1007,6 +1027,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "writerKeepNext": "Paragraphes solidaires",
+    "writerKeepLines": "Lignes solidaires",
+    "writerWidowControl": "Éviter veuves et orphelines",
+    "writerPageBreakBefore": "Saut de page avant",
     "writerRunningStories": "En-tête et pied de page",
     "writerHeader": "En-tête",
     "writerFooter": "Pied de page",
@@ -1208,6 +1232,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "writerKeepNext": "Mit nächstem Absatz",
+    "writerKeepLines": "Zeilen zusammenhalten",
+    "writerWidowControl": "Absatzkontrolle",
+    "writerPageBreakBefore": "Seitenumbruch oberhalb",
     "writerRunningStories": "Kopf- und Fußzeile",
     "writerHeader": "Kopfzeile",
     "writerFooter": "Fußzeile",
@@ -1409,6 +1437,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "writerKeepNext": "Conservar con el siguiente",
+    "writerKeepLines": "Conservar líneas juntas",
+    "writerWidowControl": "Control de viudas y huérfanas",
+    "writerPageBreakBefore": "Salto de página anterior",
     "writerRunningStories": "Encabezado y pie de página",
     "writerHeader": "Encabezado",
     "writerFooter": "Pie de página",
@@ -1610,6 +1642,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "writerKeepNext": "Manter com o próximo",
+    "writerKeepLines": "Manter linhas juntas",
+    "writerWidowControl": "Controle de viúvas e órfãs",
+    "writerPageBreakBefore": "Quebra de página antes",
     "writerRunningStories": "Cabeçalho e rodapé",
     "writerHeader": "Cabeçalho",
     "writerFooter": "Rodapé",
@@ -1811,6 +1847,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "writerKeepNext": "Mantieni con il successivo",
+    "writerKeepLines": "Mantieni assieme le righe",
+    "writerWidowControl": "Controllo righe isolate",
+    "writerPageBreakBefore": "Interruzione di pagina prima",
     "writerRunningStories": "Intestazione e piè di pagina",
     "writerHeader": "Intestazione",
     "writerFooter": "Piè di pagina",
@@ -2012,6 +2052,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "writerKeepNext": "Не отрывать от следующего",
+    "writerKeepLines": "Не разрывать абзац",
+    "writerWidowControl": "Запрет висячих строк",
+    "writerPageBreakBefore": "С новой страницы",
     "writerRunningStories": "Колонтитулы",
     "writerHeader": "Верхний колонтитул",
     "writerFooter": "Нижний колонтитул",
@@ -2213,6 +2257,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "writerKeepNext": "إبقاء مع الفقرة التالية",
+    "writerKeepLines": "إبقاء السطور معًا",
+    "writerWidowControl": "التحكم بالأسطر اليتيمة",
+    "writerPageBreakBefore": "فاصل صفحة قبل",
     "writerRunningStories": "رأس وتذييل الصفحة",
     "writerHeader": "رأس الصفحة",
     "writerFooter": "تذييل الصفحة",
@@ -2414,6 +2462,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "writerKeepNext": "שמירה עם הפסקה הבאה",
+    "writerKeepLines": "שמירת השורות יחד",
+    "writerWidowControl": "בקרת שורות יתומות",
+    "writerPageBreakBefore": "מעבר עמוד לפני",
     "writerRunningStories": "כותרת עליונה ותחתונה",
     "writerHeader": "כותרת עליונה",
     "writerFooter": "כותרת תחתונה",
@@ -2615,6 +2667,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "writerKeepNext": "अगले अनुच्छेद के साथ रखें",
+    "writerKeepLines": "पंक्तियाँ साथ रखें",
+    "writerWidowControl": "अकेली पंक्ति नियंत्रण",
+    "writerPageBreakBefore": "पहले पृष्ठ विराम",
     "writerRunningStories": "शीर्ष लेख और पाद लेख",
     "writerHeader": "शीर्ष लेख",
     "writerFooter": "पाद लेख",
@@ -2816,6 +2872,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "writerKeepNext": "อยู่กับย่อหน้าถัดไป",
+    "writerKeepLines": "เก็บบรรทัดไว้ด้วยกัน",
+    "writerWidowControl": "ควบคุมบรรทัดกำพร้า",
+    "writerPageBreakBefore": "ตัวแบ่งหน้าก่อน",
     "writerRunningStories": "หัวกระดาษและท้ายกระดาษ",
     "writerHeader": "หัวกระดาษ",
     "writerFooter": "ท้ายกระดาษ",
@@ -3017,6 +3077,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "writerKeepNext": "Giữ với đoạn sau",
+    "writerKeepLines": "Giữ các dòng cùng nhau",
+    "writerWidowControl": "Kiểm soát dòng lẻ",
+    "writerPageBreakBefore": "Ngắt trang trước",
     "writerRunningStories": "Đầu trang và chân trang",
     "writerHeader": "Đầu trang",
     "writerFooter": "Chân trang",
@@ -3218,6 +3282,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "writerKeepNext": "Satukan dengan paragraf berikut",
+    "writerKeepLines": "Satukan semua baris",
+    "writerWidowControl": "Kontrol baris tunggal",
+    "writerPageBreakBefore": "Pemisah halaman sebelum",
     "writerRunningStories": "Header dan footer",
     "writerHeader": "Header",
     "writerFooter": "Footer",
@@ -3419,6 +3487,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "writerKeepNext": "Kekal dengan perenggan seterusnya",
+    "writerKeepLines": "Kekalkan baris bersama",
+    "writerWidowControl": "Kawalan baris tunggal",
+    "writerPageBreakBefore": "Pemisah halaman sebelum",
     "writerRunningStories": "Pengepala dan pengaki",
     "writerHeader": "Pengepala",
     "writerFooter": "Pengaki",
@@ -3620,6 +3692,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "writerKeepNext": "Sonrakiyle birlikte tut",
+    "writerKeepLines": "Satırları birlikte tut",
+    "writerWidowControl": "Tek satır denetimi",
+    "writerPageBreakBefore": "Önce sayfa sonu",
     "writerRunningStories": "Üstbilgi ve altbilgi",
     "writerHeader": "Üstbilgi",
     "writerFooter": "Altbilgi",
@@ -3821,6 +3897,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "writerKeepNext": "Bij volgende alinea houden",
+    "writerKeepLines": "Regels bijeenhouden",
+    "writerWidowControl": "Zwevende regels voorkomen",
+    "writerPageBreakBefore": "Pagina-einde ervoor",
     "writerRunningStories": "Kop- en voettekst",
     "writerHeader": "Koptekst",
     "writerFooter": "Voettekst",
@@ -4022,6 +4102,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "writerKeepNext": "Razem z następnym",
+    "writerKeepLines": "Nie dziel akapitu",
+    "writerWidowControl": "Kontrola wdów i sierot",
+    "writerPageBreakBefore": "Podział strony przed",
     "writerRunningStories": "Nagłówek i stopka",
     "writerHeader": "Nagłówek",
     "writerFooter": "Stopka",
@@ -4223,6 +4307,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "writerKeepNext": "Не відривати від наступного",
+    "writerKeepLines": "Не розривати абзац",
+    "writerWidowControl": "Контроль висячих рядків",
+    "writerPageBreakBefore": "З нової сторінки",
     "writerRunningStories": "Колонтитули",
     "writerHeader": "Верхній колонтитул",
     "writerFooter": "Нижній колонтитул",

@@ -20,7 +20,7 @@ export interface TextStyle {
   rightIndent?:number; firstLineIndent?:number; contextualSpacing?:boolean;
   paragraphBottomBorder?:WriterParagraphRule|null;
   writerList?:WriterListReference;
-  indent?: number; spaceBefore?: number; spaceAfter?: number; lineHeight?: number; lineMultiple?:number; minLineHeight?:number; keepNext?:boolean; keepLines?:boolean; outlineLevel?:number; widowControl?:boolean;
+  indent?: number; spaceBefore?: number; spaceAfter?: number; lineHeight?: number; lineMultiple?:number; minLineHeight?:number; keepNext?:boolean; keepLines?:boolean; pageBreakBefore?:boolean; outlineLevel?:number; widowControl?:boolean;
 }
 export interface NamedStyle { id: string; name: string; basedOn?: string; kind?: 'paragraph' | 'character'; toggles?: readonly ('bold' | 'italic')[]; properties: TextStyle }
 export interface ResourceRef { id: string; sha256: string; mimeType: string; byteLength: number; dataBase64?:string; pixelWidth?:number; pixelHeight?:number }
@@ -166,7 +166,7 @@ export function validateSlideParagraph(value:unknown):asserts value is SlidePara
   }
 }
 export function validateTextStyle(value: unknown): asserts value is TextStyle {
-  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection','slideParagraph','characterSpacing','kerningThreshold','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList']);
+  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','pageBreakBefore','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection','slideParagraph','characterSpacing','kerningThreshold','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList']);
   for(const key of ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex'])if(style[key]!==undefined){text(style[key],512,false);assert(!/[\x00-\x1f\x7f]/.test(style[key] as string),'invalid','Invalid font family');}
   if (style.fontSize !== undefined) integer(style.fontSize, 1, 12_700 * 1638);
   if(style.complexFontSize!==undefined)integer(style.complexFontSize,1,12_700*1638);
@@ -174,7 +174,7 @@ export function validateTextStyle(value: unknown): asserts value is TextStyle {
   if(style.minLineHeight!==undefined)integer(style.minLineHeight,0);
   assert(['lineHeight','lineMultiple','minLineHeight'].filter(k=>style[k]!==undefined).length<=1,'invalid','Conflicting line spacing modes');
   if(style.outlineLevel!==undefined)integer(style.outlineLevel,0,9);
-  for(const key of ['keepNext','keepLines','widowControl'])if(style[key]!==undefined)bool(style[key]);
+  for(const key of ['keepNext','keepLines','pageBreakBefore','widowControl'])if(style[key]!==undefined)bool(style[key]);
   for (const key of ['bold', 'italic', 'underline']) if (style[key] !== undefined) bool(style[key]);
   if (style.color !== undefined) validateColor(style.color);
   for(const key of ['language','eastAsiaLanguage','bidiLanguage'])if(style[key]!==undefined)assert(isDocumentLanguageTag(style[key]),'invalid','Invalid document language tag');

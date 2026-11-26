@@ -64,3 +64,23 @@ Previous merged-cell source `59e89055aa38d65fc4f7dddc5b8ca86c10d4cc01` passed ve
 - PDF projection code is integrated and built; a new dedicated running-story PDF output/readback test has not yet been performed. Exact new-source three-platform CI still required. No dependency additions, new release or tag.
 
 Next: M6.2 further coverage (multiple paragraphs, first/even-page variants, other page-number formats and field types, complex header/footer content); M6.3 layout/pagination fidelity, including independent reference documents and dedicated PDF header/footer verification. Formal six-format compatibility, physical printing/IME and human translation review remain open.
+
+
+## M6.3 batch A — Word paragraph pagination and running-story PDF verification
+
+Previous source `587a44c447e0613cffe6a04964a20225bc49051f` passed verification and all three native package jobs in [CI 45778305240](https://github.com/xzcode/office-ex/actions/runs/45778305240).
+
+### Implementation
+
+- Paragraph layout is planned from measured line boxes before page placement. Keep-with-next reserves the next paragraph's required start and keeps a fitting chain together. Keep-lines retains a fitting paragraph on one page. Widow/orphan control avoids a single first or last line where feasible, and explicitly disabled control permits such splits. Oversized constraints relax safely and report limitations rather than looping or losing lines.
+- DOCX paragraph `pageBreakBefore` imports, edits, copies and saves as a bounded boolean, including explicit false overrides. Forced paragraph breaks take priority over keep-with-next; initial forced breaks and trailing paragraph spacing do not create unnecessary empty pages.
+- Keep-with-next also reserves the first measured row group of a following table, including connected merged rows. Table geometry is planned only once. Cross-page row splitting and exact Word typography remain out of scope.
+- Native and canvas layout share the paragraph placement policy; layout ribbon controls expose keep-with-next, keep-lines, widow/orphan control and page-break-before, including candidate labels in 22 locales. Unsupported table-cell paragraph break behavior remains limited; no new legacy DOC pagination compatibility claim.
+
+### Verification
+
+- Final local `npm run check`: 280/280 tests, zero failures/skips, including 33/33 focused Writer layout/table/story tests and eight new pagination tests. Build, TypeScript, architecture and dependency audit passed.
+- Actual sandboxed Linux native 3/3: three-page document with keep heading/body together, forced paragraph break, editable ribbon boolean and source-backed DOCX save/readback for explicit false/true; real PDF export independently read with pypdf 5.4.0 (test-only). All three PDF pages contain the expected header, page numbers 5/6/7 and correct body placement. Export does not modify the original DOCX or its clean state. [Native evidence](verification/m6/native-pagination.json).
+- Reproduce after building with `node --import tsx scripts/smoke-m6-pagination.mjs`, using a Python interpreter with pinned test-only pypdf 5.4.0 via `OFFICE_EX_PDF_PYTHON`. Exact new-source CI still required. No runtime dependency changes, new preview tag, release or master merge.
+
+Next: M6.4 spreadsheet external compatibility and editing fidelity, then M6.5 formulas and M6.6 charts. More Word pagination profiles, exact reference Office comparison, complex running stories and formal acceptance remain open.

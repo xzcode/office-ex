@@ -125,7 +125,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
     const makePage=():WriterPage=>{assert(pages.length<maxPages,'limit','Writer layout page budget exceeded');const p:WriterPage={sectionId:section.id,width:spec.width,height:spec.height,margins:m,lines:[],tableCells:[],images:[]};pages.push(p);return p;};
     let page=makePage(),y=m.top;
     const advancePage=()=>{page=makePage();y=m.top;};
-    const space=(n:number)=>{if(n<=0)return;if(y+n>spec.height-m.bottom&&(page.lines.length||page.images.length))advancePage();y=Math.min(spec.height-m.bottom,y+n);};
+    const bottom=spec.height-m.bottom,hasContent=()=>!!(page.lines.length||page.tableCells.length||page.images.length);
 
     type ReadBlock=DeepReadonly<WriterSection['blocks'][number]>;
     const styleCache=new WeakMap<DeepReadonly<Paragraph>,DeepReadonly<TextStyle>>();
@@ -201,7 +201,6 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
         let ascent=picturesOnly?0:Math.ceil((style.fontSize??152400)*0.8),descent=picturesOnly?0:Math.ceil((style.fontSize??152400)*0.2);
         for(const g of tokens){if(g.image){assert(g.advance<=usable,'unsupported','Inline image exceeds paragraph width');ascent=Math.max(ascent,g.ascent);}else{ascent=Math.max(ascent,g.ascent,Math.ceil(g.request.size*0.8));descent=Math.max(descent,g.descent,Math.ceil(g.request.size*0.2));}}
         const natural=Math.max(picturesOnly?0:minimum,ascent+descent);
-        if(style.keepNext||style.keepLines||style.widowControl)warnings.add('writer.keep-pagination-limited');
         if(style.lineHeight!==undefined&&style.lineHeight<natural)warnings.add('writer.exact-lineheight-limited');
         const height=Math.max(natural,Math.ceil(natural*(style.lineMultiple??240)/240),style.lineHeight??0,style.minLineHeight??0);
         assert(height<=usableHeight,'unsupported','Line exceeds usable page height');
@@ -244,11 +243,98 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
       const images=line.images.map(image=>({...image,y:image.y+top}));
       page.lines.push({...line,y:top,baseline:line.baseline+top,images});page.images.push(...images);
     };
-    const placeTop=(line:WriterLine):void=>{
-      if(y+line.height>spec.height-m.bottom)advancePage();
-      placeLine(line,y);y+=line.height;
-    };
-    const layTable=(table:DeepReadonly<Table>):void=>{
+    type ParagraphPlan={lines:WriterLine[];before:number;after:number;style:DeepReadonly<TextStyle>;height:number};
+    function planParagraph(block:DeepReadonly<Paragraph>,previous?:ReadBlock,next?:ReadBlock):ParagraphPlan{
+      const spaces:number[]=[],lines:WriterLine[]=[];
+      layParagraph(block,m.left,usableWidth,n=>spaces.push(n),l=>lines.push(l),previous,next);
+      assert(spaces.length===2&&lines.length>0,'internal','Incomplete paragraph plan');
+      return {lines,before:spaces[0]!,after:spaces[1]!,style:effective(block),height:lines.reduce((n,l)=>n+l.height,0)};
+    }
+    // Count only complete line boxes. This also works for variable line
+    // heights and inline images, not just fixed-height paragraphs.
+    function firstChunkHeight(plan:ParagraphPlan):number{
+      if(plan.style.keepLines&&plan.height<=usableHeight)return plan.height;
+      if(plan.style.widowControl!==false&&plan.lines.length>1){
+        // For a three-line paragraph there is no legal 2+2 split.
+        if(plan.lines.length===3&&plan.height<=usableHeight)return plan.height;
+        const firstTwo=plan.lines[0]!.height+plan.lines[1]!.height;
+        if(firstTwo<=usableHeight)return firstTwo;
+      }
+      return plan.lines[0]!.height;
+    }
+    function reserve(height:number):boolean{
+      if(height>usableHeight)return false;
+      if(y+height>bottom&&hasContent())advancePage();
+      return true;
+    }
+    function flowParagraph(plan:ParagraphPlan):void{
+      const {lines,style}=plan;
+      const minStart=firstChunkHeight(plan);
+      if(y+plan.before+minStart>bottom&&hasContent())advancePage();
+      // Large before/after spacing cannot generate empty overflow pages or
+      // push the first visible line outside the usable area.
+      const before=Math.min(plan.before,Math.max(0,bottom-y-minStart));
+      if(before!==plan.before)warnings.add('writer.paragraph-spacing-limited');
+      y+=before;
+      if(style.keepLines&&plan.height>usableHeight)warnings.add('writer.keep-lines-limited');
+      let at=0;
+      while(at<lines.length){
+        check();
+        let fit=0,height=0;
+        for(let i=at;i<lines.length&&y+height+lines[i]!.height<=bottom;i++){height+=lines[i]!.height;fit++;}
+        if(!fit){
+          assert(hasContent(),'unsupported','Line cannot fit on empty page');
+          advancePage();continue;
+        }
+        const remaining=lines.length-at;
+        if(fit<remaining&&style.widowControl!==false){
+          // At least two lines on either side of a break when possible.
+          // A fresh page is tried at most once for an impossible pair.
+          if(fit===1){
+            if(hasContent()&&lines[at]!.height+lines[at+1]!.height<=usableHeight){advancePage();continue;}
+            warnings.add('writer.widow-control-limited');
+          }else if(remaining-fit===1){
+            if(fit>=3){fit--;}
+            else if(hasContent()&&lines.slice(at).reduce((n,l)=>n+l.height,0)<=usableHeight){advancePage();continue;}
+            else warnings.add('writer.widow-control-limited');
+          }
+        }
+        for(let i=0;i<fit;i++){const line=lines[at++]!;placeLine(line,y);y+=line.height;}
+        if(at<lines.length)advancePage();
+      }
+      // Do not create a page for trailing spacing alone.
+      y=Math.min(bottom,y+plan.after);
+    }
+    type TablePlan={firstGroupHeight:number;place():void};
+    function flowParagraphRun(plans:ParagraphPlan[],table?:TablePlan):void{
+      for(let i=0;i<plans.length;){
+        const start=plans[i]!;
+        // A forced paragraph break takes precedence over keep-with-next.
+        // A break at the very beginning of a page does not add a blank page.
+        if(start.style.pageBreakBefore&&hasContent())advancePage();
+        let end=i;
+        while(end+1<plans.length&&plans[end]!.style.keepNext&&!plans[end+1]!.style.pageBreakBefore)end++;
+        const withTable=end===plans.length-1&&!!table&&!!plans[end]!.style.keepNext;
+        if(end===i&&!withTable){flowParagraph(start);i++;continue;}
+        let height=0;
+        for(let j=i;j<end;j++){const p=plans[j]!;height+=p.before+p.height+p.after;}
+        const last=plans[end]!;
+        height+=last.before+(withTable?last.height+last.after+table!.firstGroupHeight:firstChunkHeight(last));
+        if(reserve(height)){
+          for(let j=i;j<=end;j++)flowParagraph(plans[j]!);
+        }else{
+          warnings.add('writer.keep-next-limited');
+          for(let j=i;j<=end;j++){
+            const p=plans[j]!,following=plans[j+1];
+            if(j<end&&following)reserve(p.before+p.height+p.after+following.before+firstChunkHeight(following));
+            else if(withTable)reserve(p.before+p.height+p.after+table!.firstGroupHeight);
+            flowParagraph(p);
+          }
+        }
+        i=end+1;
+      }
+    }
+    const planTable=(table:DeepReadonly<Table>):TablePlan=>{
       const pad=table.cellPadding??{top:38100,right:57150,bottom:38100,left:57150};
       const totalWidth=table.columnWidths.reduce((a,b)=>a+b,0);
       assert(totalWidth<=usableWidth,'unsupported','Table exceeds page content width');
@@ -274,6 +360,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
           };
           for(const [childIndex,child] of cell.blocks.entries()){
             assert(child.type==='paragraph','unsupported','Nested tables and page breaks within cells unsupported');
+            if(effective(child).pageBreakBefore)warnings.add('writer.cell-page-break-before-limited');
             layParagraph(child,x+pad.left,width-pad.left-pad.right,addSpace,place,cell.blocks[childIndex-1],cell.blocks[childIndex+1]);
           }
           const h=localY+pad.bottom;
@@ -294,12 +381,17 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
       // A vertical merge connects rows transitively. Keep each connected
       // row group on a single page; fail explicitly instead of clipping
       // or splitting a merged cell across pages.
+      const groups:{start:number;end:number;height:number}[]=[];
       for(let start=0;start<table.rows.length;){
         check();let end=start+1;
         for(let r=start;r<end;r++)for(const item of laidRows[r]!)end=Math.max(end,r+item.rowSpan);
-        const groupHeight=offsets[end]!-offsets[start]!;
-        assert(groupHeight<=usableHeight,'unsupported','Merged table row group exceeds page content height');
-        if(y+groupHeight>spec.height-m.bottom)advancePage();
+        const height=offsets[end]!-offsets[start]!;
+        assert(height<=usableHeight,'unsupported','Merged table row group exceeds page content height');
+        groups.push({start,end,height});start=end;
+      }
+      return {firstGroupHeight:groups[0]!.height,place(){
+      for(const {start,end,height:groupHeight}of groups){
+        check();if(y+groupHeight>spec.height-m.bottom)advancePage();
         for(let r=start;r<end;r++){
           const top=y+offsets[r]!-offsets[start]!;
           for(const item of laidRows[r]!){
@@ -307,14 +399,23 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
             for(const line of item.lines){const images=line.images.map(image=>({...image,y:image.y+top}));page.lines.push({...line,y:top+line.y,baseline:top+line.baseline,images});page.images.push(...images);}
           }
         }
-        y+=groupHeight;start=end;
+        y+=groupHeight;
       }
+      }};
     };
-    for(const [blockIndex,block] of section.blocks.entries()){
-      check();
-      if(block.type==='page-break'){assert(++blocks<=10000,'limit','Writer layout block budget exceeded');advancePage();continue;}
-      if(block.type==='table'){layTable(block);continue;}
-      layParagraph(block,m.left,usableWidth,space,placeTop,section.blocks[blockIndex-1],section.blocks[blockIndex+1]);
+    for(let blockIndex=0;blockIndex<section.blocks.length;){
+      check();const block=section.blocks[blockIndex]!;
+      if(block.type==='page-break'){assert(++blocks<=10000,'limit','Writer layout block budget exceeded');advancePage();blockIndex++;continue;}
+      if(block.type==='table'){planTable(block).place();blockIndex++;continue;}
+      const plans:ParagraphPlan[]=[];
+      while(blockIndex<section.blocks.length){
+        const p=section.blocks[blockIndex]!;if(p.type!=='paragraph')break;
+        plans.push(planParagraph(p,section.blocks[blockIndex-1],section.blocks[blockIndex+1]));blockIndex++;
+      }
+      const next=section.blocks[blockIndex];
+      const table=next?.type==='table'&&plans.at(-1)?.style.keepNext?planTable(next):undefined;
+      flowParagraphRun(plans,table);
+      if(table){table.place();blockIndex++;}
     }
   }
   const decorated=options.skipRunningStories?pages:layoutRunningStories(model,pages,provider,options,warnings);

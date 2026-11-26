@@ -166,9 +166,9 @@ export function setCharacterNamedStyle(snapshot:DocumentSnapshot,paragraphId:str
   const right=sliceRuns(p.runs,end,p.text.length,used,allocate);
   return runPatch(snapshot,p,[...left,...middle,...right]);
 }
-export function setParagraphMetrics(snapshot:DocumentSnapshot,paragraphId:string,metrics:Pick<TextStyle,'indent'|'spaceBefore'|'spaceAfter'|'lineHeight'|'rightIndent'|'firstLineIndent'|'contextualSpacing'|'paragraphBottomBorder'>):DocumentCommand{
+export function setParagraphMetrics(snapshot:DocumentSnapshot,paragraphId:string,metrics:Pick<TextStyle,'indent'|'spaceBefore'|'spaceAfter'|'lineHeight'|'rightIndent'|'firstLineIndent'|'contextualSpacing'|'paragraphBottomBorder'|'keepNext'|'keepLines'|'widowControl'|'pageBreakBefore'>):DocumentCommand{
   const p=locate(snapshot,paragraphId);assertPlainData(metrics);validateTextStyle(metrics);
-  assert(Object.keys(metrics).every(k=>['indent','spaceBefore','spaceAfter','lineHeight','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder'].includes(k)),'invalid','Unexpected paragraph property');
+  assert(Object.keys(metrics).every(k=>['indent','spaceBefore','spaceAfter','lineHeight','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','keepNext','keepLines','widowControl','pageBreakBefore'].includes(k)),'invalid','Unexpected paragraph property');
   const style={...p.paragraph.style,...cloneData(metrics)};
   if(metrics.lineHeight!==undefined){delete style.lineMultiple;delete style.minLineHeight;}
   if(style.lineHeight===0)delete style.lineHeight;

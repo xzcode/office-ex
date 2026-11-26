@@ -245,6 +245,16 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     for(const field of formatFields)field.element.disabled=!selection||host.composing()||field.range&&selection.start===selection.end&&!selection.cross||!!host.legacyWriter&&field.element.dataset.modernOnly==='true';
     const characterField=root.querySelector<HTMLSelectElement>('#writer-character-style');if(characterField&&selection?.cross)characterField.disabled=true;
     const style=effectiveSelectedStyle(),p=selectedParagraph();
+    if(p){
+      const paragraphStyle=writerEffectiveStyle(modelOf(host.snapshot()),p);
+      for(const [id,key]of [['writer-keep-next','keepNext'],['writer-keep-lines','keepLines'],['writer-widow-control','widowControl'],['writer-page-break-before','pageBreakBefore']] as const){
+        const control=root.querySelector<HTMLInputElement>('#'+id);
+        if(control){
+          control.checked=key==='widowControl'?paragraphStyle[key]!==false:!!paragraphStyle[key];
+          control.disabled=control.disabled||!!tableContext||!!selection?.cross;
+        }
+      }
+    }
     const listType=root.querySelector<HTMLSelectElement>('#writer-list-type'),listLevel=root.querySelector<HTMLSelectElement>('#writer-list-level'),restart=root.querySelector<HTMLButtonElement>('#writer-list-restart');
     const model=modelOf(host.snapshot()),ref=p?writerEffectiveStyle(model,p).writerList:undefined,level=ref?.numId?model.numbering?.lists[String(ref.numId)]?.levels[ref.level]:undefined;
     if(listType&&document.activeElement!==listType)listType.value=level?.format??'none';
@@ -514,6 +524,10 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   const advancedField=(label:MessageKey,id:string,type:string)=>{
     const wrapper=node('label','','writer-format-field'),input=node('input');input.id=id;input.type=type;input.dataset.modernOnly='true';input.setAttribute('aria-label',t(label));wrapper.append(node('span',t(label)),input);metricsBar.append(wrapper);formatFields.push({element:input,range:false});return input;
   };
+  for(const [key,id,label]of [['keepNext','writer-keep-next','writerKeepNext'],['keepLines','writer-keep-lines','writerKeepLines'],['widowControl','writer-widow-control','writerWidowControl'],['pageBreakBefore','writer-page-break-before','writerPageBreakBefore']] as const){
+    const control=advancedField(label,id,'checkbox');
+    control.onchange=()=>safe(()=>applyParagraphMetrics({[key]:control.checked}));
+  }
   const contextual=advancedField('writerContextualSpacing','writer-contextual-spacing','checkbox');contextual.onchange=()=>safe(()=>applyParagraphMetrics({contextualSpacing:contextual.checked}));
   const rule=advancedField('writerBottomRule','writer-bottom-rule','checkbox'),ruleColor=advancedField('writerRuleColor','writer-rule-color','color'),ruleWidth=advancedField('writerRuleWidth','writer-rule-width','number'),ruleSpace=advancedField('writerRuleSpace','writer-rule-space','number');
   ruleWidth.min='.25';ruleWidth.max='12';ruleWidth.step='.125';ruleWidth.value='1';ruleSpace.min='0';ruleSpace.max='31';ruleSpace.step='1';ruleSpace.value='4';ruleColor.value='#4f81bd';
@@ -750,7 +764,8 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
       {label:'ribbonMargins',rows:[pick('writer-margin-top','writer-margin-bottom'),pick('writer-margin-left','writer-margin-right')]},
       {label:'writerRunningStories',rows:[pick('writer-running-stories')]},
       {label:'ribbonIndent',rows:[pick('writer-indent','writer-rightIndent'),pick('writer-firstLineIndent')]},
-      {label:'ribbonSpacing',rows:[pick('writer-spaceBefore','writer-spaceAfter'),pick('writer-lineHeight','writer-contextual-spacing')]}
+      {label:'ribbonSpacing',rows:[pick('writer-spaceBefore','writer-spaceAfter'),pick('writer-lineHeight','writer-contextual-spacing')]},
+      {label:'ribbonBreaks',rows:[pick('writer-keep-next','writer-keep-lines'),pick('writer-widow-control','writer-page-break-before')]}
     ]},
     {id:'format',label:'ribbonFormat',groups:[
       {label:'ribbonTypography',rows:[pick('writer-character-spacing','writer-kerning-threshold'),pick('writer-text-language')]},

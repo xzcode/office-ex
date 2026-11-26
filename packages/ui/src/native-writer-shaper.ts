@@ -45,7 +45,6 @@ function projection(model:DeepReadonly<WriterDocument>,p:DeepReadonly<Paragraph>
     natural=Math.max(natural,run.type==='image'?run.height+Math.ceil((style.fontSize??152400)*0.4):Math.ceil((resolved[i]!.fontSize??152400)*1.55));
   }
   const pitch=Math.max(1,Math.ceil(Math.max(natural*(style.lineMultiple??240)/240,style.lineHeight??0,style.minLineHeight??0,natural)/PX*64)/64);
-  if(style.keepNext||style.keepLines||style.widowControl)warnings.add('writer.keep-pagination-limited');
   warnings.add('writer.native-browser-line-metrics');
   if(style.lineHeight!==undefined&&style.lineHeight<natural)warnings.add('writer.exact-lineheight-limited');
   const element=document.createElement('div');element.className='writer-native-paragraph';
