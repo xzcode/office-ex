@@ -216,3 +216,12 @@ Native rectangular PPTX table and distribution commands, shared scene/ribbon, do
 ## 2026-11-26 — dev.3 exact-source acceptance
 
 Candidate bf1d87b passed CI 45803738626: 293/293 core, independent corpus, architecture/licenses and Windows x64/macOS ARM64/Linux x64 extracted app and native installer lifecycle. Publication workflow 45804738034 started on release/office-ex-v0.1.0-dev.3 with fixed source/artifact identities. See docs/releases/v0.1.0-dev.3.md. Public release and exact tag pending confirmation. Continue only after checking actual workflow and release state; master and prior releases remain unchanged.
+
+
+## 2026-11-26 — dev.3 public preview released
+
+[v0.1.0-dev.3](https://github.com/xzcode/office-ex/releases/tag/v0.1.0-dev.3) is public (release ID 459280161, non-draft prerelease), published at 2026-11-26 10:51:53 UTC. Exact lightweight tag points to verified candidate bf1d87b1301c1a8c4c5d86a5428628f94c89f64e; tree c36fc4033324897326cb722444d5ee64b52bb697. [Candidate CI 45803738626](https://github.com/xzcode/office-ex/actions/runs/45803738626) and [publication CI 45804738034](https://github.com/xzcode/office-ex/actions/runs/45804738034) both completed successfully. Publication reuses the three exact verified artifacts without rebuilding. Public REST readback confirmed all 20 release assets uploaded, with SHA256 digests, exact source tag, non-draft prerelease and publication timestamp. The one-shot release branch commit a7b233077a9ce9846cc536ee6bd748193a7919c5 is not the source tag target.
+
+Primary installers: Windows x64 EXE 129268639 bytes (SHA256 89890c2eb8c10ffdeab71d9397d28d6b823b4ada258c27f56b5635a52a2b835b), macOS ARM64 DMG 152838016 bytes (721fda07ef1ea3a7900679f1b8dfed67f160fdb5db9a417a766a54b191c6429c), Linux x64 DEB 112895832 bytes (1397e6fdc16177dfbfc0613728e06f49f871e698f322eecdd27d4213ae54752a).
+
+M6 development-preview delivery and publication gate completed. This is not full M6 feature conformance, reference Office fidelity or a formal production release. Broader M6.9 interaction acceptance, complex format profiles, performance, physical IME/printing, human locale review, Windows signing and macOS notarization remain open. Preserve existing public tags; master remains unchanged. Continue development from m5-distribution-20261125, not the one-shot release branch. 
