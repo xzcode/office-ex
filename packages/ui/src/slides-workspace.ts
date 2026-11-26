@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, ROTATION_UNITS_PER_DEGREE, OfficeError } from '@office-ex/contracts';
 import { walkSlideShapes, isConnectorTarget, resolveSlideConnector, previewModelPatch, type PatchOperation, type DocumentSnapshot, type DocumentCommand, type ImageResource, type Shape, type Geometry, type TextStyle, type SlideParagraphFormat, type Color, type DeepReadonly, type SlidePreset, type SlideCrop, type SlideStroke, type SlideDash } from '@office-ex/core';
-import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes, connectSlideShapes, setSlideConnections, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
+import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, insertSlideTable, editSlideTable, distributeSlideShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes, connectSlideShapes, setSlideConnections, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
 import { buildSlideScene, walkSlideScene, hitTest, shapeTransform, inverse, transform, multiply, IDENTITY, groupChildTransform, slideShapeParentTransform, type Matrix, type SlideScene, type Point } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import {installRibbon,ribbonNodes,type RibbonState,decorateOfficeButton} from './office-ribbon.js';
@@ -113,6 +113,32 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   const earlier=button('slideEarlier',()=>{const current=locateSlide(snap(),state.slideId!);apply(moveSlide(snap(),state.slideId!,current.index-1));},toolbar,'slide-earlier');
   const later=button('slideLater',()=>{const current=locateSlide(snap(),state.slideId!);apply(moveSlide(snap(),state.slideId!,current.index+1));},toolbar,'slide-later');
   for(const [type,key] of [['text','slideText'],['rect','slideRectangle'],['ellipse','slideEllipse'],['line','slideLine']] as const)button(key,()=>addShape(type),toolbar,'slide-insert-'+type);
+  const tableDialog=element('dialog');tableDialog.id='slide-table-dialog';
+  const tableHeader=element('header');tableHeader.append(element('h2',t('slideTable')),button('close',()=>tableDialog.close(),tableHeader,'slide-table-close',false,false));tableDialog.append(tableHeader);
+  const dims=element('div');const rowInput=element('input'),colInput=element('input');for(const [input,identifier,value,max]of [[rowInput,'slide-table-rows','3','200'],[colInput,'slide-table-columns','3','64']] as const){input.type='number';input.min='1';input.max=max;input.value=value;input.id=identifier;}
+  field('writerTableRows',rowInput,dims);field('writerTableColumns',colInput,dims);tableDialog.append(dims);
+  const matrix=element('div');matrix.id='slide-table-cells';tableDialog.append(matrix);
+  let tableId:string|undefined;
+  const applyTable=button('writerApplyPage',()=>{
+    if(tableId){
+      const selected=locateShape(snap(),state.slideId!,tableId).shape;if(selected.type!=='table')return;
+      const values=selected.table.cells.map((row,r)=>row.map((_,c)=>matrix.querySelector<HTMLTextAreaElement>('[data-row="'+r+'"][data-column="'+c+'"]')!.value));
+      if(apply(editSlideTable(snap(),state.slideId!,tableId,values)))tableDialog.close();
+    }else{const shapeId=id();if(apply(insertSlideTable(snap(),state.slideId!,rowInput.valueAsNumber,colInput.valueAsNumber,shapeId))){tableDialog.close();choose([shapeId]);}}
+  },tableDialog,'slide-table-apply');
+  root.append(tableDialog);
+  function openTable(editing:boolean){
+    tableId=undefined;matrix.replaceChildren();dims.hidden=editing;
+    if(editing){const s=selected()[0];if(s?.type!=='table')return;tableId=s.id;
+      Object.assign(matrix.style,{display:'grid',gridTemplateColumns:'repeat('+s.table.columnWidths.length+', minmax(80px,1fr))',gap:'4px',maxHeight:'55vh',overflow:'auto'});
+      for(const [r,row]of s.table.cells.entries())for(const [c,value]of row.entries()){const input=element('textarea');input.dataset.row=String(r);input.dataset.column=String(c);input.value=value;input.maxLength=4096;input.rows=2;input.setAttribute('aria-label',String(r+1)+', '+String(c+1));matrix.append(input);}
+    }
+    tableDialog.showModal();
+  }
+  const insertTableButton=button('slideTable',()=>openTable(false),toolbar,'slide-insert-table');
+  const editTableButton=button('slideEditTable',()=>openTable(true),toolbar,'slide-edit-table',true);
+  const distributeH=button('slideDistributeHorizontal',()=>apply(distributeSlideShapes(snap(),state.slideId!,state.selectedIds,'horizontal')),toolbar,'slide-distribute-h',true);
+  const distributeV=button('slideDistributeVertical',()=>apply(distributeSlideShapes(snap(),state.slideId!,state.selectedIds,'vertical')),toolbar,'slide-distribute-v',true);
   const advancedPresets:[SlidePreset,MessageKey][]=[['roundRect','slideRoundRect'],['triangle','slideTriangle'],['diamond','slideDiamond'],['parallelogram','slideParallelogram']];
   const newGraphics:HTMLButtonElement[]=advancedPresets.map(([type,key])=>button(key,()=>addShape(type),toolbar,'slide-insert-'+type));
   newGraphics.push(button('slideConnector',()=>addShape('line',true),toolbar,'slide-insert-connector'));
@@ -270,21 +296,25 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     aspect.checked=single?.type==='image'||!!state.lockAspect;aspect.disabled=single?.type==='image'||!!host.readOnly;
     fill.value=colorHex(single?.fill);stroke.value=colorHex(single?.stroke?.color,'#182030');strokeWidth.value=String((single?.stroke?.width??12700)/EMU_PER_POINT);
     const graphicsDisabled=!!host.readOnly||!!host.legacyPresentation;
+    insertTableButton.disabled=graphicsDisabled;editTableButton.disabled=graphicsDisabled||single?.type!=='table';
+    distributeH.disabled=distributeV.disabled=!!host.readOnly||shapes.length<3||shapes.some(s=>s.geometry.rotation!==0||s.type==='line'&&!!s.connections);
+    geometryFields.rotation.disabled||=single?.type==='table';
     for(const control of newGraphics)control.disabled=graphicsDisabled;
     const selectedIndices=scope.flatMap((shape,i)=>state.selectedIds.includes(shape.id)?[i]:[]);
     groupButton.disabled=graphicsDisabled||selectedIndices.length<2||selectedIndices.at(-1)!-selectedIndices[0]!+1!==selectedIndices.length;
     ungroupButton.disabled=graphicsDisabled||!single||!canUngroupShape(single);
-    for(const control of flipButtons)control.disabled=graphicsDisabled||!shapes.length||shapes.some(shape=>shape.type==='text'||shape.type==='line'&&shape.connections);
+    for(const control of flipButtons)control.disabled=graphicsDisabled||!shapes.length||shapes.some(shape=>shape.type==='text'||shape.type==='table'||shape.type==='line'&&shape.connections);
     editGroup.disabled=graphicsDisabled||single?.type!=='group';exitGroup.disabled=graphicsDisabled||!state.groupId;connectButton.disabled=graphicsDisabled||!!state.groupId||shapes.length!==2||!shapes.every(isConnectorTarget);detachButton.disabled=graphicsDisabled||!attached;
+    groupButton.disabled||=shapes.some(s=>s.type==='table');
     groupButton.disabled||=scope.some(s=>s.type==='line'&&s.connections&&(state.selectedIds.includes(s.id)||state.selectedIds.includes(s.connections.start.shapeId)||state.selectedIds.includes(s.connections.end.shapeId)));
     const options=document.createDocumentFragment(),placeholder=element('option','—');placeholder.value='';options.append(placeholder);
-    const names:Record<Shape['type'],MessageKey>={text:'slideText',rect:'slideRectangle',ellipse:'slideEllipse',line:'slideLine',image:'writerInsertImage',group:'slideGroupObjects',roundRect:'slideRoundRect',triangle:'slideTriangle',diamond:'slideDiamond',parallelogram:'slideParallelogram'};
+    const names:Record<Shape['type'],MessageKey>={table:'slideTable',text:'slideText',rect:'slideRectangle',ellipse:'slideEllipse',line:'slideLine',image:'writerInsertImage',group:'slideGroupObjects',roundRect:'slideRoundRect',triangle:'slideTriangle',diamond:'slideDiamond',parallelogram:'slideParallelogram'};
     const addOptions=(nodes:readonly ShapeSnapshot[],depth:number)=>{for(const [index,shape]of nodes.entries()){const label=t(names[shape.type])+' '+host.number(index+1)+(shape.type==='text'?' — '+shapeText(shape).slice(0,32):'');const option=element('option','　'.repeat(depth)+label);option.value=shape.id;options.append(option);if(shape.type==='group')addOptions(shape.children,depth+1);}};
     addOptions(current.slide.shapes,0);objectTree.replaceChildren(options);objectTree.value=single?.id??'';objectTree.disabled=!!host.readOnly||!current.slide.shapes.length;
 
-    fill.disabled=!!host.readOnly||!single||single.type==='group';
-    stroke.disabled=strokeWidth.disabled=!!host.readOnly||!single||single.type==='group';
-    dash.disabled=graphicsDisabled||!single||['text','image','group'].includes(single.type);
+    fill.disabled=!!host.readOnly||!single||single.type==='group'||single.type==='table';
+    stroke.disabled=strokeWidth.disabled=!!host.readOnly||!single||single.type==='group'||single.type==='table';
+    dash.disabled=graphicsDisabled||!single||['text','image','group','table'].includes(single.type);
     arrowHead.disabled=arrowTail.disabled=graphicsDisabled||single?.type!=='line';
     dash.value=single?.stroke?.dash??'solid';arrowHead.value=single?.stroke?.head?.type??'none';arrowTail.value=single?.stroke?.tail?.type??'none';
     cropGroup.hidden=state.inspectorMode!=='object'||single?.type!=='image';cropGroup.disabled=graphicsDisabled||single?.type!=='image';cropApply.disabled=cropReset.disabled=cropGroup.disabled;
@@ -331,7 +361,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     overlay.replaceChildren();const parent=scopeMatrix();
     for(const shapeId of state.selectedIds){const shape=projected.get(shapeId);if(!shape)continue;const g=values[shapeId]??shape.geometry,box=element('div','','slides-selection-box');box.dataset.selectedShape=shapeId;
       const matrix=multiply(parent,shapeTransform(g));Object.assign(box.style,{left:'0',top:'0',width:g.width/EMU_PER_CSS_PIXEL+'px',height:g.height/EMU_PER_CSS_PIXEL+'px',transformOrigin:'0 0',transform:`matrix(${matrix[0]},${matrix[1]},${matrix[2]},${matrix[3]},${matrix[4]/EMU_PER_CSS_PIXEL},${matrix[5]/EMU_PER_CSS_PIXEL})`,borderWidth:1.5/zoom+'px'});overlay.append(box);
-      if(state.selectedIds.length===1&&!host.readOnly&&!selectedHasBindings())for(const corner of ['nw','ne','se','sw','rotate']){const handle=element('span','','slides-handle slides-handle-'+corner);handle.dataset.handle=corner;handle.dataset.shapeId=shapeId;handle.style.width=9/zoom+'px';handle.style.height=9/zoom+'px';handle.style.borderWidth=1/zoom+'px';if(corner==='rotate')handle.style.top=-24/zoom+'px';handle.setAttribute('aria-hidden','true');box.append(handle);}
+      if(state.selectedIds.length===1&&!host.readOnly&&!selectedHasBindings())for(const corner of (shape.type==='table'?['nw','ne','se','sw']:['nw','ne','se','sw','rotate'])){const handle=element('span','','slides-handle slides-handle-'+corner);handle.dataset.handle=corner;handle.dataset.shapeId=shapeId;handle.style.width=9/zoom+'px';handle.style.height=9/zoom+'px';handle.style.borderWidth=1/zoom+'px';if(corner==='rotate')handle.style.top=-24/zoom+'px';handle.setAttribute('aria-hidden','true');box.append(handle);}
     }
   }
   function point(event:PointerEvent|MouseEvent):Point {const rect=sceneElement.getBoundingClientRect();return transform(inverse(scopeMatrix()),{x:(event.clientX-rect.left)/zoom*EMU_PER_CSS_PIXEL,y:(event.clientY-rect.top)/zoom*EMU_PER_CSS_PIXEL});}
@@ -353,15 +383,17 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     }
     if(current.frame===undefined)current.frame=requestAnimationFrame(()=>{current.frame=undefined;if(gesture===current)paintGeometry();});
   });
-  stage.onpointerup=event=>safe(()=>{if(!gesture||gesture.pointerId!==event.pointerId)return;const current=gesture;gesture=undefined;if(current.frame!==undefined)cancelAnimationFrame(current.frame);if(stage.hasPointerCapture(event.pointerId))stage.releasePointerCapture(event.pointerId);if(current.revision!==snap().revision){refresh();return;}apply(setShapeGeometries(snap(),state.slideId!,current.preview));});
-  stage.onpointercancel=()=>cancelGesture();stage.onlostpointercapture=()=>{if(gesture)cancelGesture();};stage.ondblclick=event=>safe(()=>{const shapeId=scopeHit(point(event),4/zoom*EMU_PER_CSS_PIXEL);if(shapeId){choose([shapeId]);const shape=selected()[0];if(shape?.type==='group')enterGroup(shape);else if(selectedText()){focusTextEditor();textEditor.setSelectionRange(0,textEditor.value.length);}}});
+  stage.onpointerup=event=>safe(()=>{if(!gesture||gesture.pointerId!==event.pointerId)return;const current=gesture;gesture=undefined;if(current.frame!==undefined)cancelAnimationFrame(current.frame);if(stage.hasPointerCapture(event.pointerId))stage.releasePointerCapture(event.pointerId);if(current.revision!==snap().revision){refresh();return;}if(Object.entries(current.preview).every(([id,g])=>JSON.stringify(g)===JSON.stringify(current.geometries[id]))){paintGeometry();return;}apply(setShapeGeometries(snap(),state.slideId!,current.preview));});
+  stage.onpointercancel=()=>cancelGesture();stage.onlostpointercapture=()=>{if(gesture)cancelGesture();};stage.ondblclick=event=>safe(()=>{const shapeId=scopeHit(point(event),4/zoom*EMU_PER_CSS_PIXEL);if(shapeId){choose([shapeId]);const shape=selected()[0];if(shape?.type==='group')enterGroup(shape);else if(shape?.type==='table'&&!host.readOnly)openTable(true);else if(selectedText()){focusTextEditor();textEditor.setSelectionRange(0,textEditor.value.length);}}});
   root.addEventListener('keydown',event=>safe(()=>{
+    if(tableDialog.open)return;
     if(event.key==='Escape'&&gesture){event.preventDefault();event.stopPropagation();cancelGesture();return;}if(host.composing()||isTyping(event.target)||host.readOnly)return;
     if(event.key==='Escape'){if(state.selectedIds.length)choose([]);else leaveGroup();event.preventDefault();return;}
     if(event.key==='F5'){event.preventDefault();if(flush())present();return;}
     if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='a'){choose(scopeShapes().map(s=>s.id));event.preventDefault();return;}
     if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='d'){event.preventDefault();if(flush()&&state.selectedIds.length)duplicateSelection();return;}
     if(!state.selectedIds.length)return;if(['Delete','Backspace'].includes(event.key)){event.preventDefault();if(flush()&&apply(removeShapes(snap(),state.slideId!,state.selectedIds)))choose([]);return;}
+    if(event.key==='Enter'&&state.selectedIds.length===1&&selected()[0]?.type==='table'){event.preventDefault();openTable(true);return;}
     if(event.key==='Enter'&&selectedText()){event.preventDefault();focusTextEditor();return;}
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();if(!flush()||selectedHasBindings())return;const step=(event.shiftKey?10:1)*EMU_PER_CSS_PIXEL,dx=event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0,dy=event.key==='ArrowUp'?-step:event.key==='ArrowDown'?step:0;apply(setShapeGeometries(snap(),state.slideId!,Object.fromEntries(selected().map(s=>[s.id,{...s.geometry,x:s.geometry.x+dx,y:s.geometry.y+dy}]))));}
   }));
@@ -387,12 +419,13 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
       {label:'ribbonPresentation',rows:[pick('slide-present')]}
     ]},
     {id:'insert',label:'ribbonInsert',groups:[
+      {label:'slideTable',rows:[pick('slide-insert-table','slide-edit-table')]},
       {label:'ribbonShapes',rows:[pick('slide-insert-rect','slide-insert-ellipse','slide-insert-line','slide-insert-roundRect'),pick('slide-insert-triangle','slide-insert-diamond','slide-insert-parallelogram','slide-insert-connector')]},
       {label:'ribbonObject',rows:[pick('slide-object-duplicate','slide-object-delete')]}
     ]},
     {id:'arrange',label:'ribbonArrange',groups:[
       {label:'ribbonLayer',rows:[pick('slide-layer-front','slide-layer-back'),pick('slide-layer-forward','slide-layer-backward')]},
-      {label:'ribbonAlignment',rows:[pick('slide-align-left','slide-align-center','slide-align-right'),pick('slide-align-top','slide-align-middle','slide-align-bottom')]},
+      {label:'ribbonAlignment',rows:[pick('slide-align-left','slide-align-center','slide-align-right'),pick('slide-align-top','slide-align-middle','slide-align-bottom'),pick('slide-distribute-h','slide-distribute-v')]},
       {label:'ribbonGrouping',rows:[pick('slide-group','slide-ungroup','slide-edit-group','slide-exit-group'),pick('slide-flipH','slide-flipV','slide-connect-objects','slide-detach-connector')]}
     ]},
     {id:'design',label:'ribbonDesign',groups:[

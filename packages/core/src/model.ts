@@ -81,7 +81,9 @@ interface ShapeBase { id: string; geometry: Geometry; fill?: Color; stroke?: Sli
 export interface SlideTextFrame { autofit?:{mode:'none'}|{mode:'shape'}|{mode:'normal';fontScale:number;lineReduction:number}; wrap?: boolean; verticalAlignment?: 'top'|'center'|'bottom'; margins?: {top:number;right:number;bottom:number;left:number}; direction?: 'ltr'|'rtl'|'auto' }
 export interface SlideThemeFontDetails { eastAsia?:string; complex?:string; scripts?:Record<string,string> }
 export interface SlideTheme { name:string; colors:Record<string,Extract<Color,{kind:'rgba'}>>; majorFont?:string; minorFont?:string; majorFontDetails?:SlideThemeFontDetails; minorFontDetails?:SlideThemeFontDetails }
-export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: SlidePreset; connector?:true; connections?:SlideConnections }) | (ShapeBase & { type: 'image'; resourceId: string; crop?:SlideCrop }) | (ShapeBase & {type:'group';childSpace:SlideChildSpace;children:Shape[]});
+export const DEFAULT_SLIDE_TABLE_STYLE='{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}';
+export interface SlideTableData {columnWidths:number[];rowHeights:number[];cells:string[][];styleId:typeof DEFAULT_SLIDE_TABLE_STYLE;firstRow?:boolean;bandRow?:boolean}
+export type Shape = (ShapeBase & {type:'table';table:SlideTableData}) | (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: SlidePreset; connector?:true; connections?:SlideConnections }) | (ShapeBase & { type: 'image'; resourceId: string; crop?:SlideCrop }) | (ShapeBase & {type:'group';childSpace:SlideChildSpace;children:Shape[]});
 export interface Slide { id: string; background: Color; shapes: Shape[] }
 export interface SlidesDocument extends DocumentBase { kind: 'slides'; size: { width: number; height: number }; slides: Slide[]; theme?: SlideTheme }
 export type OfficeDocument = WriterDocument | SheetsDocument | SlidesDocument;
@@ -457,7 +459,7 @@ export function validateDocument(value: unknown): OfficeDocument {
     list(model.slides).forEach((candidate) => {
       const slide = object(candidate, ['id', 'background', 'shapes']); id(slide.id); validateColor(slide.background);
       const validateShape=(candidate:unknown,depth:number):void=>{
-        const shape = object(candidate, ['id', 'type', 'geometry', 'fill', 'stroke', 'runs', 'resourceId', 'textStyle', 'textFrame','flipH','flipV','connector','connections','crop','childSpace','children']); id(shape.id); validateGeometry(shape.geometry);
+        const shape = object(candidate, ['id', 'type', 'geometry', 'fill', 'stroke', 'runs', 'resourceId', 'textStyle', 'textFrame','flipH','flipV','connector','connections','crop','childSpace','children','table']); id(shape.id); validateGeometry(shape.geometry);
         assert(++shapeCount<=100000&&depth<=16,'limit','Presentation shape tree budget exceeded');
         if(shape.flipH!==undefined)bool(shape.flipH);if(shape.flipV!==undefined)bool(shape.flipV);
         if(shape.connector!==undefined)assert(shape.type==='line'&&shape.connector===true,'invalid','Invalid connector shape');
@@ -469,6 +471,7 @@ export function validateDocument(value: unknown): OfficeDocument {
         }
         if(shape.type!=='group')assert(!('childSpace' in shape)&&!('children' in shape),'invalid','Unexpected group fields');
         if(shape.type!=='image')assert(!('crop' in shape),'invalid','Unexpected image crop');
+        if(shape.type!=='table')assert(!('table' in shape),'invalid','Unexpected slide table data');
         if(shape.type==='text')assert(!shape.flipH&&!shape.flipV,'unsupported','Flipped text is outside presentation profile');
         if (shape.fill !== undefined) validateColor(shape.fill);
         if (shape.stroke !== undefined) {
@@ -476,7 +479,19 @@ export function validateDocument(value: unknown): OfficeDocument {
           if(stroke.dash!==undefined)assert(['solid','dash','dot','dashDot','lgDash','lgDashDot','lgDashDotDot','sysDash','sysDot','sysDashDot','sysDashDotDot'].includes(String(stroke.dash)),'invalid','Invalid presentation dash');
           for(const end of ['head','tail'])if(stroke[end]!==undefined){const arrow=object(stroke[end],['type','width','length']);assert(shape.type==='line'&&['triangle','arrow'].includes(String(arrow.type)),'invalid','Unsupported arrow shape');for(const key of ['width','length'])if(arrow[key]!==undefined)assert(['sm','med','lg'].includes(String(arrow[key])),'invalid','Invalid arrow size');}
         }
-        if (shape.type === 'text') {
+        if(shape.type==='table'){
+          assert(depth===0&&!shape.flipH&&!shape.flipV&&!('fill'in shape)&&!('stroke'in shape)&&!('runs'in shape)&&!('resourceId'in shape)&&!('textStyle'in shape)&&!('textFrame'in shape),'unsupported','Only top-level unrotated tables with native cell paint are supported');
+          const g=shape.geometry as Geometry;assert(g.rotation===0,'unsupported','Table rotation outside profile');
+          const table=object(shape.table,['columnWidths','rowHeights','cells','styleId','firstRow','bandRow']);
+          assert(table.styleId===DEFAULT_SLIDE_TABLE_STYLE,'unsupported','Unknown slide table style');
+          const cols=list(table.columnWidths,1),rows=list(table.rowHeights,1),cells=list(table.cells,1);
+          assert(cols.length<=64&&rows.length<=200&&rows.length*cols.length<=2000&&cells.length===rows.length,'limit','Slide table budget');
+          for(const v of [...cols,...rows])integer(v,1,2147483647);
+          assert(cols.reduce<number>((n,v)=>n+Number(v),0)===g.width&&rows.reduce<number>((n,v)=>n+Number(v),0)===g.height,'invalid','Slide table geometry mismatch');
+          for(const raw of cells){const row=list(raw);assert(row.length===cols.length,'invalid','Nonrectangular slide table');for(const v of row){text(v,4096);assert(!/[\x00-\x09\x0b-\x1f\x7f]/.test(String(v)),'invalid','Unsupported slide table control character');}}
+          for(const key of ['firstRow','bandRow'])if(table[key]!==undefined)bool(table[key]);
+        }
+        else if (shape.type === 'text') {
           assert(!('resourceId' in shape), 'invalid', 'Unexpected text shape fields'); list(shape.runs).forEach((item) => run(item, true));
           if(shape.textStyle!==undefined)validateTextStyle(shape.textStyle);
           if(shape.textFrame!==undefined){

@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {cloneData,DocumentSession,writerEffectiveStyle} from '@office-ex/core';
 import {insertTableRow,replaceParagraphRange,setTableBorder,effectivePageStory,setWriterPageStory,setWriterPageNumberStart} from '@office-ex/writer';
 import {inspectForEditor,serializeDraft,prepareWriterDocxSave,prepareSlidesSave,prepareSheetsSave,writeLegacyPpt} from '@office-ex/format-service';
-import {openOpc,openWriterDocx,saveWriterDocx,writeZip,openSheetsXlsx,saveSheetsXlsx,writeSheetsXlsx} from '@office-ex/ooxml';
+import {openOpc,openWriterDocx,saveWriterDocx,writeZip,openSheetsXlsx,saveSheetsXlsx,writeSheetsXlsx,openSlidesPptx,saveSlidesPptx} from '@office-ex/ooxml';
 const folder=process.argv[2],read=name=>readFile(join(folder,name)),write=(name,bytes)=>writeFile(join(folder,name),bytes);
 async function inspect(name){const bytes=await read(name);return {bytes,result:await inspectForEditor(bytes,name,'compat-corpus')};}
 const excel=await inspect('standard.xlsx');assert.equal(excel.result.report.readOnly,false);const workbook=cloneData(excel.result.editableSheets);
@@ -155,6 +155,12 @@ assert.equal(runningReopened.pageStories[runningReopened.sections[1].storyRefs.h
 assert.equal(runningReopened.pageStories[footer].text,'Updated page ');
 await write('running-stories-edited.docx',runningEdited);
 const unsupportedStory=await inspect('unsupported-story-field.docx');assert.equal(unsupportedStory.result.report.readOnly,true);assert.match(unsupportedStory.result.semanticFailure.detail,/Unsupported running story field instruction/);
+const tableDeck=await inspect('m6-slide-table.pptx');assert.equal(tableDeck.result.report.readOnly,false,tableDeck.result.semanticFailure?.detail);
+const tableSource=openSlidesPptx(tableDeck.bytes,'compat-corpus','Slide table');
+assert.equal(tableSource.document.slides[0].shapes[1].type,'table');
+assert.ok(Buffer.from(saveSlidesPptx(tableDeck.bytes,tableSource.document)).equals(tableDeck.bytes));
+tableSource.document.slides[0].shapes[1].table.cells[1][0]='已编辑表格';
+await write('m6-slide-table-edited.pptx',saveSlidesPptx(tableDeck.bytes,tableSource.document));
 const ppt=await inspect('ordinary-shapes.pptx');assert.equal(ppt.result.report.readOnly,false,ppt.result.semanticFailure?.detail);
 const slides=cloneData(ppt.result.editableSlides);
 assert.equal(slides.slides[0].shapes[0].textFrame.autofit.mode,'shape');

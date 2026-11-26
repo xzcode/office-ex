@@ -211,3 +211,8 @@ test('PPTX attached straight connector references survive shape movement and nat
  const bad=raw.replace(/(<a:stCxn id=")4"/,(_,prefix)=>prefix+'999"');const parts=new Map(opc.parts);parts.set(path,new TextEncoder().encode(bad));
  assert.equal((await inspectForEditor(writeZip(parts),'bad.pptx','bad')).report.readOnly,true);
 });
+
+test('M6.7 native DrawingML table round trip preserves text, grid and flags; legacy conversion refuses',async()=>{
+ const {DocumentSession}=await import('@office-ex/core');const {insertSlideTable,editSlideTable}=await import('@office-ex/slides');const s=new DocumentSession(createDocument('slides','m6-table'));
+ s.execute(insertSlideTable(s.snapshot(),'slide-1',2,2,'grid'));s.execute(editSlideTable(s.snapshot(),'slide-1','grid',[['名称','Value'],['多行\n文本','42']]));const d=s.snapshot().document as SlidesDocument;const b=writeSlidesPptx(d);const opened=openSlidesPptx(b,d.documentId).document;const shape=opened.slides[0]!.shapes[0]!;assert.equal(shape.type,'table');if(shape.type!=='table')return;assert.deepEqual(shape.table.cells,[['名称','Value'],['多行\n文本','42']]);assert.equal(shape.table.firstRow,true);assert.equal(shape.table.bandRow,true);assert.deepEqual(saveSlidesPptx(b,opened),b);shape.table.cells[1]![1]='43';const out=openSlidesPptx(saveSlidesPptx(b,opened),d.documentId).document;const read=out.slides[0]!.shapes[0]!;assert.equal(read.type,'table');if(read.type==='table')assert.equal(read.table.cells[1]![1],'43');assert.throws(()=>writeLegacyPpt(d),fail('unsupported'));
+});

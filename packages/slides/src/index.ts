@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /** Presentation commands use stable IDs and one atomic patch per user action. */
 import { assert, assertId, assertUnicode, graphemeBoundaries } from '@office-ex/contracts';
-import { cloneData, patchCommand, DEFAULT_SLIDE_THEME_COLORS, validateColor, validateGeometry, validateSlideCrop, walkSlideShapes, resolveSlideConnector, isConnectorTarget, nearestSlideConnections, connectorGeometry, validateTextStyle, validateSlideParagraph, resolveTextStyle, splitSlideParagraphs, firstSlideParagraphRun, validateImageResource, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type SlidesDocument, type Slide, type Shape, type Geometry, type Color, type TextRun, type TextStyle, type SlideTextFrame, type SlideCrop, type SlideStroke, type SlideConnections, type ModelPath, type SlideParagraphFormat, type SlideTheme, type ImageResource, type PatchOperation } from '@office-ex/core';
+import { DEFAULT_SLIDE_TABLE_STYLE, cloneData, patchCommand, DEFAULT_SLIDE_THEME_COLORS, validateColor, validateGeometry, validateSlideCrop, walkSlideShapes, resolveSlideConnector, isConnectorTarget, nearestSlideConnections, connectorGeometry, validateTextStyle, validateSlideParagraph, resolveTextStyle, splitSlideParagraphs, firstSlideParagraphRun, validateImageResource, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type SlidesDocument, type Slide, type Shape, type Geometry, type Color, type TextRun, type TextStyle, type SlideTextFrame, type SlideCrop, type SlideStroke, type SlideConnections, type ModelPath, type SlideParagraphFormat, type SlideTheme, type ImageResource, type PatchOperation } from '@office-ex/core';
 
 export type PresentationSnapshot = DeepReadonly<SlidesDocument>;
 export type SlideSnapshot = DeepReadonly<Slide>;
@@ -85,7 +85,22 @@ export function duplicateShapes(snapshot:DocumentSnapshot,slideId:string,shapeId
 }
 /** Transient pointer previews are outside this API; a completed gesture uses one command. */
 export function setShapeGeometries(snapshot:DocumentSnapshot,slideId:string,values:Readonly<Record<string,Geometry>>):DocumentCommand {
-  return command(snapshot,Object.entries(values).map(([id,geometry])=>{validateGeometry(geometry);const located=locateShape(snapshot,slideId,id);assert(!(located.shape.type==='line'&&located.shape.connections),'unsupported','Detach the connector before changing its geometry');return {op:'set',path:[...located.path,'geometry'],value:geometry};}));
+  const operations:PatchOperation[]=[];
+  for(const [id,geometry]of Object.entries(values)){
+    validateGeometry(geometry);const located=locateShape(snapshot,slideId,id),shape=located.shape;
+    assert(!(shape.type==='line'&&shape.connections),'unsupported','Detach the connector before changing its geometry');
+    if(shape.type==='table'){
+      assert(geometry.rotation===0,'unsupported','Tables cannot be rotated');
+      const scale=(parts:readonly number[],total:number)=>{
+        assert(total>=parts.length,'invalid','Table dimensions too small');
+        const old=parts.reduce((a,b)=>a+b,0);let cursor=0,last=0;
+        return parts.map((p,i)=>{cursor+=p;const next=i===parts.length-1?total:Math.max(last+1,Math.min(total-(parts.length-i-1),Math.round(cursor/old*total)));const size=next-last;last=next;return size;});
+      };
+      operations.push({op:'set',path:[...located.path,'table','columnWidths'],value:scale(shape.table.columnWidths,geometry.width)},{op:'set',path:[...located.path,'table','rowHeights'],value:scale(shape.table.rowHeights,geometry.height)});
+    }
+    operations.push({op:'set',path:[...located.path,'geometry'],value:geometry});
+  }
+  return command(snapshot,operations);
 }
 export function setShapeGeometry(snapshot:DocumentSnapshot,slideId:string,shapeId:string,geometry:Geometry):DocumentCommand {return setShapeGeometries(snapshot,slideId,{[shapeId]:geometry});}
 export function nudgeShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],dx:number,dy:number):DocumentCommand {
@@ -94,7 +109,7 @@ export function nudgeShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:re
 }
 export function setShapePaint(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],paint:{fill?:Color|null;stroke?:SlideStroke|null}):DocumentCommand {
   const operations:PatchOperation[]=[];if(paint.fill)validateColor(paint.fill);if(paint.stroke){validateColor(paint.stroke.color);assert(Number.isSafeInteger(paint.stroke.width)&&paint.stroke.width>=0,'invalid','Invalid stroke width');}
-  for(const id of shapeIds){const l=locateShape(snapshot,slideId,id),base=l.path;assert(l.shape.type!=='group','unsupported','Group paint requires ungrouping first');for(const key of ['fill','stroke'] as const)if(paint[key]!==undefined)operations.push(paint[key]===null?{op:'delete',path:[...base,key]}:{op:'set',path:[...base,key],value:paint[key]});}
+  for(const id of shapeIds){const l=locateShape(snapshot,slideId,id),base=l.path;assert(l.shape.type!=='group'&&l.shape.type!=='table','unsupported','This object requires its own paint controls');for(const key of ['fill','stroke'] as const)if(paint[key]!==undefined)operations.push(paint[key]===null?{op:'delete',path:[...base,key]}:{op:'set',path:[...base,key],value:paint[key]});}
   return command(snapshot,operations);
 }
 export type LayerMove='front'|'back'|'forward'|'backward';
@@ -198,7 +213,7 @@ export function groupShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:re
  assert(set.size===shapeIds.length&&indices.length===shapeIds.length&&indices.length>=2,'invalid','Select at least two distinct shapes');
  assert(indices.at(-1)!-indices[0]!+1===indices.length,'unsupported','Grouping noncontiguous paint layers would change their stacking order');
  assert(!container.shapes.some(shape=>shape.type==='line'&&shape.connections&&(set.has(shape.id)||set.has(shape.connections.start.shapeId)||set.has(shape.connections.end.shapeId))),'unsupported','Detach connectors before grouping their targets');
- const selected=container.shapes.slice(indices[0]!,indices.at(-1)!+1),points=selected.flatMap(({geometry:g})=>{
+ const selected=container.shapes.slice(indices[0]!,indices.at(-1)!+1);assert(!selected.some(s=>s.type==='table'),'unsupported','Tables cannot be grouped');const points=selected.flatMap(({geometry:g})=>{
   const a=g.rotation/60000*Math.PI/180,c=Math.cos(a),s=Math.sin(a),cx=g.x+g.width/2,cy=g.y+g.height/2;
   return [[-g.width/2,-g.height/2],[g.width/2,-g.height/2],[g.width/2,g.height/2],[-g.width/2,g.height/2]].map(([x,y])=>({x:cx+x!*c-y!*s,y:cy+x!*s+y!*c}));
  });
@@ -224,7 +239,7 @@ export function setSlideImageCrop(snapshot:DocumentSnapshot,slideId:string,shape
  return command(snapshot,Object.values(crop).some(v=>v!==0)?[{op:'set',path,value:crop}]:l.shape.crop?[{op:'delete',path}]:[]);
 }
 export function flipSlideShapes(snapshot:DocumentSnapshot,slideId:string,shapeIds:readonly string[],axis:'flipH'|'flipV'):DocumentCommand{
- return command(snapshot,shapeIds.map(shapeId=>{const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type!=='text'&&!(l.shape.type==='line'&&l.shape.connections),'unsupported','Cannot flip text or an attached connector');return {op:'set',path:[...l.path,axis],value:!l.shape[axis]};}));
+ return command(snapshot,shapeIds.map(shapeId=>{const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type!=='text'&&l.shape.type!=='table'&&!(l.shape.type==='line'&&l.shape.connections),'unsupported','Cannot flip text or an attached connector');return {op:'set',path:[...l.path,axis],value:!l.shape[axis]};}));
 }
 
 /** Create one attached straight connector; endpoints are stable model IDs. */
@@ -240,4 +255,33 @@ export function setSlideConnections(snapshot:DocumentSnapshot,slideId:string,sha
  const map=new Map(l.siblings.map(s=>[s.id,s])),resolved=connections?{...shape,connections,...connectorGeometry(connections,map)}:resolveSlideConnector(shape,map);
  const next=cloneData(resolved) as Shape;if(!connections&&next.type==='line')delete next.connections;
  return command(snapshot,[{op:'set',path:l.path,value:next}]);
+}
+
+/** Native DrawingML table with a bounded rectangular text-only grid. */
+export function insertSlideTable(snapshot:DocumentSnapshot,slideId:string,rows:number,columns:number,shapeId:string):DocumentCommand{
+ const {slide}=locateSlide(snapshot,slideId),doc=presentation(snapshot);
+ assert(Number.isSafeInteger(rows)&&Number.isSafeInteger(columns)&&rows>=1&&rows<=200&&columns>=1&&columns<=64&&rows*columns<=2000,'invalid','Invalid slide table dimensions');
+ assertId(shapeId);const width=Math.max(columns,Math.round(doc.size.width*.6)),height=Math.max(rows,Math.round(doc.size.height*.3));
+ const split=(total:number,count:number)=>Array.from({length:count},(_,i)=>Math.floor(total*(i+1)/count)-Math.floor(total*i/count));
+ const table:Shape={id:shapeId,type:'table',geometry:{x:Math.round(doc.size.width*.2),y:Math.round(doc.size.height*.3),width,height,rotation:0},table:{columnWidths:split(width,columns),rowHeights:split(height,rows),cells:Array.from({length:rows},()=>Array<string>(columns).fill('')),styleId:DEFAULT_SLIDE_TABLE_STYLE,firstRow:true,bandRow:true}};
+ return insertShapes(snapshot,slideId,slide.shapes.length,[table]);
+}
+export function editSlideTable(snapshot:DocumentSnapshot,slideId:string,shapeId:string,cells:readonly (readonly string[])[]):DocumentCommand{
+ const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type==='table','invalid','Expected slide table');
+ const table=l.shape.table;assert(cells.length===table.rowHeights.length&&cells.every(row=>row.length===table.columnWidths.length),'invalid','Table cell dimensions changed');
+ for(const row of cells)for(const value of row){assertUnicode(value);assert(value.length<=4096,'limit','Slide table cell text budget');}
+ return command(snapshot,[{op:'set',path:[...l.path,'table','cells'],value:cells}]);
+}
+/** Equalize spacing in the local coordinate space. Rotated objects are
+ * intentionally outside this profile; use existing manual alignment. */
+export function distributeSlideShapes(snapshot:DocumentSnapshot,slideId:string,ids:readonly string[],axis:'horizontal'|'vertical'):DocumentCommand{
+ const container=selectionContainer(snapshot,slideId,ids),selected=container.shapes.filter(s=>ids.includes(s.id));
+ assert(selected.length>=3&&selected.length===ids.length&&selected.every(s=>s.geometry.rotation===0&&!(s.type==='line'&&s.connections)),'unsupported','Select at least three unrotated unattached shapes');
+ const pos=axis==='horizontal'?'x':'y',size=axis==='horizontal'?'width':'height';
+ const sorted=[...selected].sort((a,b)=>a.geometry[pos]-b.geometry[pos]||a.id.localeCompare(b.id));
+ const first=sorted[0]!,last=sorted.at(-1)!,span=last.geometry[pos]+last.geometry[size]-first.geometry[pos];
+ const total=sorted.reduce((n,s)=>n+s.geometry[size],0),gap=(span-total)/(sorted.length-1);
+ let cursor=first.geometry[pos];const values:Record<string,Geometry>={};
+ for(const s of sorted){values[s.id]={...s.geometry,[pos]:Math.round(cursor)};cursor+=s.geometry[size]+gap;}
+ return setShapeGeometries(snapshot,slideId,values);
 }

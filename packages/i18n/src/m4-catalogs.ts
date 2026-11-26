@@ -2,6 +2,10 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "slideTable": "Table",
+    "slideEditTable": "Edit table",
+    "slideDistributeHorizontal": "Distribute horizontally",
+    "slideDistributeVertical": "Distribute vertically",
     "sheetCharts": "Charts",
     "sheetChartColumn": "Column",
     "sheetChartLine": "Line",
@@ -223,6 +227,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "slideTable": "表格",
+    "slideEditTable": "编辑表格",
+    "slideDistributeHorizontal": "横向等距分布",
+    "slideDistributeVertical": "纵向等距分布",
     "sheetCharts": "图表",
     "sheetChartColumn": "柱状图",
     "sheetChartLine": "折线图",
@@ -444,6 +452,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "slideTable": "表格",
+    "slideEditTable": "編輯表格",
+    "slideDistributeHorizontal": "水平等距分佈",
+    "slideDistributeVertical": "垂直等距分佈",
     "sheetCharts": "圖表",
     "sheetChartColumn": "柱狀圖",
     "sheetChartLine": "折線圖",
@@ -665,6 +677,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "slideTable": "表",
+    "slideEditTable": "表を編集",
+    "slideDistributeHorizontal": "左右に等間隔で配置",
+    "slideDistributeVertical": "上下に等間隔で配置",
     "sheetCharts": "グラフ",
     "sheetChartColumn": "縦棒",
     "sheetChartLine": "折れ線",
@@ -886,6 +902,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "slideTable": "표",
+    "slideEditTable": "표 편집",
+    "slideDistributeHorizontal": "가로 간격 동일하게",
+    "slideDistributeVertical": "세로 간격 동일하게",
     "sheetCharts": "차트",
     "sheetChartColumn": "세로 막대",
     "sheetChartLine": "꺾은선",
@@ -1107,6 +1127,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "slideTable": "Tableau",
+    "slideEditTable": "Modifier le tableau",
+    "slideDistributeHorizontal": "Distribuer horizontalement",
+    "slideDistributeVertical": "Distribuer verticalement",
     "sheetCharts": "Graphiques",
     "sheetChartColumn": "Colonnes",
     "sheetChartLine": "Courbes",
@@ -1328,6 +1352,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "slideTable": "Tabelle",
+    "slideEditTable": "Tabelle bearbeiten",
+    "slideDistributeHorizontal": "Horizontal verteilen",
+    "slideDistributeVertical": "Vertikal verteilen",
     "sheetCharts": "Diagramme",
     "sheetChartColumn": "Säulen",
     "sheetChartLine": "Linien",
@@ -1549,6 +1577,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "slideTable": "Tabla",
+    "slideEditTable": "Editar tabla",
+    "slideDistributeHorizontal": "Distribuir horizontalmente",
+    "slideDistributeVertical": "Distribuir verticalmente",
     "sheetCharts": "Gráficos",
     "sheetChartColumn": "Columnas",
     "sheetChartLine": "Líneas",
@@ -1770,6 +1802,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "slideTable": "Tabela",
+    "slideEditTable": "Editar tabela",
+    "slideDistributeHorizontal": "Distribuir horizontalmente",
+    "slideDistributeVertical": "Distribuir verticalmente",
     "sheetCharts": "Gráficos",
     "sheetChartColumn": "Colunas",
     "sheetChartLine": "Linhas",
@@ -1991,6 +2027,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "slideTable": "Tabella",
+    "slideEditTable": "Modifica tabella",
+    "slideDistributeHorizontal": "Distribuisci orizzontalmente",
+    "slideDistributeVertical": "Distribuisci verticalmente",
     "sheetCharts": "Grafici",
     "sheetChartColumn": "Colonne",
     "sheetChartLine": "Linee",
@@ -2212,6 +2252,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "slideTable": "Таблица",
+    "slideEditTable": "Редактировать таблицу",
+    "slideDistributeHorizontal": "Распределить по горизонтали",
+    "slideDistributeVertical": "Распределить по вертикали",
     "sheetCharts": "Диаграммы",
     "sheetChartColumn": "Столбчатая",
     "sheetChartLine": "Линейная",
@@ -2433,6 +2477,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "slideTable": "جدول",
+    "slideEditTable": "تحرير الجدول",
+    "slideDistributeHorizontal": "توزيع أفقي",
+    "slideDistributeVertical": "توزيع عمودي",
     "sheetCharts": "المخططات",
     "sheetChartColumn": "أعمدة",
     "sheetChartLine": "خطوط",
@@ -2654,6 +2702,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "slideTable": "טבלה",
+    "slideEditTable": "עריכת טבלה",
+    "slideDistributeHorizontal": "פיזור אופקי",
+    "slideDistributeVertical": "פיזור אנכי",
     "sheetCharts": "תרשימים",
     "sheetChartColumn": "עמודות",
     "sheetChartLine": "קווים",
@@ -2875,6 +2927,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "slideTable": "तालिका",
+    "slideEditTable": "तालिका संपादित करें",
+    "slideDistributeHorizontal": "क्षैतिज वितरण",
+    "slideDistributeVertical": "ऊर्ध्वाधर वितरण",
     "sheetCharts": "चार्ट",
     "sheetChartColumn": "स्तंभ",
     "sheetChartLine": "रेखा",
@@ -3096,6 +3152,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "slideTable": "ตาราง",
+    "slideEditTable": "แก้ไขตาราง",
+    "slideDistributeHorizontal": "กระจายแนวนอน",
+    "slideDistributeVertical": "กระจายแนวตั้ง",
     "sheetCharts": "แผนภูมิ",
     "sheetChartColumn": "คอลัมน์",
     "sheetChartLine": "เส้น",
@@ -3317,6 +3377,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "slideTable": "Bảng",
+    "slideEditTable": "Sửa bảng",
+    "slideDistributeHorizontal": "Phân bố ngang",
+    "slideDistributeVertical": "Phân bố dọc",
     "sheetCharts": "Biểu đồ",
     "sheetChartColumn": "Cột",
     "sheetChartLine": "Đường",
@@ -3538,6 +3602,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "slideTable": "Tabel",
+    "slideEditTable": "Edit tabel",
+    "slideDistributeHorizontal": "Distribusi horizontal",
+    "slideDistributeVertical": "Distribusi vertikal",
     "sheetCharts": "Bagan",
     "sheetChartColumn": "Kolom",
     "sheetChartLine": "Garis",
@@ -3759,6 +3827,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "slideTable": "Jadual",
+    "slideEditTable": "Edit jadual",
+    "slideDistributeHorizontal": "Agih mendatar",
+    "slideDistributeVertical": "Agih menegak",
     "sheetCharts": "Carta",
     "sheetChartColumn": "Lajur",
     "sheetChartLine": "Garis",
@@ -3980,6 +4052,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "slideTable": "Tablo",
+    "slideEditTable": "Tabloyu düzenle",
+    "slideDistributeHorizontal": "Yatay dağıt",
+    "slideDistributeVertical": "Dikey dağıt",
     "sheetCharts": "Grafikler",
     "sheetChartColumn": "Sütun",
     "sheetChartLine": "Çizgi",
@@ -4201,6 +4277,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "slideTable": "Tabel",
+    "slideEditTable": "Tabel bewerken",
+    "slideDistributeHorizontal": "Horizontaal verdelen",
+    "slideDistributeVertical": "Verticaal verdelen",
     "sheetCharts": "Grafieken",
     "sheetChartColumn": "Kolom",
     "sheetChartLine": "Lijn",
@@ -4422,6 +4502,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "slideTable": "Tabela",
+    "slideEditTable": "Edytuj tabelę",
+    "slideDistributeHorizontal": "Rozmieść w poziomie",
+    "slideDistributeVertical": "Rozmieść w pionie",
     "sheetCharts": "Wykresy",
     "sheetChartColumn": "Kolumnowy",
     "sheetChartLine": "Liniowy",
@@ -4643,6 +4727,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "slideTable": "Таблиця",
+    "slideEditTable": "Редагувати таблицю",
+    "slideDistributeHorizontal": "Розподілити горизонтально",
+    "slideDistributeVertical": "Розподілити вертикально",
     "sheetCharts": "Діаграми",
     "sheetChartColumn": "Стовпчикова",
     "sheetChartLine": "Лінійна",

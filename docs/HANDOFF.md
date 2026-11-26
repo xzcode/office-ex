@@ -208,3 +208,7 @@ Continue on `m5-distribution-20261125`; see [M6 compatibility](M6-COMPATIBILITY.
 M6.5 B baseline `4c11eaa1a0adcc8ba38d8db102c1beb462efa435` passed exact-source CI [45793969267](https://github.com/xzcode/office-ex/actions/runs/45793969267).
 
 Numeric conditional rules and three native chart types with source-backed preservation, creation/deletion and live projection. Local 290/290, independent Office corpus, build/licenses, sandboxed native 3/3. See M6-COMPATIBILITY.md and docs/verification/m6/native-charts.json. Unsupported complex profiles guarded. Continue M6.7/M6.8. Exact-source CI required; published dev.2 unchanged.
+
+## 2026-11-26 — M6.7–M6.10 candidate
+
+Native rectangular PPTX table and distribution commands, shared scene/ribbon, double-click/Enter interaction and unchanged relationship preservation. Focused slides 46/46; independent external table and full Office corpus passed; final Linux sandboxed native 3/3. See M6-COMPATIBILITY.md and native-ppt-table.json. Prepare dev.3 version/lock without third-party dependency changes. Exact dev.3 CI, publication and broader acceptance remain pending; dev.2 release and master unchanged.

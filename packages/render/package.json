@@ -1,6 +1,6 @@
 {
   "name": "@office-ex/render",
-  "version": "0.1.0-dev.2",
+  "version": "0.1.0-dev.3",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@office-ex/contracts": "0.1.0-dev.2",
-    "@office-ex/core": "0.1.0-dev.2"
+    "@office-ex/contracts": "0.1.0-dev.3",
+    "@office-ex/core": "0.1.0-dev.3"
   }
 }

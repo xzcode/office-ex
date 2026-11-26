@@ -189,3 +189,18 @@ test('Attached connectors follow moving/rotated targets, remap complete copies a
  assert.equal(detached.connections,undefined);assert.deepEqual(detached.geometry,derived);s.undo();
  s.execute(setSlideConnections(s.snapshot(),'slide-1',line.id,null));const unbound=locateShape(s.snapshot(),'slide-1',line.id).shape;assert.equal(unbound.type,'line');if(unbound.type==='line')assert.equal(unbound.connections,undefined);
 });
+
+test('M6.7 table insertion, text editing, geometry and undo keep a real rectangular grid',async()=>{
+ const {insertSlideTable,editSlideTable}=await import('@office-ex/slides');const s=sample();
+ s.execute(insertSlideTable(s.snapshot(),'slide-1',2,3,'table'));const before=locateShape(s.snapshot(),'slide-1','table').shape;assert.equal(before.type,'table');
+ s.execute(editSlideTable(s.snapshot(),'slide-1','table',[['名称','Amount','日期'],['测试','42','2026-11-26']]));
+ const edited=locateShape(s.snapshot(),'slide-1','table').shape;assert.equal(edited.type,'table');if(edited.type!=='table')return;
+ s.execute(setShapeGeometries(s.snapshot(),'slide-1',{table:{...edited.geometry,width:edited.geometry.width+123,height:edited.geometry.height+47}}));
+ const after=locateShape(s.snapshot(),'slide-1','table').shape;assert.equal(after.type,'table');if(after.type!=='table')return;
+ assert.equal(after.table.columnWidths.reduce((a,b)=>a+b,0),after.geometry.width);assert.equal(after.table.rowHeights.reduce((a,b)=>a+b,0),after.geometry.height);assert.equal(after.table.cells[1]![0],'测试');
+ assert.equal(buildSlideScene(s.snapshot(),'slide-1').shapes.at(-1)!.type,'table');
+ assert.throws(()=>groupShapes(s.snapshot(),'slide-1',['text','table'],next()));s.undo();assert.deepEqual(locateShape(s.snapshot(),'slide-1','table').shape,edited);s.undo();assert.deepEqual(locateShape(s.snapshot(),'slide-1','table').shape,before);
+});
+test('M6.8 distribute selected objects in one undoable geometry transaction',async()=>{
+ const {distributeSlideShapes}=await import('@office-ex/slides');const s=sample();const b=s.snapshot();s.execute(setShapeGeometries(s.snapshot(),'slide-1',{rect:{...geometry,x:0},ellipse:{...geometry,x:2000000},text:{...geometry,x:9000000}}));const before=s.snapshot();s.execute(distributeSlideShapes(s.snapshot(),'slide-1',['rect','ellipse','text'],'horizontal'));const sh=model(s).slides[0]!.shapes;assert.equal(sh[1]!.geometry.x,4500000);assert.equal(sh[0]!.geometry.x,0);assert.equal(sh[2]!.geometry.x,9000000);s.undo();assert.deepEqual(s.snapshot().document,before.document);s.undo();assert.deepEqual(s.snapshot().document,b.document);
+});

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 /** A revision-bound scene shared by editing, thumbnails, presentation and print. */
 import { assert, type Diagnostic } from '@office-ex/contracts';
-import { freezeData, resolveTextStyle, resolveSlideThemeColor, resolveSlideThemeFont, resolveSlideConnector, splitSlideParagraphs, firstSlideParagraphRun, type SlideTextFrame, type SlidePreset, type SlideCrop, type SlideStroke, type SlideChildSpace, type DeepReadonly, type Color, type DocumentSnapshot, type Geometry, type ResourceRef, type Shape, type SlideTheme, type TextStyle } from '@office-ex/core';
+import { freezeData, resolveTextStyle, resolveSlideThemeColor, resolveSlideThemeFont, resolveSlideConnector, splitSlideParagraphs, firstSlideParagraphRun, type SlideTextFrame, type SlidePreset, type SlideCrop, type SlideStroke, type SlideChildSpace,type SlideTableData, type DeepReadonly, type Color, type DocumentSnapshot, type Geometry, type ResourceRef, type Shape, type SlideTheme, type TextStyle } from '@office-ex/core';
 
 type Rgba=Extract<Color,{kind:'rgba'}>;
 export interface SlideSceneRun {readonly id:string;readonly text:string;readonly style:DeepReadonly<TextStyle>}
 export interface SlideSceneParagraph {readonly runs:readonly SlideSceneRun[];readonly style:DeepReadonly<TextStyle>;readonly direction:'ltr'|'rtl'|'auto';readonly marker?:{readonly text:string;readonly style:DeepReadonly<TextStyle>}}
 interface SceneBase {readonly id:string;readonly geometry:DeepReadonly<Geometry>;readonly fill?:Rgba;readonly stroke?:DeepReadonly<Omit<SlideStroke,'color'>&{color:Rgba}>;readonly flipH?:boolean;readonly flipV?:boolean}
-export type SlideSceneShape=(SceneBase&{readonly type:SlidePreset;readonly connector?:true})|(SceneBase&{readonly type:'group';readonly childSpace:DeepReadonly<SlideChildSpace>;readonly children:readonly SlideSceneShape[]})|(SceneBase&{readonly type:'image';readonly resourceId:string;readonly resource?:DeepReadonly<ResourceRef>;readonly crop?:DeepReadonly<SlideCrop>})|(SceneBase&{readonly type:'text';readonly paragraphs:readonly SlideSceneParagraph[];readonly textStyle:DeepReadonly<TextStyle>;readonly wrap:boolean;readonly verticalAlignment:'top'|'center'|'bottom';readonly margins:{readonly top:number;readonly right:number;readonly bottom:number;readonly left:number};readonly direction:'ltr'|'rtl'|'auto';readonly autofit?:DeepReadonly<NonNullable<SlideTextFrame['autofit']>>});
+export type SlideSceneShape=(SceneBase&{readonly type:'table';readonly table:DeepReadonly<SlideTableData>;readonly font:DeepReadonly<TextStyle>;readonly accent:Rgba})|(SceneBase&{readonly type:SlidePreset;readonly connector?:true})|(SceneBase&{readonly type:'group';readonly childSpace:DeepReadonly<SlideChildSpace>;readonly children:readonly SlideSceneShape[]})|(SceneBase&{readonly type:'image';readonly resourceId:string;readonly resource?:DeepReadonly<ResourceRef>;readonly crop?:DeepReadonly<SlideCrop>})|(SceneBase&{readonly type:'text';readonly paragraphs:readonly SlideSceneParagraph[];readonly textStyle:DeepReadonly<TextStyle>;readonly wrap:boolean;readonly verticalAlignment:'top'|'center'|'bottom';readonly margins:{readonly top:number;readonly right:number;readonly bottom:number;readonly left:number};readonly direction:'ltr'|'rtl'|'auto';readonly autofit?:DeepReadonly<NonNullable<SlideTextFrame['autofit']>>});
 export interface SlideScene {
   readonly documentId:string;readonly revision:number;readonly contentId:string;readonly slideId:string;readonly width:number;readonly height:number;readonly background:Rgba;readonly shapes:readonly SlideSceneShape[];readonly diagnostics:readonly Diagnostic[];
 }
@@ -21,6 +21,7 @@ export function buildSlideScene(snapshot:DocumentSnapshot,slideId:string):SlideS
   };
   const project=(shape:DeepReadonly<Shape>):SlideSceneShape=>{
     const base:SceneBase={id:shape.id,geometry:shape.geometry,...(shape.fill?{fill:color(shape.fill)}:{}),...(shape.stroke?{stroke:{...shape.stroke,color:color(shape.stroke.color)}}:{}),...(shape.flipH?{flipH:true}:{}),...(shape.flipV?{flipV:true}:{})};
+    if(shape.type==='table')return {...base,type:'table',table:shape.table,font:{fontFamily:resolveSlideThemeFont(doc.defaultTextStyle.fontFamily,doc.theme)??'sans-serif',fontSize:doc.defaultTextStyle.fontSize??228600,color:color({kind:'theme',name:'dk1'})},accent:color({kind:'theme',name:'accent1'})};
     if(shape.type==='group')return {...base,type:'group',childSpace:shape.childSpace,children:shape.children.map(project)};
     if(shape.type==='image'){
       const resource=doc.resources[shape.resourceId];if(!resource?.dataBase64)diagnostics.push({code:'slides.image-unavailable',featureId:'SLD-02',severity:'warning',messageKey:'slides.imageUnavailable',safeAction:'none'});

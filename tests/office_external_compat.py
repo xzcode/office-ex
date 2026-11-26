@@ -128,7 +128,8 @@ def generate(p):
     t=s.shapes.add_table(2,2,I(1),I(2),I(5),I(1)).table
     for i,row in enumerate([['类别','数量'],['文件','12']]):
         for j,value in enumerate(row):t.cell(i,j).text=value
-    s=r.slides.add_slide(r.slide_layouts[5]);s.shapes.title.text='第二张幻灯片';r.save(p/'advanced.pptx')
+    s=r.slides.add_slide(r.slide_layouts[5]);s.shapes.title.text='第二张幻灯片';r.save(p/'m6-slide-table.pptx')
+    t.cell(0,0).merge(t.cell(0,1));r.save(p/'advanced.pptx')
 def verify(p):
     subprocess.run([os.environ.get('NODE','node'),'--import','tsx','tests/office-external-compat.mjs',str(p)],cwd=ROOT,check=True)
     a=load_workbook(p/'standard-edited.xlsx',data_only=True);assert a['销售']['B1'].value==300 and a['销售']['B2'].value==600
@@ -160,6 +161,9 @@ def verify(p):
     with ZipFile(p/'m6-charts.xlsx') as before,ZipFile(p/'m6-charts-edited.xlsx') as after:
         for n in before.namelist():
             if n.startswith(('xl/drawings/','xl/charts/')) or n=='xl/styles.xml':assert before.read(n)==after.read(n),n
+    tabledeck=Presentation(p/'m6-slide-table-edited.pptx');table=tabledeck.slides[0].shapes[1].table
+    assert table.cell(1,0).text=='已编辑表格' and table.cell(1,1).text=='12'
+    assert len(table.rows)==2 and len(table.columns)==2 and table.first_row and table.horz_banding
     d=Document(p/'image-edited.docx');assert len(d.inline_shapes)==1 and d.inline_shapes[0].width==457200
     with ZipFile(p/'ordinary-image.docx') as before,ZipFile(p/'image-edited.docx') as after:
         for name in before.namelist():

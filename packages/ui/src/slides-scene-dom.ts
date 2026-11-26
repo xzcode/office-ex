@@ -25,7 +25,7 @@ export function updateSlideShapeGeometry(element:HTMLElement,shape:SlideSceneSha
  Object.assign(element.style,{left:px(g.x),top:px(g.y),width:px(g.width),height:px(g.height),transform:`rotate(${g.rotation/ROTATION_UNITS_PER_DEGREE}deg) scale(${shape.flipH?-1:1},${shape.flipV?-1:1})`});
  if(shape.type==='group'){
   const inner=element.firstElementChild as HTMLElement|null,space=shape.childSpace;if(inner)inner.style.transform=`scale(${g.width/space.width},${g.height/space.height}) translate(${px(-space.x)},${px(-space.y)})`;
- }else if(shape.type!=='text'&&shape.type!=='image'){
+ }else if(shape.type!=='text'&&shape.type!=='image'&&shape.type!=='table'){
   const svg=element.firstElementChild as SVGSVGElement|null;if(svg&&(svg.dataset.width!==String(g.width)||svg.dataset.height!==String(g.height))){paintVector(svg,shape,g);svg.dataset.width=String(g.width);svg.dataset.height=String(g.height);}
  }
 }
@@ -58,6 +58,17 @@ export function createSlideShapeElement(shape:SlideSceneShape,fitOverride?:numbe
   if(shape.type==='group'){
     const inner=document.createElement('div');inner.className='slides-group-content';Object.assign(inner.style,{position:'absolute',left:'0',top:'0',width:px(shape.childSpace.width),height:px(shape.childSpace.height),transformOrigin:'0 0',overflow:'visible'});
     for(const child of shape.children)inner.append(createSlideShapeElement(child));element.append(inner);
+  }else if(shape.type==='table'){
+    const grid=document.createElement('div');grid.className='slides-native-table';
+    Object.assign(grid.style,{display:'grid',width:'100%',height:'100%',gridTemplateColumns:shape.table.columnWidths.map(v=>v+'fr').join(' '),gridTemplateRows:shape.table.rowHeights.map(v=>v+'fr').join(' '),overflow:'hidden'});
+    for(const [ri,row]of shape.table.cells.entries())for(const [ci,text]of row.entries()){
+      const cell=document.createElement('div');cell.className='slides-table-cell';cell.dataset.row=String(ri);cell.dataset.column=String(ci);cell.textContent=text;
+      const head=shape.table.firstRow&&ri===0,band=shape.table.bandRow&&ri%2===1,c=shape.accent;
+      applySlideTextStyle(cell,{...shape.font,bold:!!head,color:head?{kind:'rgba',red:255,green:255,blue:255,alpha:255}:shape.font.color},text);
+      Object.assign(cell.style,{minWidth:'0',minHeight:'0',overflow:'hidden',whiteSpace:'pre-wrap',overflowWrap:'break-word',border:'1px solid white',boxSizing:'border-box',padding:'4px 8px',background:head?slideCssColor(c):band?'rgba('+c.red+','+c.green+','+c.blue+',.22)':'rgba('+c.red+','+c.green+','+c.blue+',.10)'});
+      grid.append(cell);
+    }
+    element.append(grid);
   }else if(shape.type!=='text'&&shape.type!=='image'){
     const svg=svgNode('svg');element.append(svg);
   }else {
