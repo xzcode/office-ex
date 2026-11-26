@@ -80,13 +80,79 @@ test('M6.2 new DOCX story relationships and decimal PAGE fields roundtrip safely
  assert.deepEqual(parts.parts.get(headerPath),opc.parts.get(headerPath));
  assert.throws(()=>writeLegacyDoc(model(s)),fails('unsupported'));
 });
-test('M6.2 unsupported fields, first-page stories and malformed references remain protected',async()=>{
+test('M6.2 unsupported fields, invalid variants and malformed references remain protected',async()=>{
  const s=fixture(),bytes=writeWriterDocx(model(s)),opc=openOpc(bytes),dec=new TextDecoder(),enc=new TextEncoder();
  const footer=opc.relationships.get(opc.mainPart!)!.find(r=>r.type.endsWith('/footer'))!.targetPart!;
- for(const [path,mutate] of [[footer,(x:string)=>x.replace(' PAGE ',' DATE ')],[opc.mainPart!,(x:string)=>x.replace('w:type="default"','w:type="first"')],[opc.mainPart!,(x:string)=>x.replace('r:id="rIdOexStory_header"','r:id="missing"')]] as const){
+ for(const [path,mutate] of [[footer,(x:string)=>x.replace(' PAGE ',' DATE ')],[opc.mainPart!,(x:string)=>x.replace('w:type="default"','w:type="unknown"')],[opc.mainPart!,(x:string)=>x.replace('r:id="rIdOexStory_header"','r:id="missing"')]] as const){
   const parts=new Map(opc.parts),original=dec.decode(parts.get(path)!);const changed=mutate(original);assert.notEqual(changed,original);
   parts.set(path,enc.encode(changed));const blocked=writeZip(parts);
   assert.throws(()=>openWriterDocx(blocked,'protected','Protected'),fails('unsupported'));
   assert.equal((await inspectForEditor(blocked,'protected.docx','protected')).report.readOnly,true);
  }
+});
+
+function variantFixture(){
+ const s=fixture();
+ const text=(value:string,alignment:'start'|'center'|'end'='start')=>({text:value,alignment});
+ const para=(value:string)=>({id:value+'-p',type:'paragraph' as const,runs:[{id:value+'-r',type:'text' as const,text:value}]});
+ const doc=cloneData(model(s));doc.sections[0]!.blocks=[para('A'),{id:'break1',type:'page-break'},para('B'),{id:'break2',type:'page-break'},para('C')];
+ doc.sections[0]!.page.margins.top=1270000;doc.sections[0]!.page.margins.bottom=1270000;doc.sections[0]!.pageNumberStart=4;
+ const n=new DocumentSession(doc);
+ n.execute(setWriterPageStory(n.snapshot(),'section-1','header',{text:'Odd title',variant:'default',paragraphs:[text('Odd title'),text('Odd second','end')],distance:127000},'odd'));
+ n.execute(setWriterPageStory(n.snapshot(),'section-1','header',{text:'First title',variant:'first',differentFirstPage:true,paragraphs:[text('First title'),text('First subtitle','center')],distance:127000},'first'));
+ n.execute(setWriterPageStory(n.snapshot(),'section-1','header',{text:'Even title',variant:'even',differentEvenOddPages:true,distance:127000},'even'));
+ for(const variant of ['first','even'] as const)n.execute(setWriterPageStory(n.snapshot(),'section-1','footer',{text:variant+' ',variant,pageNumber:true,distance:127000},variant+'-f'));
+ const m=cloneData(model(n));m.sections.push({...cloneData(m.sections[0]!),id:'linked',storyRefs:undefined,differentFirstPage:undefined,pageNumberStart:10,blocks:[para('D'),{id:'break3',type:'page-break'},para('E')]});
+ // Optional properties must be absent, not explicit undefined in model data.
+ delete m.sections[1]!.storyRefs;delete m.sections[1]!.differentFirstPage;
+ return new DocumentSession(m);
+}
+test('M7.2 first page overrides numbered parity; linked sections inherit each variant independently',()=>{
+ const s=variantFixture(),l=layoutWriter(s.snapshot(),font);
+ assert.deepEqual(l.pages.map(p=>p.displayPageNumber),[4,5,6,10,11]);
+ assert.deepEqual(l.pages.map(p=>p.runningStories!.filter(b=>b.kind==='header').map(b=>b.text)),[['First title','First subtitle'],['Odd title','Odd second'],['Even title'],['Even title'],['Odd title','Odd second']]);
+ assert.deepEqual(l.pages.map(p=>p.runningStories!.filter(b=>b.kind==='footer').map(b=>b.text)),[['first 4'],['Page 5 / report'],['even 6'],['even 10'],['Page 11 / report']]);
+ for(const p of l.pages)for(const kind of ['header','footer'] as const){
+   const boxes=p.runningStories!.filter(b=>b.kind===kind);
+   for(const [i,b]of boxes.entries()){assert.ok(b.y>=0&&b.y+b.height<=p.height);if(i)assert.ok(b.y>=boxes[i-1]!.y+boxes[i-1]!.height);assert.ok(kind==='header'?b.y+b.height<=p.margins.top:b.y>=p.height-p.margins.bottom);}
+ }
+ const before=s.snapshot().document,h=effectivePageStory(model(s),'section-1','header','even');
+ s.execute(setWriterPageStory(s.snapshot(),'linked','header',{text:'Detached even',variant:'even'},'detached'));
+ assert.notEqual(effectivePageStory(model(s),'linked','header','even'),h);assert.equal(effectivePageStory(model(s),'section-1','header','even'),h);
+ assert.equal(layoutWriter(s.snapshot(),font).pages[3]!.runningStories!.find(b=>b.kind==='header')!.text,'Detached even');s.undo();assert.deepEqual(s.snapshot().document,before);
+});
+test('M7.2 native titlePg and evenAndOddHeaders flags survive new DOCX, source edit and toggle',()=>{
+ const s=variantFixture(),bytes=writeWriterDocx(model(s)),src=openWriterDocx(bytes,'story-fixture','Story'),parts=openOpc(bytes);
+ assert.equal(src.document.differentEvenOddPages,true);assert.equal(src.document.sections[0]!.differentFirstPage,true);assert.ok(src.document.sections[0]!.storyRefs!.firstHeader);
+ const settings=parts.relationships.get(parts.mainPart!)!.find(r=>r.type.endsWith('/settings'))!.targetPart!;
+ assert.match(new TextDecoder().decode(parts.parts.get(settings)!),/evenAndOddHeaders/);
+ assert.deepEqual(saveWriterDocx(src,src.document),bytes);
+ const n=new DocumentSession(src.document);
+ n.execute(setWriterPageStory(n.snapshot(),src.document.sections[0]!.id,'header',{text:'First title',variant:'first',differentFirstPage:false,differentEvenOddPages:false},'toggle'));
+ const saved=saveWriterDocx(src,n.snapshot().document),back=openWriterDocx(saved,'story-fixture','Story');
+ assert.equal(back.document.differentEvenOddPages,undefined);assert.equal(back.document.sections[0]!.differentFirstPage,undefined);
+ assert.ok(back.document.sections[0]!.storyRefs!.firstHeader);
+ assert.deepEqual(back.document.pageStories![back.document.sections[0]!.storyRefs!.firstHeader!]!.additionalParagraphs?.map(p=>p.text),['First subtitle']);
+ assert.equal(layoutWriter(new DocumentSession(back.document).snapshot(),font).pages[0]!.runningStories!.find(b=>b.kind==='header')!.text,'Odd title');
+ assert.doesNotMatch(new TextDecoder().decode(openOpc(saved).parts.get(settings)!),/evenAndOddHeaders/);
+ assert.throws(()=>writeLegacyDoc(model(s)),fails('unsupported'));
+});
+test('M7.2 absent variant stays blank; empty interior paragraphs occupy space; oversized stories fail closed',()=>{
+ const s=variantFixture(),d=cloneData(model(s));
+ delete d.sections[0]!.storyRefs!.firstFooter;
+ const id=d.sections[0]!.storyRefs!.firstHeader!;
+ d.pageStories![id]!.additionalParagraphs=[{text:''},{text:'After blank'}];
+ const l=layoutWriter(new DocumentSession(d).snapshot(),font),boxes=l.pages[0]!.runningStories!;
+ assert.equal(boxes.some(b=>b.kind==='footer'),false);
+ assert.equal(boxes.length,2);assert.ok(boxes[1]!.y>boxes[0]!.y+boxes[0]!.height);
+ d.sections[0]!.page.margins.top=250000;
+ assert.throws(()=>layoutWriter(new DocumentSession(d).snapshot(),font),fails('unsupported'));
+});
+test('M7.2 enabling even/odd stories on a minimal source adds only an understood settings relationship',()=>{
+ const s=fixture(),b=writeWriterDocx(model(s)),source=openWriterDocx(b,'story-fixture','Story'),n=new DocumentSession(source.document);
+ n.execute(setWriterPageStory(n.snapshot(),source.document.sections[0]!.id,'header',{text:'Even',variant:'even',differentEvenOddPages:true},'add-even'));
+ const out=saveWriterDocx(source,n.snapshot().document),back=openWriterDocx(out,'story-fixture','Story');
+ assert.equal(back.document.differentEvenOddPages,true);assert.ok(back.document.sections[0]!.storyRefs!.evenHeader);
+ assert.equal(openOpc(out).relationships.get(source.mainPart)!.filter(r=>r.type.endsWith('/settings')).length,1);
+ const before=openOpc(b),after=openOpc(out);for(const [path,part]of before.parts)if(path.includes('header-oex')||path.includes('footer-oex'))assert.deepEqual(after.parts.get(path),part);
 });

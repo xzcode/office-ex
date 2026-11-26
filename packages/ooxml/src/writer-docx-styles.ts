@@ -243,12 +243,13 @@ function relationPath(main:string):string{
  * their semantic payload is verified by the main DOCX adapter. Unknown
  * active content, external links, signatures and other graphs remain blocked.
  */
-export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun:RunReader,readParagraph:ParagraphReader):{part:string;profile?:DocxStyleProfile;stories:ReadonlyMap<string,DocxStorySource>}{
+export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun:RunReader,readParagraph:ParagraphReader):{part:string;profile?:DocxStyleProfile;stories:ReadonlyMap<string,DocxStorySource>;settingsPath?:string;differentEvenOddPages:boolean}{
   allowed(pkg.kind==='docx'&&pkg.conformance==='transitional'&&pkg.mainPart,'Expected Transitional DOCX');
   allowed(!pkg.hasMacros&&!pkg.hasSignatures&&!pkg.externalRelationships,'Protected or linked document');
   const main=pkg.mainPart,expected=new Set<string>(['[Content_Types].xml','_rels/.rels',main]);
   const root=pkg.relationships.get('')??[];
   let mainCount=0,stylePath:string|undefined,themePath:string|undefined,hasMetadata=false,settingsPath:string|undefined,numberingPath:string|undefined;
+  let differentEvenOddPages=false;
   const customParts:string[]=[];const extraSources=new Set<string>(),stories=new Map<string,DocxStorySource>();
   const typesSeen=new Set<string>();
   function admit(rel:OpcRelationship,type:string):string{
@@ -273,7 +274,7 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
     for(const rel of mainRels){
       if(rel.type===R+'styles'){allowed(!stylePath,'Duplicate styles part');stylePath=admit(rel,STYLES);}
       else if(rel.type===R+'theme'){allowed(!themePath,'Duplicate theme part');themePath=admit(rel,THEME);}
-      else if(rel.type===R+'settings'){allowed(!settingsPath,'Duplicate settings');settingsPath=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml');verifySettings(pkg.parts.get(settingsPath)!,options);hasMetadata=true;}
+      else if(rel.type===R+'settings'){allowed(!settingsPath,'Duplicate settings');settingsPath=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml');differentEvenOddPages=verifySettings(pkg.parts.get(settingsPath)!,options);hasMetadata=true;}
       else if(rel.type===R+'webSettings'){const path=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.webSettings+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'webSettings');hasMetadata=true;}
       else if(rel.type===R+'fontTable'){const path=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml');verifyAuxiliaryXml(pkg.parts.get(path)!,options,'fonts');hasMetadata=true;}
       else if(rel.type===R+'numbering'){allowed(!numberingPath,'Duplicate numbering');numberingPath=admit(rel,'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml');hasMetadata=true;}
@@ -296,10 +297,10 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
   }
   allowed([...pkg.relationships.keys()].every(k=>k===''||k===main||extraSources.has(k)),'Unexpected auxiliary relationship graph');
   allowed(pkg.parts.size===expected.size&&[...pkg.parts.keys()].every(k=>expected.has(k)),'Additional package parts require a later adapter');
-  if(!stylePath&&!themePath&&!hasMetadata)return {part:main,stories};
+  if(!stylePath&&!themePath&&!hasMetadata)return {part:main,stories,differentEvenOddPages};
   const theme=themePath?readTheme(pkg.parts.get(themePath)!,options):undefined;
   const numbering=numberingPath?readNumbering(numberingPath,pkg.parts.get(numberingPath)!,options):undefined;
   const profile:DocxStyleProfile=stylePath?readStyles(pkg.parts.get(stylePath)!,options,readRun,readParagraph,theme,numbering):{styles:{},defaults:{},tableDefaultsSafe:true};
   if(numbering)profile.numbering=numbering;
-  return {part:main,profile,stories};
+  return {part:main,profile,stories,settingsPath,differentEvenOddPages};
 }

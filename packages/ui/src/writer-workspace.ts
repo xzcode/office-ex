@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, EMU_PER_TWIP, graphemeBoundaries, OfficeError } from '@office-ex/contracts';
-import { resolveTextStyle, writerEffectiveStyle, inlineText, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterBlock, type Paragraph, type Table, type ImageResource } from '@office-ex/core';
+import { resolveTextStyle, writerEffectiveStyle, inlineText, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type TextStyle, type WriterDocument, type WriterStoryParagraph, type WriterStoryVariant, type WriterBlock, type Paragraph, type Table, type ImageResource } from '@office-ex/core';
 import { paragraphText, replaceParagraphRange, splitParagraphRange, joinParagraphs, formatParagraphRange, setParagraphAlignment, setParagraphNamedStyle, setCharacterNamedStyle, insertPageBreakAfter, paragraphEditDiff, insertTableAfter, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, resizeTableColumn, setTableBorder, deleteTable, tableCellLocation, hasMergedTableCells, mergeTableCells, splitTableCell, insertImageAfter, insertImageAt, resizeInlineImage, removeInlineImage, setWriterPage, splitWriterSectionAfter, effectivePageStory, setWriterPageStory, setParagraphMetrics, setWriterList, restartWriterList, setParagraphDirection, locateParagraph, writerTextGroup, textGroupPoint, textGroupOffset, replaceWriterRange, resolveWriterRange, formatWriterRange, type WriterRange, type WriterTextGroup } from '@office-ex/writer';
 import { layoutWriter, hitTestWriterPage, writerCaretBox, writerSelectionBoxes, type WriterLayout } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
@@ -480,6 +480,11 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   const storySection=storyField('writerSection',node('select'));storySection.id='writer-story-section';
   const storyKind=storyField('writerRunningStories',node('select'));storyKind.id='writer-story-kind';
   for(const [value,key] of [['header','writerHeader'],['footer','writerFooter']] as const){const o=node('option',t(key));o.value=value;storyKind.append(o);}
+  const storyVariant=storyField('writerStoryVariant',node('select'));storyVariant.id='writer-story-variant';
+  for(const [value,key]of [['default','writerStoryDefaultPage'],['first','writerStoryFirstPage'],['even','writerStoryEvenPage']] as const){const o=node('option',t(key));o.value=value;storyVariant.append(o);}
+  const firstPage=storyField('writerDifferentFirstPage',node('input'));firstPage.type='checkbox';firstPage.id='writer-story-first-page';
+  const evenOdd=storyField('writerDifferentEvenOdd',node('input'));evenOdd.type='checkbox';evenOdd.id='writer-story-even-odd';
+  const paragraphChoice=storyField('ribbonParagraph',node('select'));paragraphChoice.id='writer-story-paragraph';
   const storyText=storyField('ribbonText',node('input'));storyText.id='writer-story-text';storyText.maxLength=4096;
   const pageField=storyField('writerAutoPageNumber',node('input'));pageField.type='checkbox';pageField.id='writer-story-page-number';
   const suffix=storyField('writerAfterPageNumber',node('input'));suffix.id='writer-story-after';suffix.maxLength=4096;
@@ -487,29 +492,59 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
   for(const [value,key]of [['','writerStoryDefaultAlign'],['start','writerAlignLeft'],['center','writerAlignCenter'],['end','writerAlignRight']] as const){const o=node('option',t(key));o.value=value;storyAlign.append(o);}
   const distance=storyField('writerStoryDistance',node('input'));distance.id='writer-story-distance';distance.type='number';distance.min='0';distance.max='1584';distance.step='0.05';
   const pageStart=storyField('writerPageStart',node('input'));pageStart.id='writer-story-page-start';pageStart.type='number';pageStart.min='1';pageStart.max='32767';pageStart.step='1';
+  let storyDraft:WriterStoryParagraph[]=[{text:''}],paragraphIndex=0,loadedStory='';
+  const paragraphActions=node('div','','writer-story-actions');
+  const addStoryParagraph=button(t('writerStoryAddParagraph'),()=>safe(()=>{
+    storeStoryParagraph();if(storyDraft.length>=16)return;const previous=storyDraft[paragraphIndex]!;
+    storyDraft.splice(paragraphIndex+1,0,{text:'',...(previous.styleId?{styleId:previous.styleId}:{}),...(previous.runStyle?{runStyle:previous.runStyle}:{})});
+    paragraphIndex++;refreshStoryParagraphs();loadStoryParagraph();
+  }),'writer-story-add-paragraph');
+  const removeStoryParagraph=button(t('writerStoryRemoveParagraph'),()=>safe(()=>{
+    if(storyDraft.length<=1)return;storyDraft.splice(paragraphIndex,1);paragraphIndex=Math.min(paragraphIndex,storyDraft.length-1);refreshStoryParagraphs();loadStoryParagraph();
+  }),'writer-story-remove-paragraph');
+  paragraphActions.append(addStoryParagraph,removeStoryParagraph);storyDialog.append(paragraphActions);
+  function refreshStoryParagraphs(){
+    paragraphChoice.replaceChildren();
+    for(let i=0;i<storyDraft.length;i++){const o=node('option',host.number(i+1));o.value=String(i);paragraphChoice.append(o);}
+    paragraphChoice.value=String(paragraphIndex);addStoryParagraph.disabled=storyDraft.length>=16;removeStoryParagraph.disabled=storyDraft.length<=1;
+  }
+  function storeStoryParagraph(){
+    const old=storyDraft[paragraphIndex]!;
+    storyDraft[paragraphIndex]={text:storyText.value,...(pageField.checked?{pageNumber:true,...(suffix.value?{after:suffix.value}:{})}:{}),...(storyAlign.value?{alignment:storyAlign.value as 'start'|'center'|'end'}:{}),...(old.styleId?{styleId:old.styleId}:{}),...(old.runStyle?{runStyle:old.runStyle}:{})};
+  }
+  function loadStoryParagraph(){
+    const p=storyDraft[paragraphIndex]!;storyText.value=p.text;pageField.checked=!!p.pageNumber;suffix.value=p.after??'';suffix.disabled=!pageField.checked;storyAlign.value=p.alignment??'';
+  }
+  const changeStoryParagraph=()=>{const next=Number(paragraphChoice.value);if(next===paragraphIndex||!storyDraft[next])return;storeStoryParagraph();paragraphIndex=next;loadStoryParagraph();};
+  paragraphChoice.oninput=changeStoryParagraph;paragraphChoice.onchange=changeStoryParagraph;
   const storyNote=node('p',t('writerStoryInheritance'),'muted');storyDialog.append(storyNote);
   const storyButtons=node('div','','writer-story-actions');
   const storyCancel=button(t('cancel'),()=>storyDialog.close());
   const storyApply=button(t('writerApplyPage'),()=>safe(()=>{
     if(host.composing()||host.legacyWriter)return;
     const kind=storyKind.value as 'header'|'footer';
-    const command=setWriterPageStory(host.snapshot(),storySection.value,kind,{text:storyText.value,...(pageField.checked?{pageNumber:true,...(suffix.value?{after:suffix.value}:{})}:{}),...(storyAlign.value?{alignment:storyAlign.value as 'start'|'center'|'end'}:{}),pageNumberStart:pageStart.value===''?null:pageStart.valueAsNumber,distance:Math.round(distance.valueAsNumber*20)*EMU_PER_TWIP},crypto.randomUUID());
+    storeStoryParagraph();
+    const command=setWriterPageStory(host.snapshot(),storySection.value,kind,{text:storyDraft[0]!.text,paragraphs:storyDraft,variant:storyVariant.value as WriterStoryVariant,differentFirstPage:firstPage.checked,differentEvenOddPages:evenOdd.checked,pageNumberStart:pageStart.value===''?null:pageStart.valueAsNumber,distance:Math.round(distance.valueAsNumber*20)*EMU_PER_TWIP},crypto.randomUUID());
     if(host.execute(command)){storyDialog.close();host.render();}
   }),'writer-story-apply');storyApply.classList.add('solid');storyButtons.append(storyCancel,storyApply);storyDialog.append(storyButtons);root.append(storyDialog);
-  function loadStory(){
+  function loadStory(force=false){
+    const identity=JSON.stringify([storySection.value,storyKind.value,storyVariant.value]);
+    if(!force&&loadedStory===identity)return;loadedStory=identity;
     const doc=modelOf(host.snapshot()),s=doc.sections.find(v=>v.id===storySection.value)!;
-    const kind=storyKind.value as 'header'|'footer',ref=effectivePageStory(doc,s.id,kind),story=ref?doc.pageStories?.[ref]:undefined;
-    storyText.value=story?.text??'';pageField.checked=!!story?.pageNumber;suffix.value=story?.after??'';suffix.disabled=!pageField.checked;
-    storyAlign.value=story?.alignment??'';pageStart.value=s.pageNumberStart===undefined?'':String(s.pageNumberStart);
+    const kind=storyKind.value as 'header'|'footer',ref=effectivePageStory(doc,s.id,kind,storyVariant.value as WriterStoryVariant),story=ref?doc.pageStories?.[ref]:undefined;
+    if(story){const {kind:_,additionalParagraphs,...first}=story;storyDraft=[first,...additionalParagraphs??[]];}else storyDraft=[{text:''}];
+    paragraphIndex=0;refreshStoryParagraphs();loadStoryParagraph();
+    firstPage.checked=!!s.differentFirstPage||!ref&&storyVariant.value==='first';evenOdd.checked=!!doc.differentEvenOddPages||!ref&&storyVariant.value==='even';
+    pageStart.value=s.pageNumberStart===undefined?'':String(s.pageNumberStart);
     const key=kind==='header'?'headerDistance':'footerDistance',margin=s.page.margins[kind==='header'?'top':'bottom'];
     distance.max=String(Math.floor(margin/EMU_PER_TWIP)/20);
     distance.value=String((s.pageExtras?.[key]??(ref?0:Math.min(457200,Math.floor(margin/2/EMU_PER_TWIP)*EMU_PER_TWIP)))/EMU_PER_TWIP/20);
   }
-  storySection.onchange=loadStory;storyKind.onchange=loadStory;pageField.onchange=()=>{suffix.disabled=!pageField.checked;};
+  for(const control of [storySection,storyKind,storyVariant]){control.oninput=()=>loadStory();control.onchange=()=>loadStory();}pageField.onchange=()=>{suffix.disabled=!pageField.checked;};
   const storyButton=button(t('writerRunningStories'),()=>safe(()=>{
     if(host.legacyWriter||host.composing())return;
     storySection.replaceChildren();for(const [index,s]of modelOf(host.snapshot()).sections.entries()){const o=node('option',t('writerSectionNumber',{number:host.number(index+1)}));o.value=s.id;storySection.append(o);}
-    storySection.value=state.pageSectionId??modelOf(host.snapshot()).sections[0]!.id;loadStory();storyDialog.showModal();
+    storySection.value=state.pageSectionId??modelOf(host.snapshot()).sections[0]!.id;loadStory(true);storyDialog.showModal();
   }),'writer-running-stories');storyButton.disabled=!!host.legacyWriter;pageBarControls.append(storyButton);
   root.insertBefore(pageBarControls,note);
   const metricsBar=node('div','','writer-table-controls');

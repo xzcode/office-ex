@@ -173,7 +173,7 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState,external?
     }
     for(const line of page.lines){const rule=writerParagraphRule(line);if(rule)content.push(rule);const marker=writerListMarker(line);if(marker)content.push(marker);}
     for(const story of page.runningStories??[]){
-      const clip=node('div','','writer-native-running-story');clip.dataset.story=story.kind;clip.dataset.storyId=story.storyId;
+      const clip=node('div','','writer-native-running-story');clip.dataset.story=story.kind;clip.dataset.storyId=story.storyId;clip.dataset.storyVariant=story.variant??'default';clip.dataset.storyParagraph=String(story.paragraphIndex??0);
       at(clip,story.x,story.y,story.width,story.height);clip.style.overflow='hidden';
       clip.append(cache.shaper.render(model,story.paragraph,story.paragraphWidth));content.push(clip);
     }

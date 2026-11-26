@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "sandbox": true,
+  "checks": [
+    "Native five-page rendering follows first/even/odd variants and page-number restart",
+    "Native Ribbon paragraph controls edit and append a first-page story and save DOCX",
+    "Real five-page PDF readback matches body, all running variants and PAGE fields without modifying DOCX"
+  ],
+  "pdfSha256": "5f35d55d9fc37f60efa015b5e6ceb077d0a7f5732b91643ddfe8f04f5f268444",
+  "pages": [
+    "Body A\nFirst header\nUpdated subtitle\nThird line\nFirst 4",
+    "Body B\nOdd header\nOdd second\nOdd 5\nFooter second",
+    "Body C\nEven header\nEven 6",
+    "Body D\nEven header\nEven 10",
+    "Body E\nOdd header\nOdd second\nOdd 11\nFooter second"
+  ],
+  "status": "passed"
+}

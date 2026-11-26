@@ -93,7 +93,7 @@ def generate(p):
     d.save(p/'invalid-merged-table.docx')
     d=Document();d.add_table(rows=2,cols=2).cell(0,0).text='办公软件'
     d.sections[0].header.paragraphs[0].text='Report Header';d.sections[0].footer.paragraphs[0].text='Footer';d.add_paragraph('Read-only content')
-    d.sections[0].header.add_paragraph('Unsupported second header paragraph');d.save(p/'advanced.docx')
+    d.sections[0].header.add_paragraph('Unsupported\tstory tab');d.save(p/'advanced.docx')
     from docx.enum.section import WD_SECTION
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     d=Document();d.add_paragraph('Section one')

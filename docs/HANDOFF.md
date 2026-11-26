@@ -229,3 +229,7 @@ M6 development-preview delivery and publication gate completed. This is not full
 ## 2026-11-26 — M7.1 A
 
 Continue m5-distribution-20261125; [M7 stability](M7-STABILITY.md). Implemented bounded XLSX inline/shared rich runs with source-preserving edits, ordinary source named-style associations and application, atomic chart range/anchor shifts plus successive-chart placement. Local 296/296 full, 18/18 focused, independent XlsxWriter/openpyxl and Linux sandboxed native 3/3 passed; build/licenses passed. New exact-source CI required. Complex styles/phonetic text, arbitrary rich formatting UI, destructive chart reference edits and legacy XLS serialization remain outside the admitted profile. Public dev.3 unchanged.
+
+## 2026-11-26 — M7.2 A
+
+Continue on m5-distribution-20261125; [M7 stability](M7-STABILITY.md). M7.1 source b9ef4a4 passed CI 45808092944 all three native platforms. Implemented native DOCX first/default/even story variants, per-section titlePg and global evenAndOddHeaders, actual page-number parity, independent inheritance, up to 16 tab-free one-line paragraphs per story, per-paragraph PAGE/alignment, settings preservation and native dialog. Local 300/300 core, 25/25 focused, independent python-docx variant and full Office corpus/readback, build/licenses, sandboxed Linux native 3/3 including real five-page PDF extraction passed. New-source CI required. Long wrapped paragraphs, mixed runs/tabs/tables/images and non-PAGE fields remain outside profile; dev.3 release unchanged. Next M7.3 PPTX table editing fidelity.

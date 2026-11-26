@@ -25,13 +25,14 @@ function attrs(el:Element,allowed:readonly string[],namespace=W):void{
 const prop=(el:Element,k:string)=>el.getAttributeNS(W,k);
 function empty(el:Element):void{valid(elements(el).length===0,'Unexpected nested settings content');}
 const COMPAT_NAMES=new Set(['compatibilityMode','overrideTableStyleFontSizeAndJustification','enableOpenTypeFeatures','doNotFlipMirrorIndents']);
-export function verifySettings(bytes:Uint8Array,options:ContainerOptions):void{
+export function verifySettings(bytes:Uint8Array,options:ContainerOptions):boolean{
   const root=parseXml(bytes,options).documentElement!;valid(root.namespaceURI===W&&root.localName==='settings','Expected settings');attrs(root,[]);
-  const seen=new Set<string>();
+  const seen=new Set<string>();let differentEvenOddPages=false;
   for(const el of elements(root)){
     const name=el.localName??'',key=el.namespaceURI+':'+name;valid(!seen.has(key),'Duplicate setting');seen.add(key);
     if(el.namespaceURI===W){
       switch(name){
+        case 'evenAndOddHeaders':{attrs(el,['val']);empty(el);const value=el.hasAttributeNS(W,'val')?prop(el,'val'):'1';valid(['0','1','true','false','on','off'].includes(value??''),'Invalid even/odd header option');differentEvenOddPages=['1','true','on'].includes(value??'');break;}
         case 'zoom':attrs(el,['val','percent']);empty(el);break;
         case 'proofState':attrs(el,['spelling','grammar']);empty(el);break;
         case 'defaultTabStop':attrs(el,['val']);empty(el);valid(prop(el,'val')==='720','Nondefault tab stop unsupported');break;
@@ -72,6 +73,7 @@ export function verifySettings(bytes:Uint8Array,options:ContainerOptions):void{
       attrs(el,['val'],W14);empty(el);
     }else valid(false,'Unknown settings namespace '+name);
   }
+  return differentEvenOddPages;
 }
 export function verifyAuxiliaryXml(bytes:Uint8Array,options:ContainerOptions,rootName?:string,namespace=W):void{
   const root=parseXml(bytes,options).documentElement!;

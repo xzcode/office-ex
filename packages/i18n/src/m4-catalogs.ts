@@ -2,6 +2,14 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "writerStoryVariant": "Page type",
+    "writerStoryDefaultPage": "Default / odd page",
+    "writerStoryFirstPage": "First page",
+    "writerStoryEvenPage": "Even page",
+    "writerDifferentFirstPage": "Different first page",
+    "writerDifferentEvenOdd": "Different odd and even pages",
+    "writerStoryAddParagraph": "Add paragraph",
+    "writerStoryRemoveParagraph": "Remove paragraph",
     "slideTable": "Table",
     "slideEditTable": "Edit table",
     "slideDistributeHorizontal": "Distribute horizontally",
@@ -227,6 +235,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "writerStoryVariant": "页面类型",
+    "writerStoryDefaultPage": "默认 / 奇数页",
+    "writerStoryFirstPage": "首页",
+    "writerStoryEvenPage": "偶数页",
+    "writerDifferentFirstPage": "首页不同",
+    "writerDifferentEvenOdd": "奇偶页不同",
+    "writerStoryAddParagraph": "添加段落",
+    "writerStoryRemoveParagraph": "删除段落",
     "slideTable": "表格",
     "slideEditTable": "编辑表格",
     "slideDistributeHorizontal": "横向等距分布",
@@ -452,6 +468,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "writerStoryVariant": "頁面類型",
+    "writerStoryDefaultPage": "預設 / 奇數頁",
+    "writerStoryFirstPage": "首頁",
+    "writerStoryEvenPage": "偶數頁",
+    "writerDifferentFirstPage": "首頁不同",
+    "writerDifferentEvenOdd": "奇偶頁不同",
+    "writerStoryAddParagraph": "新增段落",
+    "writerStoryRemoveParagraph": "刪除段落",
     "slideTable": "表格",
     "slideEditTable": "編輯表格",
     "slideDistributeHorizontal": "水平等距分佈",
@@ -677,6 +701,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "writerStoryVariant": "ページの種類",
+    "writerStoryDefaultPage": "既定 / 奇数ページ",
+    "writerStoryFirstPage": "先頭ページ",
+    "writerStoryEvenPage": "偶数ページ",
+    "writerDifferentFirstPage": "先頭ページのみ別指定",
+    "writerDifferentEvenOdd": "奇数・偶数ページ別指定",
+    "writerStoryAddParagraph": "段落を追加",
+    "writerStoryRemoveParagraph": "段落を削除",
     "slideTable": "表",
     "slideEditTable": "表を編集",
     "slideDistributeHorizontal": "左右に等間隔で配置",
@@ -902,6 +934,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "writerStoryVariant": "페이지 유형",
+    "writerStoryDefaultPage": "기본 / 홀수 페이지",
+    "writerStoryFirstPage": "첫 페이지",
+    "writerStoryEvenPage": "짝수 페이지",
+    "writerDifferentFirstPage": "첫 페이지 다르게",
+    "writerDifferentEvenOdd": "홀수 및 짝수 페이지 다르게",
+    "writerStoryAddParagraph": "단락 추가",
+    "writerStoryRemoveParagraph": "단락 제거",
     "slideTable": "표",
     "slideEditTable": "표 편집",
     "slideDistributeHorizontal": "가로 간격 동일하게",
@@ -1127,6 +1167,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "writerStoryVariant": "Type de page",
+    "writerStoryDefaultPage": "Page par défaut / impaire",
+    "writerStoryFirstPage": "Première page",
+    "writerStoryEvenPage": "Page paire",
+    "writerDifferentFirstPage": "Première page différente",
+    "writerDifferentEvenOdd": "Pages paires et impaires différentes",
+    "writerStoryAddParagraph": "Ajouter un paragraphe",
+    "writerStoryRemoveParagraph": "Supprimer le paragraphe",
     "slideTable": "Tableau",
     "slideEditTable": "Modifier le tableau",
     "slideDistributeHorizontal": "Distribuer horizontalement",
@@ -1352,6 +1400,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "writerStoryVariant": "Seitentyp",
+    "writerStoryDefaultPage": "Standard / ungerade Seite",
+    "writerStoryFirstPage": "Erste Seite",
+    "writerStoryEvenPage": "Gerade Seite",
+    "writerDifferentFirstPage": "Erste Seite anders",
+    "writerDifferentEvenOdd": "Gerade und ungerade Seiten anders",
+    "writerStoryAddParagraph": "Absatz hinzufügen",
+    "writerStoryRemoveParagraph": "Absatz entfernen",
     "slideTable": "Tabelle",
     "slideEditTable": "Tabelle bearbeiten",
     "slideDistributeHorizontal": "Horizontal verteilen",
@@ -1577,6 +1633,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "writerStoryVariant": "Tipo de página",
+    "writerStoryDefaultPage": "Página predeterminada / impar",
+    "writerStoryFirstPage": "Primera página",
+    "writerStoryEvenPage": "Página par",
+    "writerDifferentFirstPage": "Primera página diferente",
+    "writerDifferentEvenOdd": "Páginas pares e impares diferentes",
+    "writerStoryAddParagraph": "Añadir párrafo",
+    "writerStoryRemoveParagraph": "Eliminar párrafo",
     "slideTable": "Tabla",
     "slideEditTable": "Editar tabla",
     "slideDistributeHorizontal": "Distribuir horizontalmente",
@@ -1802,6 +1866,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "writerStoryVariant": "Tipo de página",
+    "writerStoryDefaultPage": "Página padrão / ímpar",
+    "writerStoryFirstPage": "Primeira página",
+    "writerStoryEvenPage": "Página par",
+    "writerDifferentFirstPage": "Primeira página diferente",
+    "writerDifferentEvenOdd": "Páginas pares e ímpares diferentes",
+    "writerStoryAddParagraph": "Adicionar parágrafo",
+    "writerStoryRemoveParagraph": "Remover parágrafo",
     "slideTable": "Tabela",
     "slideEditTable": "Editar tabela",
     "slideDistributeHorizontal": "Distribuir horizontalmente",
@@ -2027,6 +2099,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "writerStoryVariant": "Tipo di pagina",
+    "writerStoryDefaultPage": "Pagina predefinita / dispari",
+    "writerStoryFirstPage": "Prima pagina",
+    "writerStoryEvenPage": "Pagina pari",
+    "writerDifferentFirstPage": "Prima pagina diversa",
+    "writerDifferentEvenOdd": "Pagine pari e dispari diverse",
+    "writerStoryAddParagraph": "Aggiungi paragrafo",
+    "writerStoryRemoveParagraph": "Rimuovi paragrafo",
     "slideTable": "Tabella",
     "slideEditTable": "Modifica tabella",
     "slideDistributeHorizontal": "Distribuisci orizzontalmente",
@@ -2252,6 +2332,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "writerStoryVariant": "Тип страницы",
+    "writerStoryDefaultPage": "По умолчанию / нечётная",
+    "writerStoryFirstPage": "Первая страница",
+    "writerStoryEvenPage": "Чётная страница",
+    "writerDifferentFirstPage": "Особая первая страница",
+    "writerDifferentEvenOdd": "Разные чётные и нечётные страницы",
+    "writerStoryAddParagraph": "Добавить абзац",
+    "writerStoryRemoveParagraph": "Удалить абзац",
     "slideTable": "Таблица",
     "slideEditTable": "Редактировать таблицу",
     "slideDistributeHorizontal": "Распределить по горизонтали",
@@ -2477,6 +2565,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "writerStoryVariant": "نوع الصفحة",
+    "writerStoryDefaultPage": "افتراضي / صفحة فردية",
+    "writerStoryFirstPage": "الصفحة الأولى",
+    "writerStoryEvenPage": "صفحة زوجية",
+    "writerDifferentFirstPage": "صفحة أولى مختلفة",
+    "writerDifferentEvenOdd": "صفحات فردية وزوجية مختلفة",
+    "writerStoryAddParagraph": "إضافة فقرة",
+    "writerStoryRemoveParagraph": "إزالة فقرة",
     "slideTable": "جدول",
     "slideEditTable": "تحرير الجدول",
     "slideDistributeHorizontal": "توزيع أفقي",
@@ -2702,6 +2798,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "writerStoryVariant": "סוג עמוד",
+    "writerStoryDefaultPage": "ברירת מחדל / עמוד אי-זוגי",
+    "writerStoryFirstPage": "עמוד ראשון",
+    "writerStoryEvenPage": "עמוד זוגי",
+    "writerDifferentFirstPage": "עמוד ראשון שונה",
+    "writerDifferentEvenOdd": "עמודים זוגיים ואי-זוגיים שונים",
+    "writerStoryAddParagraph": "הוסף פסקה",
+    "writerStoryRemoveParagraph": "הסר פסקה",
     "slideTable": "טבלה",
     "slideEditTable": "עריכת טבלה",
     "slideDistributeHorizontal": "פיזור אופקי",
@@ -2927,6 +3031,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "writerStoryVariant": "पृष्ठ प्रकार",
+    "writerStoryDefaultPage": "डिफ़ॉल्ट / विषम पृष्ठ",
+    "writerStoryFirstPage": "पहला पृष्ठ",
+    "writerStoryEvenPage": "सम पृष्ठ",
+    "writerDifferentFirstPage": "पहला पृष्ठ अलग",
+    "writerDifferentEvenOdd": "सम और विषम पृष्ठ अलग",
+    "writerStoryAddParagraph": "अनुच्छेद जोड़ें",
+    "writerStoryRemoveParagraph": "अनुच्छेद हटाएँ",
     "slideTable": "तालिका",
     "slideEditTable": "तालिका संपादित करें",
     "slideDistributeHorizontal": "क्षैतिज वितरण",
@@ -3152,6 +3264,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "writerStoryVariant": "ประเภทหน้า",
+    "writerStoryDefaultPage": "ค่าเริ่มต้น / หน้าคี่",
+    "writerStoryFirstPage": "หน้าแรก",
+    "writerStoryEvenPage": "หน้าคู่",
+    "writerDifferentFirstPage": "หน้าแรกต่างกัน",
+    "writerDifferentEvenOdd": "หน้าคี่และหน้าคู่ต่างกัน",
+    "writerStoryAddParagraph": "เพิ่มย่อหน้า",
+    "writerStoryRemoveParagraph": "ลบย่อหน้า",
     "slideTable": "ตาราง",
     "slideEditTable": "แก้ไขตาราง",
     "slideDistributeHorizontal": "กระจายแนวนอน",
@@ -3377,6 +3497,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "writerStoryVariant": "Loại trang",
+    "writerStoryDefaultPage": "Mặc định / trang lẻ",
+    "writerStoryFirstPage": "Trang đầu",
+    "writerStoryEvenPage": "Trang chẵn",
+    "writerDifferentFirstPage": "Trang đầu khác",
+    "writerDifferentEvenOdd": "Trang chẵn và lẻ khác nhau",
+    "writerStoryAddParagraph": "Thêm đoạn",
+    "writerStoryRemoveParagraph": "Xóa đoạn",
     "slideTable": "Bảng",
     "slideEditTable": "Sửa bảng",
     "slideDistributeHorizontal": "Phân bố ngang",
@@ -3602,6 +3730,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "writerStoryVariant": "Jenis halaman",
+    "writerStoryDefaultPage": "Bawaan / halaman ganjil",
+    "writerStoryFirstPage": "Halaman pertama",
+    "writerStoryEvenPage": "Halaman genap",
+    "writerDifferentFirstPage": "Halaman pertama berbeda",
+    "writerDifferentEvenOdd": "Halaman ganjil dan genap berbeda",
+    "writerStoryAddParagraph": "Tambah paragraf",
+    "writerStoryRemoveParagraph": "Hapus paragraf",
     "slideTable": "Tabel",
     "slideEditTable": "Edit tabel",
     "slideDistributeHorizontal": "Distribusi horizontal",
@@ -3827,6 +3963,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "writerStoryVariant": "Jenis halaman",
+    "writerStoryDefaultPage": "Lalai / halaman ganjil",
+    "writerStoryFirstPage": "Halaman pertama",
+    "writerStoryEvenPage": "Halaman genap",
+    "writerDifferentFirstPage": "Halaman pertama berbeza",
+    "writerDifferentEvenOdd": "Halaman ganjil dan genap berbeza",
+    "writerStoryAddParagraph": "Tambah perenggan",
+    "writerStoryRemoveParagraph": "Buang perenggan",
     "slideTable": "Jadual",
     "slideEditTable": "Edit jadual",
     "slideDistributeHorizontal": "Agih mendatar",
@@ -4052,6 +4196,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "writerStoryVariant": "Sayfa türü",
+    "writerStoryDefaultPage": "Varsayılan / tek sayfa",
+    "writerStoryFirstPage": "İlk sayfa",
+    "writerStoryEvenPage": "Çift sayfa",
+    "writerDifferentFirstPage": "İlk sayfa farklı",
+    "writerDifferentEvenOdd": "Tek ve çift sayfalar farklı",
+    "writerStoryAddParagraph": "Paragraf ekle",
+    "writerStoryRemoveParagraph": "Paragrafı kaldır",
     "slideTable": "Tablo",
     "slideEditTable": "Tabloyu düzenle",
     "slideDistributeHorizontal": "Yatay dağıt",
@@ -4277,6 +4429,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "writerStoryVariant": "Paginatype",
+    "writerStoryDefaultPage": "Standaard / oneven pagina",
+    "writerStoryFirstPage": "Eerste pagina",
+    "writerStoryEvenPage": "Even pagina",
+    "writerDifferentFirstPage": "Afwijkende eerste pagina",
+    "writerDifferentEvenOdd": "Afwijkende even en oneven pagina’s",
+    "writerStoryAddParagraph": "Alinea toevoegen",
+    "writerStoryRemoveParagraph": "Alinea verwijderen",
     "slideTable": "Tabel",
     "slideEditTable": "Tabel bewerken",
     "slideDistributeHorizontal": "Horizontaal verdelen",
@@ -4502,6 +4662,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "writerStoryVariant": "Typ strony",
+    "writerStoryDefaultPage": "Domyślna / nieparzysta",
+    "writerStoryFirstPage": "Pierwsza strona",
+    "writerStoryEvenPage": "Strona parzysta",
+    "writerDifferentFirstPage": "Inna pierwsza strona",
+    "writerDifferentEvenOdd": "Różne strony parzyste i nieparzyste",
+    "writerStoryAddParagraph": "Dodaj akapit",
+    "writerStoryRemoveParagraph": "Usuń akapit",
     "slideTable": "Tabela",
     "slideEditTable": "Edytuj tabelę",
     "slideDistributeHorizontal": "Rozmieść w poziomie",
@@ -4727,6 +4895,14 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "writerStoryVariant": "Тип сторінки",
+    "writerStoryDefaultPage": "Типова / непарна",
+    "writerStoryFirstPage": "Перша сторінка",
+    "writerStoryEvenPage": "Парна сторінка",
+    "writerDifferentFirstPage": "Інша перша сторінка",
+    "writerDifferentEvenOdd": "Різні парні й непарні сторінки",
+    "writerStoryAddParagraph": "Додати абзац",
+    "writerStoryRemoveParagraph": "Видалити абзац",
     "slideTable": "Таблиця",
     "slideEditTable": "Редагувати таблицю",
     "slideDistributeHorizontal": "Розподілити горизонтально",

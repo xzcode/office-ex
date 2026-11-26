@@ -91,7 +91,7 @@ export async function prepareDocumentPdfOutput(snapshot: DocumentSnapshot, conta
       for(const story of source.runningStories??[]){
         paragraphFonts(model,story.paragraph);
         const clip=document.createElement('div');at(clip,story.x,story.y,story.width,story.height);clip.style.overflow='hidden';
-        clip.dataset.story=story.kind;clip.append(shaper.render(model,story.paragraph,story.paragraphWidth));page.append(clip);
+        clip.dataset.story=story.kind;clip.dataset.storyVariant=story.variant??'default';clip.dataset.storyParagraph=String(story.paragraphIndex??0);clip.append(shaper.render(model,story.paragraph,story.paragraphWidth));page.append(clip);
       }
     }
   } else {

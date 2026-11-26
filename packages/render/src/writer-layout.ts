@@ -4,7 +4,7 @@
  * Document coordinates are EMU. No derived geometry is persisted in the source model.
  */
 import { assert, graphemeBoundaries, type Cancellation } from '@office-ex/contracts';
-import { resolveTextStyle, writerEffectiveStyle, buildWriterNumberingMarkers, type WriterNumberingMarker, freezeData, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterParagraphRule, type WriterSection, type WriterPageStory, type Paragraph, type WriterDocument, type Table, type Inline } from '@office-ex/core';
+import { resolveTextStyle, writerEffectiveStyle, buildWriterNumberingMarkers, writerStoryKey, type WriterStoryRefs, type WriterStoryVariant, type WriterNumberingMarker, freezeData, paragraphBoundaries, OBJECT_REPLACEMENT, type DocumentSnapshot, type DeepReadonly, type TextStyle, type WriterParagraphRule, type WriterSection, type WriterPageStory, type Paragraph, type WriterDocument, type Table, type Inline } from '@office-ex/core';
 import { measureText, type FontMetrics, type FontRequest, type Point } from './index.js';
 
 export interface WriterPosition {paragraphId:string;offset:number}
@@ -17,7 +17,7 @@ export interface WriterListMarkerBox {text:string;x:number;width:number;style:De
 export interface WriterLine {paragraphId:string;start:number;end:number;x:number;y:number;width:number;height:number;baseline:number;carets:WriterCaret[];fragments:WriterFragment[];images:WriterImageBox[];visualClusters?:WriterVisualCluster[];native?:WriterNativeSlice;contentHeight?:number;bottomBorder?:WriterParagraphDecoration;listMarker?:WriterListMarkerBox}
 export interface WriterTableCellBox {tableId:string;rowId:string;cellId:string;paragraphIds:string[];x:number;y:number;width:number;height:number;border?:DeepReadonly<NonNullable<Table['border']>>}
 export interface WriterImageBox {paragraphId:string;imageId:string;resourceId:string;x:number;y:number;width:number;height:number}
-export interface WriterRunningStoryBox {kind:'header'|'footer';storyId:string;paragraph:Paragraph;paragraphWidth:number;x:number;y:number;width:number;height:number;text:string;fragment?:WriterFragment;baseline?:number}
+export interface WriterRunningStoryBox {kind:'header'|'footer';storyId:string;variant?:WriterStoryVariant;paragraphIndex?:number;paragraph:Paragraph;paragraphWidth:number;x:number;y:number;width:number;height:number;text:string;fragment?:WriterFragment;baseline?:number}
 export interface WriterPage {displayPageNumber?:number;runningStories?:WriterRunningStoryBox[];sectionId:string;width:number;height:number;margins:DeepReadonly<WriterSection['page']['margins']>;lines:WriterLine[];tableCells:WriterTableCellBox[];images:WriterImageBox[]}
 export interface WriterLayout {revision:number;contentId:string;environmentId:string;pages:WriterPage[];warnings:string[]}
 /** Optional native shaping backend. All geometry is relative to the paragraph
@@ -427,45 +427,60 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
  * or clipboard geometry. */
 export function layoutRunningStories(model:DeepReadonly<WriterDocument>,pages:readonly DeepReadonly<WriterPage>[],provider:FontMetrics,options:WriterLayoutOptions,warnings:Set<string>):readonly DeepReadonly<WriterPage>[] {
   if(!model.pageStories&&!model.sections.some(s=>s.pageNumberStart!==undefined))return pages;
-  const refs=new Map<string,{header?:string;footer?:string}>();
-  let inherited:{header?:string;footer?:string}={};
+  const refs=new Map<string,WriterStoryRefs>();let inherited:WriterStoryRefs={};
   const sections=new Map(model.sections.map(s=>[s.id,s]));
   for(const section of model.sections){inherited={...inherited,...section.storyRefs};refs.set(section.id,inherited);}
   let previous='',number=0,clusters=0;
   return pages.map((page,index)=>{
     options.cancellation?.throwIfCancelled();
     const section=sections.get(page.sectionId);assert(section,'invalid','Running story section not found');
-    number=previous!==page.sectionId&&section.pageNumberStart!==undefined?section.pageNumberStart:number+1;previous=page.sectionId;
+    const first=previous!==page.sectionId;
+    number=first&&section.pageNumberStart!==undefined?section.pageNumberStart:number+1;previous=page.sectionId;
+    // Word's implementation uses the starting page number, not section
+    // ordinal, to select odd/even stories (MS-OI29500 17.10.1/17.10.6).
+    const variant:WriterStoryVariant=first&&section.differentFirstPage?'first':model.differentEvenOddPages&&number%2===0?'even':'default';
     const decorations:WriterRunningStoryBox[]=[];
     for(const kind of ['header','footer'] as const){
-      const id=refs.get(section.id)?.[kind];if(!id)continue;
+      const id=refs.get(section.id)?.[writerStoryKey(kind,variant)];if(!id)continue;
       const story=model.pageStories?.[id];assert(story&&story.kind===kind,'invalid','Missing running story');
-      const text=story.text+(story.pageNumber?String(number)+(story.after??''):'');if(!text)continue;
-      clusters+=graphemeBoundaries(text).length-1;assert(clusters<=100000,'limit','Running story layout cluster budget exceeded');
-      const p:Paragraph={id:'running-'+index+'-'+kind,type:'paragraph',runs:[{id:'running-'+index+'-'+kind+'-run',type:'text',text,...(story.runStyle?{style:story.runStyle}:{})}],style:{...(story.styleId?{spaceAfter:0,lineMultiple:240}:{}),...(story.alignment?{alignment:story.alignment}:{})}};
-      const style=writerEffectiveStyle(model,p);
-      assert(!style.writerList&&!style.paragraphBottomBorder,'unsupported','Numbered or decorated running story paragraph is unsupported');
-      const width=page.width-page.margins.left-page.margins.right,geometry=writerParagraphGeometry(style,width);
-      const before=style.spaceBefore??0,after=style.spaceAfter??0;
-      let height:number,x=page.margins.left+geometry.origin,boxWidth=geometry.boxWidth,fragment:WriterFragment|undefined,baseline:number|undefined;
-      if(options.paragraphShaper){
-        const shaped=options.paragraphShaper.shape(model,p,width);
-        assert(shaped.lines.length===1&&shaped.lines[0]?.native,'unsupported','Running story must fit one line');
-        const l=shaped.lines[0]!,native=l.native!;height=l.height;x=page.margins.left+native.originX;boxWidth=native.boxWidth;
-        for(const warning of shaped.warnings)warnings.add(warning);
-      }else{
-        const run=resolveTextStyle(style,model.styles,[],story.runStyle??{}).style;
-        const measured=requestFor(provider,text,run,warnings),advance=measured.metrics.advance;
-        assert(advance<=geometry.bodyWidth-Math.max(0,geometry.first),'unsupported','Running story must fit one line');
-        height=Math.ceil(Math.max(measured.metrics.ascent+measured.metrics.descent,(run.fontSize??152400)*1.55,style.lineHeight??0,style.minLineHeight??0));
-        const available=geometry.bodyWidth-Math.max(0,geometry.first),offset=style.alignment==='center'?(available-advance)/2:style.alignment==='end'?available-advance:0;
-        fragment={text,x:x+geometry.padLeft+Math.max(0,geometry.first)+offset,width:advance,request:measured.request,style:run};
-        baseline=height/2+(measured.metrics.ascent-measured.metrics.descent)/2;
+      const paragraphs=[story,...story.additionalParagraphs??[]];
+      const textFor=(p:typeof paragraphs[number])=>p.text+(p.pageNumber?String(number)+(p.after??''):'');
+      if(!paragraphs.some(p=>textFor(p)))continue;
+      const width=page.width-page.margins.left-page.margins.right;
+      let total=0;
+      const boxes:WriterRunningStoryBox[]=[];
+      for(const [paragraphIndex,paragraph]of paragraphs.entries()){
+        options.cancellation?.throwIfCancelled();
+        const text=textFor(paragraph);clusters+=graphemeBoundaries(text).length-1;assert(clusters<=100000,'limit','Running story layout cluster budget exceeded');
+        const p:Paragraph={id:'running-'+index+'-'+kind+'-'+paragraphIndex,type:'paragraph',runs:[{id:'running-'+index+'-'+kind+'-'+paragraphIndex+'-run',type:'text',text,...(paragraph.runStyle?{style:paragraph.runStyle}:{})}],style:{...(paragraph.styleId?{spaceAfter:0,lineMultiple:240}:{}),...(paragraph.alignment?{alignment:paragraph.alignment}:{})}};
+        const style=writerEffectiveStyle(model,p);
+        assert(!style.writerList&&!style.paragraphBottomBorder,'unsupported','Numbered or decorated running story paragraph is unsupported');
+        const geometry=writerParagraphGeometry(style,width);
+        const before=style.spaceBefore??0,after=style.spaceAfter??0;
+        let height:number,x=page.margins.left+geometry.origin,boxWidth=geometry.boxWidth,fragment:WriterFragment|undefined,baseline:number|undefined;
+        if(options.paragraphShaper){
+          const shaped=options.paragraphShaper.shape(model,p,width);
+          assert(shaped.lines.length===1&&shaped.lines[0]?.native,'unsupported','Running story paragraph must fit one line');
+          const l=shaped.lines[0]!,native=l.native!;height=l.height;x=page.margins.left+native.originX;boxWidth=native.boxWidth;
+          for(const warning of shaped.warnings)warnings.add(warning);
+        }else{
+          const run=resolveTextStyle(style,model.styles,[],paragraph.runStyle??{}).style;
+          const measured=requestFor(provider,text,run,warnings),advance=measured.metrics.advance;
+          assert(advance<=geometry.bodyWidth-Math.max(0,geometry.first),'unsupported','Running story paragraph must fit one line');
+          height=Math.ceil(Math.max(measured.metrics.ascent+measured.metrics.descent,(run.fontSize??152400)*1.55,style.lineHeight??0,style.minLineHeight??0));
+          const available=geometry.bodyWidth-Math.max(0,geometry.first),offset=style.alignment==='center'?(available-advance)/2:style.alignment==='end'?available-advance:0;
+          fragment={text,x:x+geometry.padLeft+Math.max(0,geometry.first)+offset,width:advance,request:measured.request,style:run};
+          baseline=height/2+(measured.metrics.ascent-measured.metrics.descent)/2;
+        }
+        const y=total+before;total+=before+height+after;
+        // Blank paragraphs occupy their measured vertical space but need
+        // no visible text box or PDF sentinel glyph.
+        if(text)boxes.push({kind,storyId:id,variant,paragraphIndex,paragraph:p,paragraphWidth:width,x,y,width:boxWidth,height,text,...(fragment?{fragment,baseline:y+baseline!}:{})});
       }
-      const distance=section.pageExtras?.[kind==='header'?'headerDistance':'footerDistance']??0,total=before+height+after;
+      const distance=section.pageExtras?.[kind==='header'?'headerDistance':'footerDistance']??0;
       const margin=page.margins[kind==='header'?'top':'bottom'];assert(distance+total<=margin,'unsupported','Running story exceeds its page margin');
-      const y=kind==='header'?distance+before:page.height-distance-after-height;
-      decorations.push({kind,storyId:id,paragraph:p,paragraphWidth:width,x,y,width:boxWidth,height,text,...(fragment?{fragment,baseline:y+baseline!}:{})});
+      const origin=kind==='header'?distance:page.height-distance-total;
+      for(const box of boxes)decorations.push({...box,y:box.y+origin,...(box.baseline!==undefined?{baseline:box.baseline+origin}:{})});
     }
     return {...page,displayPageNumber:number,...(decorations.length?{runningStories:decorations}:{})};
   });
