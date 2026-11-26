@@ -1,6 +1,6 @@
 /** Reconstructed number/date formatting from the M3 browser artifact. */
 import { assert } from '@office-ex/contracts';
-import type { Cell, CellValue } from '@office-ex/core';
+import type { Cell, CellValue, SheetConditionalRule, ConditionalCellStyle, DeepReadonly } from '@office-ex/core';
 import { parseFormula, serializeFormula, formulaSeparators, type ParseFormulaOptions, type FormulaError } from './formula.js';
 import { numberFormatter, dateFormatter } from './intl-cache.js';
 import type { CalculationCell, CalculatedValue } from './calculation.js';
@@ -204,4 +204,20 @@ export function formatCell(cell:Readonly<Cell>|undefined, calculation?:Calculati
   if (!cell) return "";
   if (cell.value.kind !== "formula") return formatCellValue(cell.value, cell.numberFormat, options);
   return calculation?.value ? formatCellValue(calculation.value, cell.numberFormat, options) : cell.value.source;
+}
+
+/** Conditional paint is derived only from current numeric values. The
+ * highest-priority matching rule wins each property independently. */
+export function conditionalCellStyle(rules:readonly DeepReadonly<SheetConditionalRule>[],row:number,column:number,value:CalculatedValue|undefined):DeepReadonly<ConditionalCellStyle>|undefined{
+ if(value?.kind!=='number')return undefined;
+ const n=value.value,result:ConditionalCellStyle={};
+ for(const rule of rules){
+  if(!rule.ranges.some(r=>row>=r.row&&row<r.row+r.rowCount&&column>=r.column&&column<r.column+r.columnCount))continue;
+  const a=rule.values[0]!,b=rule.values[1]??a;
+  const match=rule.operator==='equal'?n===a:rule.operator==='notEqual'?n!==a:rule.operator==='lessThan'?n<a:rule.operator==='lessThanOrEqual'?n<=a:rule.operator==='greaterThan'?n>a:rule.operator==='greaterThanOrEqual'?n>=a:rule.operator==='between'?n>=a&&n<=b:n<a||n>b;
+  if(!match)continue;
+  for(const [key,v]of Object.entries(rule.style))if(!Object.hasOwn(result,key))Object.assign(result,{[key]:v});
+  if(rule.stopIfTrue)break;
+ }
+ return Object.keys(result).length?result:undefined;
 }

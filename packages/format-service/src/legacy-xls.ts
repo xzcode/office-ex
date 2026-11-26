@@ -108,7 +108,7 @@ function workbook(input:WorkbookSnapshot):Uint8Array{
   const strings:string[]=[],sstIndex=new Map<string,number>();let totalStrings=0,totalCells=0;
   const stringIndex=(s:string)=>{totalStrings++;let i=sstIndex.get(s);if(i===undefined){i=strings.length;strings.push(s);sstIndex.set(s,i);}return i;};
   const streams=d.sheets.map((s,index)=>{
-    ok(!s.defaultGeometry,'Explicit worksheet default geometry outside BIFF8 profile');
+    ok(!s.defaultGeometry,'Explicit worksheet default geometry outside BIFF8 profile');ok(!s.conditionalRules,'Conditional rules outside BIFF8 profile');ok(!s.charts,'Charts outside BIFF8 profile');
     const a:Uint8Array[]=[bof(0x10)];let maxR=0,maxC=0;
     const cells=Object.entries(s.cells).map(([k,c])=>{const [r,col]=k.split(':').map(Number);coord(r,col);maxR=Math.max(maxR,r);maxC=Math.max(maxC,col);return {r,col,c};}).sort((x,y)=>x.r-y.r||x.col-y.col);
     ok((totalCells+=cells.length)<=200000,'Cell budget');

@@ -1,8 +1,8 @@
 import {installRibbon,ribbonNodes,type RibbonState,decorateOfficeButton} from './office-ribbon.js';
 /** Recovered M3 virtualized worksheet workspace. */
 import { OfficeError, EMU_PER_CSS_PIXEL } from '@office-ex/contracts';
-import { patchCommand, type DocumentSnapshot, type DocumentCommand, type Color, type CellStyle, type SheetView } from '@office-ex/core';
-import { addSheet, renameSheet, deleteSheet, moveSheet, insertRows, deleteRows, insertColumns, deleteColumns, mergeCells, unmergeCells, clearCells, copyCells, formatCells, setDimensions, fillCells, pasteTsv, exportTsv, setCells, cellFromInput, formatCell, formatCellValue, calculationKey, localizeFormula, formulaSeparators, type CellRange, type WorkbookSnapshot, type CalculationCell, type CalculatedValue, type CellInputOptions } from '@office-ex/sheets';
+import { patchCommand, type DocumentSnapshot, type DocumentCommand, type Color, type CellStyle, type SheetView,type ConditionalOperator,type SheetChart,type DeepReadonly } from '@office-ex/core';
+import { addSheet, renameSheet, deleteSheet, moveSheet, insertRows, deleteRows, insertColumns, deleteColumns, mergeCells, unmergeCells, clearCells, copyCells, formatCells, addConditionalRule, removeConditionalRule, conditionalCellStyle, addSheetChart, removeSheetChart, setDimensions, fillCells, pasteTsv, exportTsv, setCells, cellFromInput, formatCell, formatCellValue, calculationKey, localizeFormula, formulaSeparators, type CellRange, type WorkbookSnapshot, type CalculationCell, type CalculatedValue, type CellInputOptions } from '@office-ex/sheets';
 import type { MessageKey } from '@office-ex/i18n';
 import { GridAxis, columnLabel, cellLabel } from './sheets-geometry.js';
 
@@ -27,7 +27,7 @@ export interface SheetsHost {
 interface RunningCalculation { worker:Worker;documentId:string;request:number;revision:number;busy:boolean;state:SheetsViewState;timer?:ReturnType<typeof setTimeout> }
 interface RenderedCell {
   node:HTMLDivElement;text:Text;row?:number;column?:number;result?:CalculationCell;revision?:number;
-  styleId?:string;directStyle?:CellSnapshot['style'];styleApplied?:boolean;
+  styleId?:string;directStyle?:CellSnapshot['style'];styleApplied?:boolean;conditionalSignature?:string;
 }
 let running:RunningCalculation|undefined;
 var requestId = 0;
@@ -256,6 +256,37 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
   second.append(button("sheetMerge", "sheet-merge", () => changed(mergeCells(host.snapshot(), sheet.id, selectionRange()))), button("sheetUnmerge", "sheet-unmerge", () => changed(unmergeCells(host.snapshot(), sheet.id, selectionRange()))));
   second.append(button("sheetClear", "sheet-clear", () => changed(clearCells(host.snapshot(), sheet.id, selectionRange()))), button("sheetFillDown", "sheet-fill-down", () => changed(fillCells(host.snapshot(), sheet.id, selectionRange(), "down"))), button("sheetFillRight", "sheet-fill-right", () => changed(fillCells(host.snapshot(), sheet.id, selectionRange(), "right"))));
   root2.append(second);
+  const conditionalDialog=make('dialog');conditionalDialog.id='sheet-conditional-dialog';
+  const conditionalTitle=make('header');conditionalTitle.append(make('h2',t('sheetConditionalRules')),button('close','sheet-conditional-close',()=>conditionalDialog.close(),false));conditionalDialog.append(conditionalTitle);
+  const ruleList=make('select');ruleList.id='sheet-conditional-rules';
+  const sortedRules=[...(sheet.conditionalRules??[])].sort((a,b)=>a.priority-b.priority);
+  for(const rule of sortedRules){const option=make('option',rule.priority+' · '+rule.ranges.map(r=>cellLabel(r.row,r.column)+':'+cellLabel(r.row+r.rowCount-1,r.column+r.columnCount-1)).join(', '));option.value=String(rule.priority);ruleList.append(option);}
+  const ruleDelete=button('sheetConditionalRemove','sheet-conditional-remove',()=>{if(changed(removeConditionalRule(host.snapshot(),sheet.id,Number(ruleList.value))))conditionalDialog.close();},!!host.readOnly||!sortedRules.length||host.format==='xls');
+  conditionalDialog.append(label('sheetConditionalRules',ruleList),ruleDelete);
+  const op=make('select');op.id='sheet-conditional-operator';
+  for(const [value,symbol]of [['greaterThan','>'],['greaterThanOrEqual','≥'],['lessThan','<'],['lessThanOrEqual','≤'],['equal','='],['notEqual','≠'],['between','…'],['notBetween','¬ …']] as const){const option=make('option',symbol);option.value=value;op.append(option);}
+  const threshold=make('input'),upper=make('input');for(const [input,id]of [[threshold,'sheet-conditional-value'],[upper,'sheet-conditional-upper']] as const){input.type='number';input.step='any';input.value='0';input.id=id;}
+  const upperLabel=label('sheetConditionalUpper',upper);upperLabel.hidden=true;
+  op.onchange=()=>{upperLabel.hidden=op.value!=='between'&&op.value!=='notBetween';};
+  const highlight=make('input');highlight.type='color';highlight.value='#ffdca0';highlight.id='sheet-conditional-color';
+  const stop=make('input');stop.type='checkbox';stop.id='sheet-conditional-stop';
+  conditionalDialog.append(label('sheetConditionalOperator',op),label('sheetConditionalValue',threshold),upperLabel,label('sheetFillColor',highlight),label('sheetConditionalStop',stop));
+  const addRule=button('sheetConditionalAdd','sheet-conditional-add',()=>{
+    const operator=op.value as ConditionalOperator,values=upperLabel.hidden?[threshold.valueAsNumber]:[threshold.valueAsNumber,upper.valueAsNumber];
+    if(!values.every(Number.isFinite))throw new OfficeError('invalid','Invalid numeric conditional threshold');
+    if(changed(addConditionalRule(host.snapshot(),sheet.id,{ranges:[selectionRange()],operator,values,style:{fill:rgb(highlight.value)},...(stop.checked?{stopIfTrue:true}:{})})))conditionalDialog.close();
+  },!!host.readOnly||host.format==='xls');conditionalDialog.append(addRule);root2.append(conditionalDialog);
+  const chartDialog=make('dialog');chartDialog.id='sheet-chart-dialog';
+  const chartHead=make('header');chartHead.append(make('h2',t('sheetCharts')),button('close','sheet-chart-close',()=>chartDialog.close(),false));chartDialog.append(chartHead);
+  const chartList=make('select');chartList.id='sheet-chart-list';
+  const chartType=make('select');chartType.id='sheet-chart-type';
+  for(const [value,key]of [['column','sheetChartColumn'],['line','sheetChartLine'],['pie','sheetChartPie']] as const){const o=make('option',t(key));o.value=value;chartType.append(o);}
+  for(const [i,chart]of (sheet.charts??[]).entries()){const o=make('option',(i+1)+' · '+t(chart.kind==='column'?'sheetChartColumn':chart.kind==='line'?'sheetChartLine':'sheetChartPie')+' · '+cellLabel(chart.anchor.row,chart.anchor.column));o.value=String(i);chartList.append(o);}
+  chartDialog.append(label('sheetCharts',chartList),button('sheetChartRemove','sheet-chart-remove',()=>{if(changed(removeSheetChart(host.snapshot(),sheet.id,Number(chartList.value))))chartDialog.close();},!!host.readOnly||!sheet.charts?.length||host.format==='xls'));
+  chartDialog.append(make('p',t('sheetChartSourceNote')),label('sheetCharts',chartType),button('sheetChartAdd','sheet-chart-add',()=>{if(changed(addSheetChart(host.snapshot(),sheet.id,selectionRange(),chartType.value as SheetChart['kind'])))chartDialog.close();},!!host.readOnly||host.format==='xls'));
+  root2.append(chartDialog);
+  toolbar.append(button('sheetCharts','sheet-chart-open',()=>chartDialog.showModal(),!!host.readOnly||host.format==='xls'));
+  toolbar.append(button('sheetConditionalRules','sheet-conditional-open',()=>conditionalDialog.showModal(),!!host.readOnly||host.format==='xls'));
   const controls2 = make("details", "", "sheets-advanced");
   controls2.append(make("summary", t("sheetManage")));
   const management = make("div", "", "sheets-formatbar");
@@ -350,6 +381,62 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
   // on the plane and translate only the recycled drawing layer.
   Object.assign(layer.style,{inset:"auto",overflow:"hidden",contain:"layout style paint"});
   plane.append(layer);
+  const chartLayer=make('div','','sheets-chart-layer');Object.assign(chartLayer.style,{position:'absolute',left:'0',top:'0',pointerEvents:'none',overflow:'hidden',zIndex:'3'});plane.append(chartLayer);
+  let chartRevision:string|undefined;
+  const chartNodes=new Map<number,HTMLDivElement>();
+  const svgNS='http://www.w3.org/2000/svg';
+  function chartElement(chart:DeepReadonly<SheetChart>,revision:number|undefined):HTMLDivElement{
+    const box=make('div','','sheets-chart');box.dataset.chartType=chart.kind;
+    Object.assign(box.style,{position:'absolute',background:'#ffffff',color:'#20252d',border:'1px solid #a8b2bf',overflow:'hidden',boxSizing:'border-box'});
+    const get=(row:number,col:number):CalculatedValue|undefined=>{
+      const cell=sheet.cells[row+':'+col];if(!cell)return undefined;
+      if(cell.value.kind!=='formula')return cell.value;
+      const r=revision===snapshot.revision?state2.calculation?.get(calculationKey(sheet.id,row,col)):undefined;
+      return r?.state==='valid'?r.value:undefined;
+    };
+    const labelValue=(row:number,col:number)=>{const v=get(row,col);return v&&'value'in v?String(v.value):'';};
+    const points=Math.min(200,chart.categories.rowCount),indices=Array.from({length:points},(_,i)=>i).filter(i=>!sheet.rows[chart.categories.row+i]?.hidden);
+    const names=indices.map(i=>labelValue(chart.categories.row+i,chart.categories.column));
+    const series=chart.series.filter(s=>!sheet.columns[s.values.column]?.hidden).map((s,i)=>({label:s.label?labelValue(s.label.row,s.label.column):columnLabel(s.values.column),values:indices.map(i=>{const v=get(s.values.row+i,s.values.column);return v?.kind==='number'?v.value:null;}),color:['#4679bc','#df8844','#60a276','#a56bb0','#d4aa38','#4c9da7','#bb6064','#71859c'][i%8]!}));
+    const svg=document.createElementNS(svgNS,'svg');svg.setAttribute('viewBox','0 0 560 280');svg.setAttribute('width','100%');svg.setAttribute('height','100%');svg.setAttribute('role','img');svg.setAttribute('aria-label',t(chart.kind==='column'?'sheetChartColumn':chart.kind==='line'?'sheetChartLine':'sheetChartPie'));box.append(svg);
+    const n=(tag:string,attrs:Record<string,string|number>,text?:string)=>{const e=document.createElementNS(svgNS,tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));if(text!==undefined)e.textContent=text;svg.append(e);return e;};
+    const label=(x:number,y:number,text:string,anchor='start')=>n('text',{x,y,fill:'#334155','font-size':11,'text-anchor':anchor},text.slice(0,45));
+    const vals=series.flatMap(s=>s.values.filter((v):v is number=>v!==null));
+    if(!vals.length||chart.kind==='pie'&&(vals.some(v=>v<0)||!vals.some(v=>v>0))){label(280,140,t('sheetChartNoData'),'middle');return box;}
+    if(chart.categories.rowCount>points)label(10,15,t('sheetChartLimited'));
+    if(chart.kind==='pie'){
+      const s=series[0]!;const total=s.values.reduce<number>((sum,v)=>sum+(v??0),0);
+      if(!Number.isFinite(total)||total<=0){label(280,140,t('sheetChartNoData'),'middle');return box;}
+      let angle=-Math.PI/2;
+      for(const [i,v]of s.values.entries()){
+        if(!v)continue;const delta=v/total*2*Math.PI,end=angle+delta,color=['#4679bc','#df8844','#60a276','#a56bb0','#d4aa38','#4c9da7','#bb6064','#71859c'][i%8]!;
+        if(delta>=2*Math.PI-1e-10)n('circle',{cx:180,cy:140,r:108,fill:color});
+        else n('path',{d:'M 180 140 L '+(180+108*Math.cos(angle))+' '+(140+108*Math.sin(angle))+' A 108 108 0 '+(delta>Math.PI?1:0)+' 1 '+(180+108*Math.cos(end))+' '+(140+108*Math.sin(end))+' Z',fill:color,stroke:'#fff','stroke-width':1});
+        if(i<11){n('rect',{x:315,y:30+i*20,width:10,height:10,fill:color});label(331,39+i*20,(names[i]||String(i+1))+' '+(v/total*100).toFixed(1)+'%');}
+        angle=end;
+      }
+    }else{
+      const left=64,right=535,top=30,bottom=220,w=right-left,h=bottom-top;
+      // Normalize first, so opposite large finite inputs do not overflow.
+      const scale=Math.max(1,...vals.map(Math.abs)),lo=Math.min(0,...vals.map(v=>v/scale)),hi=Math.max(0,...vals.map(v=>v/scale)),span=hi-lo||1,y=(v:number)=>bottom-(v/scale-lo)/span*h;
+      const baseline=y(0),step=w/Math.max(1,names.length);
+      for(let i=0;i<=4;i++){const yy=top+h*i/4;n('line',{x1:left,y1:yy,x2:right,y2:yy,stroke:'#e5e7eb'});const number=(hi-(hi-lo)*i/4)*scale;label(left-6,yy+4,Number.isFinite(number)?String(Number(number.toPrecision(4))):'','end');}
+      n('line',{x1:left,y1:baseline,x2:right,y2:baseline,stroke:'#526174'});
+      const stride=Math.max(1,Math.ceil(names.length/8));
+      for(const [i,name]of names.entries())if(i%stride===0)label(left+(i+.5)*step,240,name||String(i+1),'middle');
+      for(const [j,s]of series.entries()){
+        if(chart.kind==='column'){
+          const width=Math.max(.4,step*.72/series.length);
+          for(const [i,v]of s.values.entries())if(v!==null)n('rect',{x:left+i*step+step*.14+j*width,y:Math.min(baseline,y(v)),width,height:Math.max(.5,Math.abs(y(v)-baseline)),fill:s.color});
+        }else{
+          let path='',started=false;for(const [i,v]of s.values.entries()){if(v===null){started=false;continue;}path+=(started?' L ':' M ')+(left+(i+.5)*step)+' '+y(v);started=true;}n('path',{d:path,stroke:s.color,'stroke-width':2,fill:'none'});
+          if(s.values.filter(v=>v!==null).length===1){const i=s.values.findIndex(v=>v!==null);n('circle',{cx:left+(i+.5)*step,cy:y(s.values[i]!),r:3,fill:s.color});}
+        }
+        if(j<4){n('rect',{x:left+j*115,y:260,width:9,height:9,fill:s.color});label(left+14+j*115,269,s.label.slice(0,18));}
+      }
+    }
+    return box;
+  }
   const renderedCells = new Map<string,RenderedCell>();
   const rowHeaders = new Map<number,HTMLDivElement>(), columnHeaders = new Map<number,HTMLDivElement>();
   const corner = make("div", "", "sheets-corner");
@@ -560,6 +647,18 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
   function paint() {
     if (!root2.isConnected) return;
     const scrollTop = scroll.scrollTop, scrollLeft = scroll.scrollLeft, height = scroll.clientHeight, width = scroll.clientWidth;
+    if(sheet.charts?.length){
+      Object.assign(chartLayer.style,{left:scrollLeft+'px',top:scrollTop+'px',width:width+'px',height:height+'px'});
+      const signature=String(state2.calculatedRevision)+':'+String(state2.calculation?.size);
+      if(signature!==chartRevision){chartLayer.replaceChildren();chartNodes.clear();chartRevision=signature;}
+      for(const [i,chart]of sheet.charts.entries()){
+        const a=chart.anchor,x=screenX(a.column,scrollLeft)-scrollLeft+a.offsetX/9525,y=screenY(a.row,scrollTop)-scrollTop+a.offsetY/9525,w=a.width/9525,h=a.height/9525;
+        let node=chartNodes.get(i);
+        if(x+w<=0||y+h<=0||x>=width||y>=height){if(node){node.remove();chartNodes.delete(i);}continue;}
+        if(!node){node=chartElement(chart,state2.calculatedRevision);chartNodes.set(i,node);chartLayer.append(node);}
+        Object.assign(node.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});
+      }
+    }
     const y = scrollTop * displayRowScale, x = scrollLeft * displayColScale;
     const layerLeft=scrollLeft+"px",layerTop=scrollTop+"px",layerWidth=width+"px",layerHeight=height+"px";
     if(layer.style.left!==layerLeft)layer.style.left=layerLeft;
@@ -627,6 +726,20 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
         node.classList.toggle("no-grid",sheet.view?.showGridLines===false);
       }
       const current=rendered.node,left=(columnPosition.get(column)??(screenX(column,scrollLeft)-scrollLeft))+"px",top=(rowPosition.get(row)??(screenY(row,scrollTop)-scrollTop))+"px",selected2=String(contains2(range,row,column));
+      if(sortedRules.length){
+        const value=needsFormula?(currentRevision===snapshot.revision&&result?.state==='valid'?result.value:undefined):cell?.value;
+        const rule=conditionalCellStyle(sortedRules,row,column,value);
+        const base=visualCss(cell),signature=base+JSON.stringify(rule??null);
+        if(rebound||rendered.conditionalSignature!==signature){
+          styleProbe.style.cssText=base;
+          current.style.backgroundColor=rule?.fill?styleColor(rule.fill):styleProbe.style.backgroundColor;
+          current.style.color=rule?.color?styleColor(rule.color):styleProbe.style.color;
+          current.style.fontWeight=rule?.bold!==undefined?rule.bold?'700':'400':styleProbe.style.fontWeight;
+          current.style.fontStyle=rule?.italic!==undefined?rule.italic?'italic':'normal':styleProbe.style.fontStyle;
+          current.style.textDecoration=rule?.underline!==undefined?rule.underline?'underline':'none':styleProbe.style.textDecoration;
+          rendered.conditionalSignature=signature;
+        }
+      }
       if(current.style.left!==left)current.style.left=left;
       if(current.style.top!==top)current.style.top=top;
       if(current.getAttribute("aria-selected")!==selected2)current.setAttribute("aria-selected",selected2);
@@ -945,6 +1058,8 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
       {label:'ribbonFont',rows:[pick('sheet-font','sheet-font-size'),pick('sheet-bold','sheet-italic','sheet-underline','sheet-text-color','sheet-fill-color','sheet-border')]},
       {label:'ribbonAlignment',rows:[pick('sheet-align-start','sheet-align-center','sheet-align-end','sheet-wrap'),pick('sheet-merge','sheet-unmerge')]},
       {label:'ribbonNumbers',rows:[pick('sheet-number-format'),pick('sheet-custom-format')]},
+      {label:'ribbonStyles',rows:[pick('sheet-conditional-open')]},
+      {label:'sheetCharts',rows:[pick('sheet-chart-open')]},
       {label:'ribbonEditing',rows:[pick('sheet-clear'),pick('sheet-fill-down','sheet-fill-right')]}
     ]},
     {id:'cells',label:'ribbonCells',groups:[

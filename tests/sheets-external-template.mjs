@@ -37,7 +37,14 @@ await writeFile(join(dir,'external-second.xlsx'),second);
 const secondRead=openSheetsXlsx(second,model.documentId);
 assert.deepEqual(secondRead.native.sheetParts.map(s=>s.path),read.native.sheetParts.map(s=>s.path));
 assert.ok(secondRead.cachedValues.some(([k,v])=>k==='sheet-3!2:2'&&v.kind==='number'&&v.value===47));
-for(const file of ['external-protected.xlsx','external-conditional.xlsx','external-custom-name.xlsx']){
+const conditional=await readFile(join(dir,'external-conditional.xlsx')),cs=openSheetsXlsx(conditional,'conditional','Rules');
+assert.equal((await inspectForEditor(conditional,'rules.xlsx','conditional')).report.readOnly,false);
+assert.equal(cs.document.sheets[0].conditionalRules[0].operator,'greaterThan');
+cs.document.sheets[0].cells['1:2'].value={kind:'number',value:31};
+const cout=saveSheetsXlsx(conditional,cs.document);
+assert.deepEqual(openOpc(cout).parts.get('xl/styles.xml'),openOpc(conditional).parts.get('xl/styles.xml'));
+await writeFile(join(dir,'external-conditional-edited.xlsx'),cout);
+for(const file of ['external-protected.xlsx','external-colorscale.xlsx','external-custom-name.xlsx']){
  const bytes=await readFile(join(dir,file));assert.equal((await inspectForEditor(bytes,file,'protected')).report.readOnly,true,file);
 }
 console.log('Independent XLSX template admitted; byte-exact no-edit, theme/style/metadata/part preservation, shared-string references, sheet add/delete/reorder, formula caches and second save verified; 3 unsupported sources protected.');

@@ -125,3 +125,11 @@ Baseline `9e4c53c7834ecdf47a29e572fc6dc57feefd58fa` passed local M6.4/M6.5 A evi
 - No new production dependencies, version bump, release, tag or master merge. Exact new-source CI required.
 
 Next: M6.6 charts and conditional-formatting profiles. Continue rich text and named styles as M6.4 follow-ups and further formula features as M6.5 follow-ups. Reference Excel compatibility remains open.
+
+## M6.6 — native spreadsheet charts and conditional rules
+
+M6.5 B baseline `4c11eaa1a0adcc8ba38d8db102c1beb462efa435` passed exact-source CI [45793969267](https://github.com/xzcode/office-ex/actions/runs/45793969267).
+
+- Bounded numeric cell comparison rules, inclusive between/not-between, priority/stop-if-true, differential fills/font flags and colors. Editable add/delete controls; computed-cell projection and structural range shifts; source differential style indices are preserved and new entries append. Color scales, icon sets, data bars and arbitrary formula rules remain protected.
+- Native single-cell anchored clustered column, line and pie charts with bounded local column-based ranges, optional header references, standard axes/legend and live SVG grid projection. Create/delete controls; unchanged chart graph preserved byte-for-byte on data edits; supported chart changes and worksheet rename rebuild native references. Complex charts, cached references, custom layout/appearance, multi-cell anchors and unsupported drawing graphs remain protected. Preview is bounded to 200 data rows; row/column structural edits on chart sheets are guarded. Legacy XLS conversion rejects charts/rules rather than flattening.
+- Local full check **290/290**; independent complete Office corpus and openpyxl differential/three-chart readback passed, including graph preservation, creation and rename. Build, architecture, TypeScript and license audit passed. Actual Linux sandboxed native 3/3 [report](verification/m6/native-charts.json): real cell edit updates imported chart and rule, real controls add both, saved source reopens editable. Initial combined job exceeded execution timeout after successful build; native check independently rerun and passed. Exact new-source CI required. No release/tag changes.

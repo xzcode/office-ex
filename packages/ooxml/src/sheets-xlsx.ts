@@ -5,12 +5,13 @@
  */
 import { XMLSerializer, type Element, type Document } from '@xmldom/xmldom';
 import { assert, assertCellAddress, OfficeError } from '@office-ex/contracts';
-import { createDocument, validateDocument, type SheetsDocument, type Sheet, type Cell, type CellStyle, type CellBorderSide,type CellBorderLine,type Color, type TextStyle } from '@office-ex/core';
+import { createDocument, validateDocument, type SheetsDocument, type Sheet, type Cell, type CellStyle, type CellBorderSide,type CellBorderLine,type SheetConditionalRule,type ConditionalCellStyle,type Color, type TextStyle } from '@office-ex/core';
 import { columnName, columnNumber, parseFormula, formulaIsSupported, WorkbookCalculator, calculationKey, type CalculatedValue, type WorkbookSnapshot } from '@office-ex/sheets';
 import { openOpc, type OpcPackage, type OpcRelationship } from './opc.js';
 import { parseXml, childElements } from './xml.js';
 import { writeZip } from './zip.js';
 import type { ContainerOptions } from './limits.js';
+import {readChartGraph,createChartGraph,chartRelationFile,type SheetChartGraph} from './sheets-charts.js';
 
 const NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -142,11 +143,53 @@ function parseBorder(e:Element,context:ColorContext):ImportedBorder|undefined{
  if(keys.length===4&&borderWidth[first.line]&&keys.every(side=>same(edges[side],first)))return {border:{width:borderWidth[first.line]!,color:first.color}};
  return {borderEdges:edges};
 }
+function readDxf(e:Element,context:ColorContext):ConditionalCellStyle{
+ attrs(e,[]);const c=nodes(e,['font','fill']),style:ConditionalCellStyle={};
+ const font=one(c,'font',false);if(font){attrs(font,[]);const children=nodes(font,['b','i','u','color']);
+  for(const [node,key]of [['b','bold'],['i','italic'],['u','underline']] as const){const el=one(children,node,false);if(el){plain(el,['val']);const v=get(el,'val');style[key]=node==='u'&&v==='single'?true:node==='u'&&v==='none'?false:flag(v,true);}}
+  const col=one(children,'color',false);if(col)style.color=readRgb(col,context);
+ }
+ const fill=one(c,'fill',false);if(fill){attrs(fill,[]);const pat=one(nodes(fill,['patternFill']),'patternFill')!;attrs(pat,['patternType']);const colors=nodes(pat,['fgColor','bgColor']),fg=one(colors,'fgColor',false),bg=one(colors,'bgColor',false),kind=get(pat,'patternType');
+  requireProfile(kind==='solid'&&fg||!kind&&bg&&!fg,'Conditional/differential fill outside profile');
+  if(kind==='solid'&&bg){const c=readRgb(bg,context);requireProfile(c.kind==='rgba','Invalid background');}
+  style.fill=readRgb((kind==='solid'?fg:bg)!,context);
+ }
+ requireProfile(Object.keys(style).length,'Conditional/differential empty style');return style;
+}
+function dxfXml(style:Readonly<ConditionalCellStyle>):string{
+ const font=(['bold','italic','underline'] as const).map((key,i)=>style[key]===undefined?'':'<'+['b','i','u'][i]+' val="'+Number(style[key])+'"/>').join('')+(style.color?'<color rgb="'+rgb(style.color)+'"/>':'');
+ return '<dxf>'+(font?'<font>'+font+'</font>':'')+(style.fill?'<fill><patternFill><bgColor rgb="'+rgb(style.fill)+'"/></patternFill></fill>':'')+'</dxf>';
+}
+function conditionalRange(value:string){
+ if(value.includes(':'))return range(value);
+ const [row,column]=coordinate(value);return {row,column,rowCount:1,columnCount:1};
+}
+function ruleXml(rule:import('@office-ex/core').DeepReadonly<SheetConditionalRule>,dxf:number):string{
+ const refs=rule.ranges.map(r=>{const start=address(r.row,r.column),end=address(r.row+r.rowCount-1,r.column+r.columnCount-1);return start===end?start:start+':'+end;}).join(' ');
+ return '<conditionalFormatting sqref="'+refs+'"><cfRule type="cellIs" dxfId="'+dxf+'" priority="'+rule.priority+'" operator="'+rule.operator+'"'+(rule.stopIfTrue?' stopIfTrue="1"':'')+'>'+rule.values.map(v=>'<formula>'+v+'</formula>').join('')+'</cfRule></conditionalFormatting>';
+}
+function readConditionalRules(elements:Element[],styles:ConditionalCellStyle[]):SheetConditionalRule[]{
+ const rules:SheetConditionalRule[]=[];
+ for(const group of elements.filter(e=>e.localName==='conditionalFormatting')){
+  attrs(group,['sqref']);const refs=get(group,'sqref');requireProfile(refs&&refs.length<=65536,'Conditional range budget');
+  const ranges=refs.trim().split(/\s+/).map(conditionalRange);
+  for(const e of nodes(group,['cfRule'])){
+   attrs(e,['type','dxfId','priority','operator','stopIfTrue']);const op=get(e,'operator');
+   requireProfile(get(e,'type')==='cellIs'&&['equal','notEqual','lessThan','lessThanOrEqual','greaterThan','greaterThanOrEqual','between','notBetween'].includes(op??''),'Conditional/differential rule outside numeric cellIs profile');
+   const values=nodes(e,['formula']).map(v=>decimal(leaf(v).trim()));
+   const style=styles[integer(get(e,'dxfId'),0,styles.length-1)]!;
+   rules.push({ranges,priority:integer(get(e,'priority'),1,2147483647),operator:op as SheetConditionalRule['operator'],values,style,...(flag(get(e,'stopIfTrue'))?{stopIfTrue:true}:{})});
+   requireProfile(rules.length<=256,'Conditional rule budget');
+  }
+ }
+ return rules.sort((a,b)=>a.priority-b.priority);
+}
 function styleWriter(document:WorkbookSnapshot){
   styleCheck(document.defaultTextStyle,true);requireProfile(Object.keys(document.resources).length===0&&Object.keys(document.styles).length===0,'Named styles or resources outside profile');
   const defaultFont={fontFamily:'Arial',fontSize:139700,...document.defaultTextStyle};const fonts=[fontXml(defaultFont)],fills=['<fill><patternFill patternType="none"/></fill>','<fill><patternFill patternType="gray125"/></fill>'],borders=['<border><left/><right/><top/><bottom/><diagonal/></border>'];
   const formats=new Map<string,number>(),xfs=['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'];
-  const ids=new Map<string,number>();
+  const ids=new Map<string,number>(),dxfs:string[]=[];
+  const dxfId=(s:Readonly<ConditionalCellStyle>)=>dedup(dxfs,dxfXml(s));
   const dedup=(a:string[],v:string)=>{let i=a.indexOf(v);if(i<0){i=a.length;a.push(v);}return i;};
   const styleId=(cell:WorkbookSnapshot['sheets'][number]['cells'][string])=>{
     requireProfile(!cell.styleId,'Named cell style outside profile');const direct=cell.style??{};styleCheck(direct);
@@ -163,15 +206,15 @@ function styleWriter(document:WorkbookSnapshot){
     let id=ids.get(xf);if(id===undefined){id=xfs.length;xfs.push(xf);ids.set(xf,id);}requireProfile(xfs.length<=64000&&formats.size<=1000,'Style budget exceeded');return id;
   };
   const xml=()=>DECL+'<styleSheet xmlns="'+NS+'">'+(formats.size?'<numFmts count="'+formats.size+'">'+[...formats].map(([f,id])=>'<numFmt numFmtId="'+id+'" formatCode="'+esc(f)+'"/>').join('')+'</numFmts>':'')+
-    '<fonts count="'+fonts.length+'">'+fonts.join('')+'</fonts><fills count="'+fills.length+'">'+fills.join('')+'</fills><borders count="'+borders.length+'">'+borders.join('')+'</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="'+xfs.length+'">'+xfs.join('')+'</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
-  return {styleId,xml};
+    '<fonts count="'+fonts.length+'">'+fonts.join('')+'</fonts><fills count="'+fills.length+'">'+fills.join('')+'</fills><borders count="'+borders.length+'">'+borders.join('')+'</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="'+xfs.length+'">'+xfs.join('')+'</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'+(dxfs.length?'<dxfs count="'+dxfs.length+'">'+dxfs.join('')+'</dxfs>':'')+'</styleSheet>';
+  return {styleId,dxfId,xml};
 }
 interface ImportedStyle {style?:CellStyle;numberFormat?:string}
-function readStyles(bytes:Uint8Array,options:ContainerOptions,theme:ColorContext={}):{font:TextStyle;styles:ImportedStyle[]}{
+function readStyles(bytes:Uint8Array,options:ContainerOptions,theme:ColorContext={}):{font:TextStyle;styles:ImportedStyle[];dxfs:ConditionalCellStyle[]}{
   const top=root(bytes,'styleSheet',options);attrs(top,[]);const items=nodes(top,['numFmts','fonts','fills','borders','cellStyleXfs','cellXfs','cellStyles','dxfs','tableStyles','colors']);
   const counted=(name:string,child:string,required=true)=>{const e=one(items,name,required);if(!e)return [];attrs(e,['count']);const list=nodes(e,[child]);requireProfile(integer(get(e,'count'),0,64000)===list.length,'Style count mismatch');return list;};
   const context:ColorContext={...theme};
-  requireProfile(counted('dxfs','dxf',false).length===0,'Conditional/differential formatting outside profile');
+
   const tables=one(items,'tableStyles',false);if(tables){attrs(tables,['count','defaultTableStyle','defaultPivotStyle']);requireProfile(!nodes(tables,[]).length&&integer(get(tables,'count')??'0',0,0)===0,'Custom table style outside profile');}
   const colors=one(items,'colors',false);if(colors){
     attrs(colors,[]);const indexed=one(nodes(colors,['indexedColors']),'indexedColors',false);
@@ -195,14 +238,15 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,theme:ColorContext
     const a=one(nodes(e,['alignment']),'alignment',false);if(a){plain(a,['horizontal','vertical','wrapText','textRotation','indent','relativeIndent','shrinkToFit','justifyLastLine','readingOrder']);requireProfile((get(a,'textRotation')??'0')==='0'&&(get(a,'indent')??'0')==='0'&&(get(a,'relativeIndent')??'0')==='0'&&!flag(get(a,'shrinkToFit'))&&!flag(get(a,'justifyLastLine'))&&(get(a,'readingOrder')??'0')==='0','Unsupported active alignment');const h=get(a,'horizontal'),v=get(a,'vertical');if(h&&h!=='general'){requireProfile(['left','center','right','justify'].includes(h),'Unsupported horizontal alignment');style.alignment=({left:'start',right:'end',center:'center',justify:'justify'} as const)[h as 'left'|'right'|'center'|'justify'];}if(v){requireProfile(['top','center','bottom'].includes(v),'Unsupported vertical alignment');style.verticalAlignment=v as CellStyle['verticalAlignment'];}if(get(a,'wrapText')!==undefined)style.wrapText=flag(get(a,'wrapText'));}
     if(i===0)requireProfile(fi===0&&fill===0&&border===0&&numId===0&&!a,'Nondefault base cell style');
     return {...(Object.keys(style).length?{style}:{}),...(numId?{numberFormat:formats.get(numId)!}:{})};});
-  requireProfile(styles.length>0,'Missing cell styles');return {font:fonts[0],styles};
+  requireProfile(styles.length>0,'Missing cell styles');const dxfs=counted('dxfs','dxf',false).map(e=>readDxf(e,context));return {font:fonts[0],styles,dxfs};
 }
 function scalarXml(v:CalculatedValue):{type:string;body:string}{switch(v.kind){case 'blank':return {type:'',body:''};case 'string':return {type:' t="inlineStr"',body:'<is><t xml:space="preserve">'+encodeText(v.value)+'</t></is>'};case 'number':return {type:'',body:'<v>'+v.value+'</v>'};case 'boolean':return {type:' t="b"',body:'<v>'+Number(v.value)+'</v>'};case 'error':return {type:' t="e"',body:'<v>'+esc(v.value)+'</v>'};}}
 export function writeSheetsXlsx(input:WorkbookSnapshot):Uint8Array{
   const document=validateDocument(input);requireProfile(document.kind==='sheets','Expected workbook');requireProfile(document.sheets.length<=128,'Sheet budget exceeded');
   const style=styleWriter(document),calculation=new WorkbookCalculator().calculate(document,{maxSteps:5_000_000});
   const parts:Record<string,Uint8Array>={},encoder=new TextEncoder(),put=(path:string,value:string)=>{parts[path]=encoder.encode(value);};
-  const sheets:string[]=[],rels:string[]=[],types:string[]=[];
+  const sheets:string[]=[],rels:string[]=[],types:string[]=[],chartParts=new Map<string,Uint8Array>();
+  let chartIndex=0;
   for(const [i,sheet] of document.sheets.entries()){
     const id=i+1,path='xl/worksheets/sheet'+id+'.xml';sheets.push('<sheet name="'+esc(sheet.name)+'" sheetId="'+id+'" r:id="rId'+id+'"/>');rels.push('<Relationship Id="rId'+id+'" Type="'+REL+'/worksheet" Target="worksheets/sheet'+id+'.xml"/>');types.push('<Override PartName="/'+path+'" ContentType="'+CT+'worksheet+xml"/>');
     const rows=new Map<number,{col:number;xml:string}[]>();
@@ -220,17 +264,20 @@ export function writeSheetsXlsx(input:WorkbookSnapshot):Uint8Array{
     const view='<sheetViews><sheetView workbookViewId="0"'+(sheet.view?.rightToLeft?' rightToLeft="1"':'')+(sheet.view?.showGridLines===false?' showGridLines="0"':'')+'>'+((fr||fc)?'<pane'+(fc?' xSplit="'+fc+'"':'')+(fr?' ySplit="'+fr+'"':'')+' topLeftCell="'+address(fr+1,fc+1)+'" activePane="'+(fr&&fc?'bottomRight':fr?'bottomLeft':'topRight')+'" state="frozen"/>':'')+'</sheetView></sheetViews>';
     const merge=sheet.merges.length?'<mergeCells count="'+sheet.merges.length+'">'+sheet.merges.map(m=>'<mergeCell ref="'+address(m.row,m.column)+':'+address(m.row+m.rowCount-1,m.column+m.columnCount-1)+'"/>').join('')+'</mergeCells>':'';
     const geometry=sheet.defaultGeometry,format=geometry?'<sheetFormatPr baseColWidth="8" defaultRowHeight="'+geometry.rowHeight/12700+'"'+(geometry.columnWidth!==undefined?' defaultColWidth="'+geometry.columnWidth/(9525*7)+'"':'')+' customHeight="1"/>':'';
-    put(path,DECL+'<worksheet xmlns="'+NS+'">'+view+format+(colXml?'<cols>'+colXml+'</cols>':'')+'<sheetData>'+rowXml+'</sheetData>'+merge+'</worksheet>');
+    const graph=createChartGraph(path,sheet.name,sheet.charts??[],chartParts,prefix=>prefix+(++chartIndex)+'.xml');
+    for(const t of graph.types)types.push('<Override PartName="/'+t.path+'" ContentType="'+t.type+'"/>');
+    put(path,DECL+'<worksheet xmlns="'+NS+'">'+view+format+(colXml?'<cols>'+colXml+'</cols>':'')+'<sheetData>'+rowXml+'</sheetData>'+merge+(sheet.conditionalRules??[]).map(r=>ruleXml(r,style.dxfId(r.style))).join('')+graph.drawing+'</worksheet>');
   }
   rels.push('<Relationship Id="rIdStyles" Type="'+REL+'/styles" Target="styles.xml"/>');
   put('xl/styles.xml',style.xml());put('xl/workbook.xml',DECL+'<workbook xmlns="'+NS+'" xmlns:r="'+REL+'"><workbookPr date1904="'+Number(document.dateSystem==='1904')+'"/><sheets>'+sheets.join('')+'</sheets><calcPr fullCalcOnLoad="1"/></workbook>');
   put('xl/_rels/workbook.xml.rels',DECL+'<Relationships xmlns="'+PKG+'/relationships">'+rels.join('')+'</Relationships>');
   put('_rels/.rels',DECL+'<Relationships xmlns="'+PKG+'/relationships"><Relationship Id="rId1" Type="'+REL+'/officeDocument" Target="xl/workbook.xml"/></Relationships>');
   put('[Content_Types].xml',DECL+'<Types xmlns="'+PKG+'/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="'+CT+'sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="'+CT+'styles+xml"/>'+types.join('')+'</Types>');
+  for(const [path,bytes]of chartParts)parts[path]=bytes;
   return writeZip(parts);
 }
 interface NativeSheet {id:string;path:string;relId:string;numericId:number}
-export interface SheetsXlsxSource {document:SheetsDocument;cachedValues:[string,CalculatedValue][];native:{opc:OpcPackage;sheetParts:NativeSheet[];stylesPath?:string;sharedPath?:string;metadataPaths:string[];themePath?:string;conversionBlocked:boolean}}
+export interface SheetsXlsxSource {document:SheetsDocument;cachedValues:[string,CalculatedValue][];native:{opc:OpcPackage;sheetParts:NativeSheet[];stylesPath?:string;sharedPath?:string;metadataPaths:string[];themePath?:string;chartGraphs:Map<string,SheetChartGraph>;conversionBlocked:boolean}}
 /** Common Excel extended-properties sheet-name vector. Accept only one
  * worksheet category, exact counts and the actual workbook title sequence. */
 function sheetTitleMetadata(element:Element,names?:readonly string[]):{count:Element;vector:Element;titles:Element[]}|undefined{
@@ -303,7 +350,7 @@ export function openSheetsXlsx(bytes:Uint8Array,documentId:string,title='Workboo
   const targets=wrels.map(r=>r.targetPart!);requireProfile(new Set(targets).size===targets.length,'Aliased workbook dependency');
   for(const rel of wrels){const type=rel.type.slice(REL.length+1),mime=type==='theme'?'application/vnd.openxmlformats-officedocument.theme+xml':CT+type+'+xml';requireProfile(opc.contentTypes.get(rel.targetPart!)===mime,'Unexpected workbook part content type');}
   const expected=new Set(['[Content_Types].xml','_rels/.rels',main,relationFile(main),...metadataPaths,...targets]);
-  requireProfile(opc.parts.size===expected.size&&[...opc.parts.keys()].every(p=>expected.has(p))&&[...opc.relationships.keys()].every(p=>p===''||p===main),'Unknown package parts/dependencies');
+  const chartGraphs=new Map<string,SheetChartGraph>();
   const wb=root(opc.parts.get(main)!,'workbook',options);attrs(wb,[]);const children=nodes(wb,['fileVersion','workbookPr','workbookProtection','bookViews','sheets','definedNames','calcPr']);
   const fileVersion=one(children,'fileVersion',false);if(fileVersion)plain(fileVersion,['appName','lastEdited','lowestEdited','rupBuild']);
   const protection=one(children,'workbookProtection',false);if(protection)plain(protection);
@@ -314,7 +361,7 @@ export function openSheetsXlsx(bytes:Uint8Array,documentId:string,title='Workboo
   const calc=one(children,'calcPr',false);if(calc){plain(calc,['fullCalcOnLoad','calcId','calcMode','forceFullCalc','calcOnSave','concurrentCalc','concurrentManualCount']);requireProfile((get(calc,'calcMode')??'auto')==='auto','Manual or partial calculation mode');if(get(calc,'fullCalcOnLoad')!==undefined)flag(get(calc,'fullCalcOnLoad'));}
   const styleRel=wrels.filter(r=>r.type===REL+'/styles');requireProfile(styleRel.length<=1,'Duplicate styles relationship');
   const themeRel=wrels.filter(r=>r.type===REL+'/theme');requireProfile(themeRel.length<=1,'Duplicate theme relationship');const theme=themeRel.length?readWorkbookTheme(opc.parts.get(themeRel[0]!.targetPart!)!,options):{};
-  const imported=styleRel.length?readStyles(opc.parts.get(styleRel[0].targetPart!)!,options,theme):{font:document.defaultTextStyle,styles:[{}] as ImportedStyle[]};
+  const imported=styleRel.length?readStyles(opc.parts.get(styleRel[0].targetPart!)!,options,theme):{font:document.defaultTextStyle,styles:[{}] as ImportedStyle[],dxfs:[] as ConditionalCellStyle[]};
   document.defaultTextStyle=imported.font;
   const sst=wrels.filter(r=>r.type===REL+'/sharedStrings');requireProfile(sst.length<=1,'Duplicate shared strings relationship');let shared:string[]=[];
   if(sst.length){const e=root(opc.parts.get(sst[0].targetPart!)!,'sst',options);attrs(e,['count','uniqueCount']);shared=nodes(e,['si']).map(si=>{attrs(si,[]);return decodeText(leaf(one(nodes(si,['t']),'t')!,['xml:space']));});if(get(e,'uniqueCount')!==undefined)requireProfile(integer(get(e,'uniqueCount'),0,1000000)===shared.length,'Shared string count mismatch');}
@@ -336,7 +383,7 @@ export function openSheetsXlsx(bytes:Uint8Array,documentId:string,title='Workboo
     const id=def.getAttributeNS(REL,'id'),rel=wrels.find(r=>r.id===id&&r.type===REL+'/worksheet');requireProfile(rel?.targetPart&&!used.has(rel.targetPart),'Missing or duplicate sheet relationship');used.add(rel.targetPart);
     const sheet:Sheet={id:'sheet-'+(i+1),name,cells:{},rows:{},columns:{},merges:[]};
     sheetParts.push({id:sheet.id,path:rel.targetPart,relId:rel.id,numericId:sheetNo});
-    const top=root(opc.parts.get(rel.targetPart)!,'worksheet',options);attrs(top,[]);const elements=nodes(top,['sheetPr','dimension','sheetViews','sheetFormatPr','cols','sheetData','mergeCells','pageMargins']);const defaultGeometry=verifyWorksheetAux(elements);if(defaultGeometry)sheet.defaultGeometry=defaultGeometry;worksheetAuxiliary||=elements.some(e=>['sheetPr','sheetFormatPr','pageMargins'].includes(e.localName??''));
+    const top=root(opc.parts.get(rel.targetPart)!,'worksheet',options);attrs(top,[]);const elements=nodes(top,['sheetPr','dimension','sheetViews','sheetFormatPr','cols','sheetData','mergeCells','conditionalFormatting','pageMargins','drawing']);const drawing=one(elements,'drawing',false);if(drawing){const graph=readChartGraph(opc,rel.targetPart,drawing,name,options,expected);sheet.charts=graph.charts;chartGraphs.set(sheet.id,graph);}else requireProfile(!(opc.relationships.get(rel.targetPart)??[]).length,'Unexpected worksheet relationship');const rules=readConditionalRules(elements,imported.dxfs);if(rules.length)sheet.conditionalRules=rules;const defaultGeometry=verifyWorksheetAux(elements);if(defaultGeometry)sheet.defaultGeometry=defaultGeometry;worksheetAuxiliary||=elements.some(e=>['sheetPr','sheetFormatPr','pageMargins'].includes(e.localName??''));
     const views=one(elements,'sheetViews',false);if(views){attrs(views,[]);const view=one(nodes(views,['sheetView']),'sheetView')!;attrs(view,['workbookViewId','rightToLeft','showGridLines','tabSelected','zoomScale','zoomScaleNormal','zoomScaleSheetLayoutView','zoomScalePageLayoutView','topLeftCell','showZeros','showOutlineSymbols','showRowColHeaders','view']);requireProfile((get(view,'view')??'normal')==='normal'&&flag(get(view,'showZeros'),true)&&flag(get(view,'showOutlineSymbols'),true)&&flag(get(view,'showRowColHeaders'),true),'Unsupported worksheet view mode');if(get(view,'topLeftCell'))coordinate(get(view,'topLeftCell'));requireProfile(get(view,'workbookViewId')==='0','Unsupported workbook view');sheet.view={};if(get(view,'rightToLeft')!==undefined)sheet.view.rightToLeft=flag(get(view,'rightToLeft'));if(get(view,'showGridLines')!==undefined)sheet.view.showGridLines=flag(get(view,'showGridLines'));const viewNodes=nodes(view,['pane','selection']);for(const sel of viewNodes.filter(x=>x.localName==='selection'))verifySelection(sel);const pane=one(viewNodes,'pane',false);if(pane){plain(pane,['xSplit','ySplit','topLeftCell','activePane','state']);requireProfile(get(pane,'state')==='frozen','Unsupported split pane');const fc=integer(get(pane,'xSplit')??'0',0,16383),fr=integer(get(pane,'ySplit')??'0',0,1048575);requireProfile(fr||fc,'Empty frozen pane');requireProfile(get(pane,'topLeftCell')===address(fr+1,fc+1),'Noncanonical frozen pane origin');requireProfile(get(pane,'activePane')===(fr&&fc?'bottomRight':fr?'bottomLeft':'topRight'),'Unexpected active pane');sheet.view.frozenRows=fr;sheet.view.frozenColumns=fc;}if(!Object.keys(sheet.view).length)delete sheet.view;}
     const cols=one(elements,'cols',false);if(cols){attrs(cols,[]);for(const e of nodes(cols,['col'])){plain(e,['min','max','width','customWidth','hidden']);const start=integer(get(e,'min'),1,16384),end=integer(get(e,'max'),start,16384);const width=get(e,'width'),hidden=get(e,'hidden');for(let col=start;col<=end;col++){requireProfile(!sheet.columns[col],'Overlapping column metadata');sheet.columns[col]={...(width!==undefined?{width:Math.round(decimal(width,.00001,255)*9525*7)}:{}),...(hidden!==undefined?{hidden:flag(hidden)}:{})};}}}
     const data=one(elements,'sheetData')!;attrs(data,[]);const rowSeen=new Set<number>();for(const row of nodes(data,['row'])){attrs(row,['r','ht','customHeight','hidden','spans']);if(get(row,'spans'))requireProfile(/^\d+:\d+$/.test(get(row,'spans')!),'Invalid row spans');const r=integer(get(row,'r'),1,1048576);requireProfile(!rowSeen.has(r),'Duplicate row');rowSeen.add(r);const ht=get(row,'ht'),hidden=get(row,'hidden');if(ht!==undefined||hidden!==undefined)sheet.rows[r]={...(ht!==undefined?{height:Math.round(decimal(ht,.00001,409)*12700)}:{}),...(hidden!==undefined?{hidden:flag(hidden)}:{})};
@@ -352,21 +399,24 @@ export function openSheetsXlsx(bytes:Uint8Array,documentId:string,title='Workboo
     document.sheets.push(sheet);
   }
   requireProfile(used.size===wrels.filter(r=>r.type===REL+'/worksheet').length,'Unreferenced worksheet dependency');
+  const chartOwners=new Set([...chartGraphs.values()].flatMap(g=>g.parts.filter(p=>p.endsWith('.rels')).map(p=>{const i=p.lastIndexOf('/_rels/');return p.slice(0,i+1)+p.slice(i+7,-5);})));
+  requireProfile(opc.parts.size===expected.size&&[...opc.parts.keys()].every(p=>expected.has(p))&&[...opc.relationships.keys()].every(p=>p===''||p===main||chartOwners.has(p)),'Unknown package parts/dependencies');
   for(const path of metadataPaths)if(opc.contentTypes.get(path)==='application/vnd.openxmlformats-officedocument.extended-properties+xml')sheetTitleMetadata(parseXml(opc.parts.get(path)!,options).documentElement!,document.sheets.map(s=>s.name));
-  return {document:validateDocument(document) as SheetsDocument,cachedValues,native:{opc,sheetParts,stylesPath:styleRel[0]?.targetPart??undefined,sharedPath:sst[0]?.targetPart??undefined,metadataPaths,themePath:themeRel[0]?.targetPart??undefined,conversionBlocked:!!(metadataPaths.length||themeRel.length||worksheetAuxiliary||one(children,'bookViews',false)||one(children,'fileVersion',false))}};
+  return {document:validateDocument(document) as SheetsDocument,cachedValues,native:{opc,sheetParts,stylesPath:styleRel[0]?.targetPart??undefined,sharedPath:sst[0]?.targetPart??undefined,metadataPaths,themePath:themeRel[0]?.targetPart??undefined,chartGraphs,conversionBlocked:!!(chartGraphs.size||metadataPaths.length||themeRel.length||worksheetAuxiliary||one(children,'bookViews',false)||one(children,'fileVersion',false))}};
 }
 /** Append only newly required styles; original style ids never move. */
-function mergeSourceStyles(source:SheetsXlsxSource,generated:SheetsXlsxSource):{mapping:number[];bytes?:Uint8Array}{
+function mergeSourceStyles(source:SheetsXlsxSource,generated:SheetsXlsxSource):{mapping:number[];dxfMapping:number[];bytes?:Uint8Array}{
  const native=source.native,canonical=generated.native,generatedPath=canonical.stylesPath!;
  const fresh=canonical.opc.parts.get(generatedPath)!;
  const generatedStyles=readStyles(fresh,{});
- if(!native.stylesPath)return {mapping:generatedStyles.styles.map((_,i)=>i),bytes:fresh};
+ if(!native.stylesPath)return {mapping:generatedStyles.styles.map((_,i)=>i),dxfMapping:generatedStyles.dxfs.map((_,i)=>i),bytes:fresh};
  const before=native.opc.parts.get(native.stylesPath)!;
  const theme=native.themePath?readWorkbookTheme(native.opc.parts.get(native.themePath)!,{}):{};
  const oldStyles=readStyles(before,{},theme);
  requireProfile(same(oldStyles.font,generatedStyles.font),'Changing the source workbook default font is outside this profile');
  const mapping=generatedStyles.styles.map(style=>oldStyles.styles.findIndex(old=>same(old,style)));
- if(mapping.every(i=>i>=0))return {mapping};
+ const dxfMapping=generatedStyles.dxfs.map(style=>oldStyles.dxfs.findIndex(old=>same(old,style)));
+ if(mapping.every(i=>i>=0)&&dxfMapping.every(i=>i>=0))return {mapping,dxfMapping};
  const oldDoc=parseXml(before),newDoc=parseXml(fresh),old=oldDoc.documentElement!,next=newDoc.documentElement!;
  const element=(parent:Element,name:string)=>childElements(parent).find(e=>e.namespaceURI===NS&&e.localName===name);
  const oldXfs=element(old,'cellXfs')!,newXfs=childElements(element(next,'cellXfs')!);
@@ -402,7 +452,13 @@ function mergeSourceStyles(source:SheetsXlsxSource,generated:SheetsXlsxSource):{
   const target=childElements(oldXfs).length;requireProfile(target<64000,'Cell style budget exceeded');
   oldXfs.appendChild(xf);oldXfs.setAttribute('count',String(target+1));mapping[index]=target;
  }
- return {mapping,bytes:xmlBytes(oldDoc)};
+ let oldDxfs=element(old,'dxfs');const newDxfs=element(next,'dxfs');
+ for(const [i,id]of dxfMapping.entries())if(id<0){
+  if(!oldDxfs){oldDxfs=oldDoc.createElementNS(NS,'dxfs');old.insertBefore(oldDxfs,element(old,'tableStyles')??element(old,'colors')??null);}
+  const target=childElements(oldDxfs).length;requireProfile(target<64000,'Differential style budget');
+  oldDxfs.appendChild(oldDoc.importNode(childElements(newDxfs!)[i]!,true));oldDxfs.setAttribute('count',String(target+1));dxfMapping[i]=target;
+ }
+ return {mapping,dxfMapping,bytes:xmlBytes(oldDoc)};
 }
 function worksheetCells(top:Element):Map<string,Element>{
  const data=one(childElements(top),'sheetData')!,out=new Map<string,Element>();
@@ -418,7 +474,7 @@ function dimensionRef(sheet:Sheet):string{
  if(!any)return 'A1';
  const a=address(r1,c1),b=address(r2,c2);return a===b?a:a+':'+b;
 }
-function sheetOutput(source:SheetsXlsxSource,prior:NativeSheet|undefined,generated:SheetsXlsxSource,index:number,styles:number[]):Uint8Array{
+function sheetOutput(source:SheetsXlsxSource,prior:NativeSheet|undefined,generated:SheetsXlsxSource,index:number,styles:number[],dxfs:number[]):Uint8Array{
  const fresh=generated.document.sheets[index]!,freshPath=generated.native.sheetParts[index]!.path;
  const nextDoc=parseXml(generated.native.opc.parts.get(freshPath)!),next=nextDoc.documentElement!;
  const old=prior?source.document.sheets.find(s=>s.id===prior.id):undefined;
@@ -442,8 +498,9 @@ function sheetOutput(source:SheetsXlsxSource,prior:NativeSheet|undefined,generat
   if(sourceCell&&same(effectiveCellStyle(previous),effectiveCellStyle(current)))mapped=Number(get(sourceCell,'s')??'0');
   if(mapped)cell.setAttribute('s',String(mapped));else cell.removeAttribute('s');
  }
- if(!oldDoc)return xmlBytes(nextDoc);
- const order=['sheetPr','dimension','sheetViews','sheetFormatPr','cols','sheetData','mergeCells','pageMargins'];
+ const mapRules=(root:Element)=>{for(const group of childElements(root).filter(e=>e.localName==='conditionalFormatting'))for(const rule of childElements(group))rule.setAttribute('dxfId',String(dxfs[integer(get(rule,'dxfId'),0,dxfs.length-1)]!));};
+ if(!oldDoc){mapRules(next);return xmlBytes(nextDoc);}
+ const order=['sheetPr','dimension','sheetViews','sheetFormatPr','cols','sheetData','mergeCells','conditionalFormatting','pageMargins'];
  const replace=(name:string,value:Element|undefined)=>{
   const existing=one(childElements(top),name,false);
   if(!value){if(existing)top.removeChild(existing);return;}
@@ -457,6 +514,11 @@ function sheetOutput(source:SheetsXlsxSource,prior:NativeSheet|undefined,generat
  if(!same(old?.defaultGeometry,fresh.defaultGeometry))replace('sheetFormatPr',one(childElements(next),'sheetFormatPr',false));
  if(!same(old?.columns,fresh.columns))replace('cols',one(childElements(next),'cols',false));
  if(!same(old?.merges,fresh.merges))replace('mergeCells',one(childElements(next),'mergeCells',false));
+ if(!same(old?.conditionalRules,fresh.conditionalRules)){
+  for(const group of childElements(top).filter(e=>e.localName==='conditionalFormatting'))top.removeChild(group);
+  mapRules(next);const later=one(childElements(top),'pageMargins',false);
+  for(const group of childElements(next).filter(e=>e.localName==='conditionalFormatting'))top.insertBefore(doc.importNode(group,true),later??null);
+ }
  if(!same(old?.view,fresh.view)){
   const view=one(childElements(top),'sheetViews',false),newView=one(childElements(next),'sheetViews',false);
   if(view&&newView){
@@ -491,6 +553,7 @@ export function saveSheetsXlsx(bytes:Uint8Array,input:WorkbookSnapshot):Uint8Arr
  const currentIds=new Set(model.sheets.map(s=>s.id));
  for(const prior of native.sheetParts)if(!currentIds.has(prior.id)){
   parts.delete(prior.path);removeType(prior.path);
+  const charts=native.chartGraphs.get(prior.id);if(charts){for(const p of charts.parts)parts.delete(p);for(const p of charts.typedParts)removeType(p);}
   const rel=childElements(relTop).find(e=>get(e,'Id')===prior.relId)!;relTop.removeChild(rel);graphChanged=typesChanged=mainChanged=true;
  }
  const newPaths:string[]=[],newDefs:Element[]=[];
@@ -505,7 +568,20 @@ export function saveSheetsXlsx(bytes:Uint8Array,input:WorkbookSnapshot):Uint8Arr
    def=mainDoc.createElementNS(NS,'sheet');def.setAttribute('name',sheet.name);def.setAttribute('sheetId',String(numericId));def.setAttributeNS(REL,'r:id',relId);
    addRel(relId,'worksheet',path);addType(path,CT+'worksheet+xml');graphChanged=typesChanged=mainChanged=true;
   }
-  newPaths.push(path);newDefs.push(def);parts.set(path,sheetOutput(original,prior,generated,i,stylePlan.mapping));
+  newPaths.push(path);newDefs.push(def);parts.set(path,sheetOutput(original,prior,generated,i,stylePlan.mapping,stylePlan.dxfMapping));
+  const oldChart=prior?original.document.sheets.find(s=>s.id===prior.id):undefined;
+  if(!prior||!same(oldChart?.charts,sheet.charts)||oldChart?.name!==sheet.name){
+   const previous=prior?native.chartGraphs.get(prior.id):undefined;
+   if(previous){for(const p of previous.parts)parts.delete(p);for(const p of previous.typedParts)removeType(p);typesChanged=true;}
+   if(previous||sheet.charts?.length){
+    const graph=createChartGraph(path,sheet.name,sheet.charts??[],parts,prefix=>nextPath(prefix,'.xml'));
+    for(const t of graph.types){addType(t.path,t.type);typesChanged=true;}
+    const doc=parseXml(parts.get(path)!),root=doc.documentElement!,drawing=one(childElements(root),'drawing',false);
+    if(drawing)root.removeChild(drawing);
+    if(graph.drawing){const node=doc.createElementNS(NS,'drawing');node.setAttributeNS(REL,'r:id','rIdOexDrawing');root.appendChild(node);}
+    parts.set(path,xmlBytes(doc));
+   }
+  }
  }
  if(!same(native.sheetParts.map(x=>x.id),model.sheets.map(x=>x.id))){
   while(sheetList.firstChild)sheetList.removeChild(sheetList.firstChild);

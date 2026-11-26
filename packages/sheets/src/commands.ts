@@ -1,6 +1,6 @@
 /** Recovered atomic spreadsheet transactions; source model is never mutated. */
 import { assert, assertCellAddress } from '@office-ex/contracts';
-import { patchCommand, cloneData, type Cell, type CellStyle, type Sheet, type SheetView, type SheetsDocument, type DocumentSnapshot, type DocumentCommand, type PatchOperation } from '@office-ex/core';
+import { patchCommand, cloneData, type Cell, type CellStyle, type SheetConditionalRule, type SheetChart, type Sheet, type SheetView, type SheetsDocument, type DocumentSnapshot, type DocumentCommand, type PatchOperation } from '@office-ex/core';
 import { parseFormula, serializeFormula, formulaIsSupported, type FormulaNode, type FormulaReference, type FormulaRange } from './formula.js';
 import { cellFromInput, formatCell, type CellInputOptions } from './formatting.js';
 import type { WorkbookSnapshot, CalculationResult } from './calculation.js';
@@ -152,6 +152,7 @@ function dimensions2(snapshot:DocumentSnapshot, sheetId:string, axis:Axis, start
     return { ...r, start: { ...r.start, [dimension]: bounds[backwards ? 1 : 0] }, end: { ...r.end, [dimension]: bounds[backwards ? 0 : 1] } };
   }));
   const sheet = sheets[index], cells:Record<string,Cell> = {};
+  assert(!sheet.charts?.length,'unsupported','Remove or update chart ranges before inserting or deleting rows or columns');
   for (const [key, cell] of Object.entries(sheet.cells)) {
     const [row, column] = key.split(":").map(Number), value = axis === "rows" ? row : column;
     if (removing && value >= start && value < start + count) continue;
@@ -175,6 +176,18 @@ function dimensions2(snapshot:DocumentSnapshot, sheetId:string, axis:Axis, start
     assert(bounds[1] <= maximum, "unsupported", "Insertion would discard a merged range");
     return [{ ...merge, [dimension]: bounds[0], [size]: bounds[1] - bounds[0] + 1 }];
   }).filter((m) => m.rowCount * m.columnCount > 1);
+  if(sheet.conditionalRules){
+    sheet.conditionalRules=sheet.conditionalRules.flatMap(rule=>{
+      const ranges=rule.ranges.flatMap(r=>{
+        const bounds=shiftInterval(r[dimension],r[dimension]+r[size]-1,start,count,removing);
+        if(!bounds)return [];
+        assert(bounds[1]<=maximum,'unsupported','Insertion would discard conditional range');
+        return [{...r,[dimension]:bounds[0],[size]:bounds[1]-bounds[0]+1}];
+      });
+      return ranges.length?[{...rule,ranges}]:[];
+    });
+    if(!sheet.conditionalRules.length)delete sheet.conditionalRules;
+  }
   if (sheet.view) {
     const field = axis === "rows" ? "frozenRows" : "frozenColumns", value = sheet.view[field];
     if (value !== void 0 && start <= value) sheet.view[field] = removing ? Math.max(start - 1, value - count) : Math.min(maximum - 1, value + count);
@@ -368,4 +381,33 @@ export function exportTsv(document2:WorkbookSnapshot, sheetId:string, range:Cell
 export function setSheetView(snapshot:DocumentSnapshot,sheetId:string,view:SheetView):DocumentCommand{
   const index=sheetIndex(snapshot,sheetId), sheet=book(snapshot).sheets[index];
   return edit(snapshot,[{op:'set',path:['sheets',index,'view'],value:{...sheet.view,...view}}]);
+}
+
+/** A rule is an address-bound worksheet property, not direct cell formatting. */
+export function addConditionalRule(snapshot:DocumentSnapshot,sheetId:string,rule:Omit<SheetConditionalRule,'priority'>):DocumentCommand{
+ const index=sheetIndex(snapshot,sheetId),rules=book(snapshot).sheets[index]!.conditionalRules??[];
+ const priority=rules.reduce((n,r)=>Math.max(n,r.priority),0)+1;
+ return edit(snapshot,[{op:'set',path:['sheets',index,'conditionalRules'],value:[...rules,{...rule,priority}]}]);
+}
+export function removeConditionalRule(snapshot:DocumentSnapshot,sheetId:string,priority:number):DocumentCommand{
+ const index=sheetIndex(snapshot,sheetId),rules=book(snapshot).sheets[index]!.conditionalRules??[],remaining=rules.filter(r=>r.priority!==priority);
+ assert(remaining.length<rules.length,'invalid','Conditional rule not found');
+ return edit(snapshot,[remaining.length?{op:'set',path:['sheets',index,'conditionalRules'],value:remaining}:{op:'delete',path:['sheets',index,'conditionalRules']}]);
+}
+
+/** Create a standard chart from one category column and adjacent value
+ * columns. First row is the header; the remaining rows are data. */
+export function addSheetChart(snapshot:DocumentSnapshot,sheetId:string,range:CellRange,kind:SheetChart['kind']):DocumentCommand{
+ const index=sheetIndex(snapshot,sheetId),sheet=book(snapshot).sheets[index]!;
+ assertCellRange(range,170000);assert(range.rowCount>=2&&range.rowCount<=10001&&range.columnCount>=2&&range.columnCount<=(kind==='pie'?2:17),'invalid','Select headers, one category column and value columns');
+ const categories={row:range.row+1,column:range.column,rowCount:range.rowCount-1,columnCount:1};
+ const series=Array.from({length:range.columnCount-1},(_,i)=>({label:{row:range.row,column:range.column+i+1},values:{...categories,column:range.column+i+1}}));
+ const chart:SheetChart={kind,categories,series,anchor:{row:range.row,column:Math.min(16384,range.column+range.columnCount+1),offsetX:0,offsetY:0,width:5400000,height:2700000}};
+ return edit(snapshot,[{op:'set',path:['sheets',index,'charts'],value:[...sheet.charts??[],chart]}]);
+}
+export function removeSheetChart(snapshot:DocumentSnapshot,sheetId:string,chartIndex:number):DocumentCommand{
+ const index=sheetIndex(snapshot,sheetId),charts=book(snapshot).sheets[index]!.charts??[];
+ assert(Number.isSafeInteger(chartIndex)&&chartIndex>=0&&chartIndex<charts.length,'invalid','Chart not found');
+ const next=charts.filter((_,i)=>i!==chartIndex);
+ return edit(snapshot,[next.length?{op:'set',path:['sheets',index,'charts'],value:next}:{op:'delete',path:['sheets',index,'charts']}]);
 }

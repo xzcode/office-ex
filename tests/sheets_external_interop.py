@@ -7,7 +7,7 @@ import os
 import subprocess
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Color
-from openpyxl.formatting.rule import CellIsRule
+from openpyxl.formatting.rule import CellIsRule, ColorScaleRule
 from openpyxl.workbook.defined_name import DefinedName
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -45,8 +45,13 @@ with TemporaryDirectory() as tmp:
     source=p/'external.xlsx';book.save(source);shared_strings(source)
     test=load_workbook(source);test['Sales'].protection.sheet=True;test.save(p/'external-protected.xlsx')
     test=load_workbook(source);test['Sales'].conditional_formatting.add('B1',CellIsRule(operator='greaterThan',formula=['0'],fill=PatternFill('solid',fgColor='FFFF0000')));test.save(p/'external-conditional.xlsx')
+    test=load_workbook(source);test['Sales'].conditional_formatting.add('B1:B5',ColorScaleRule(start_type='min',start_color='FF0000',end_type='max',end_color='00FF00'));test.save(p/'external-colorscale.xlsx')
     test=load_workbook(source);test.defined_names.add(DefinedName('Revenue',attr_text='Sales!$B$1'));test.save(p/'external-custom-name.xlsx')
     subprocess.run([os.environ.get('NODE','node'),'--import','tsx','tests/sheets-external-template.mjs',str(p)],cwd=ROOT,check=True)
+    cf=load_workbook(p/'external-conditional-edited.xlsx');assert cf['Sales']['B1'].value==31
+    rules=list(cf['Sales'].conditional_formatting._cf_rules.values())
+    assert rules[0][0].operator=='greaterThan' and rules[0][0].formula==['0']
+    assert rules[0][0].dxf.fill.fgColor.rgb=='FFFF0000'
     for name,amount in [('external-edited.xlsx',25),('external-second.xlsx',40)]:
         out=load_workbook(p/name);cache=load_workbook(p/name,data_only=True)
         assert out.sheetnames==['Keep','Other','Sales','New Sheet']

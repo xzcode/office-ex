@@ -27,7 +27,7 @@ try{
  await page.locator('#xlsx-preview-address').fill('Z80');await page.locator('#xlsx-preview-address').press('Enter');assert.equal(await page.locator('#xlsx-preview-grid [data-address=Z80]').textContent(),'远端');
  await page.locator('#xlsx-preview-sheet').selectOption({value:'1'});assert.equal(await page.locator('#xlsx-preview-grid [data-address=A1]').textContent(),'第二张表');
  check('Cached formulas, address navigation and worksheet switching work');
- await page.locator('.compatibility-detail').first().locator('summary').click();assert.match(await page.locator('.compatibility-detail').first().textContent(),/Conditional\/differential formatting/);
+ await page.locator('.compatibility-detail').first().locator('summary').click();assert.match(await page.locator('.compatibility-detail').first().textContent(),/Unknown element r in si|Conditional|Hidden worksheet/);
  assert.equal(await page.locator('#undo').isDisabled(),true);assert.equal(await page.locator('#redo').isDisabled(),true);
  check('Specific incompatibility diagnostic retained; editing remains disabled');
  await page.locator('#xlsx-preview-sheet').selectOption({value:'0'});

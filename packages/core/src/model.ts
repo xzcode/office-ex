@@ -49,6 +49,12 @@ export interface CellBorderEdge {line:CellBorderLine;color:Color}
 export interface CellStyle extends TextStyle { fill?: Color; border?: {color:Color;width:number}; borderEdges?:Partial<Record<CellBorderSide,CellBorderEdge>>; verticalAlignment?: 'top'|'center'|'bottom'; wrapText?: boolean }
 export interface SheetView { rightToLeft?:boolean; frozenRows?:number; frozenColumns?:number; showGridLines?:boolean }
 export interface Cell { value: CellValue; styleId?: string; numberFormat?: string; style?: CellStyle }
+export interface SheetRange {row:number;column:number;rowCount:number;columnCount:number}
+export type ConditionalOperator='equal'|'notEqual'|'lessThan'|'lessThanOrEqual'|'greaterThan'|'greaterThanOrEqual'|'between'|'notBetween';
+export interface ConditionalCellStyle {fill?:Color;color?:Color;bold?:boolean;italic?:boolean;underline?:boolean}
+export interface SheetConditionalRule {ranges:SheetRange[];priority:number;operator:ConditionalOperator;values:number[];style:ConditionalCellStyle;stopIfTrue?:boolean}
+export interface SheetChartSeries {label?:{row:number;column:number};values:SheetRange}
+export interface SheetChart {kind:'column'|'line'|'pie';anchor:{row:number;column:number;offsetX:number;offsetY:number;width:number;height:number};categories:SheetRange;series:SheetChartSeries[]}
 export interface Sheet {
   id: string; name: string; cells: Record<string, Cell>;
   rows: Record<string, { height?: number; hidden?: boolean }>;
@@ -56,6 +62,8 @@ export interface Sheet {
   merges: { row: number; column: number; rowCount: number; columnCount: number }[];
   view?: SheetView;
   defaultGeometry?:{rowHeight:number;columnWidth?:number};
+  conditionalRules?:SheetConditionalRule[];
+  charts?:SheetChart[];
 }
 export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSystem: '1900' | '1904'; sheets: Sheet[] }
 
@@ -373,7 +381,7 @@ export function validateDocument(value: unknown): OfficeDocument {
     assert(model.dateSystem === '1900' || model.dateSystem === '1904', 'invalid', 'Invalid workbook date system');
     const names = new Set<string>();
     list(model.sheets, 1).forEach((candidate) => {
-      const sheet = object(candidate, ['id', 'name', 'cells', 'rows', 'columns', 'merges', 'view','defaultGeometry']); id(sheet.id); text(sheet.name, 31, false);
+      const sheet = object(candidate, ['id', 'name', 'cells', 'rows', 'columns', 'merges', 'view','defaultGeometry','conditionalRules','charts']); id(sheet.id); text(sheet.name, 31, false);
       if(sheet.view!==undefined){const view=object(sheet.view,['rightToLeft','frozenRows','frozenColumns','showGridLines']);for(const field of ['rightToLeft','showGridLines'])if(view[field]!==undefined)bool(view[field]);if(view.frozenRows!==undefined)integer(view.frozenRows,0,1048575);if(view.frozenColumns!==undefined)integer(view.frozenColumns,0,16383);}
       if(sheet.defaultGeometry!==undefined){const g=object(sheet.defaultGeometry,['rowHeight','columnWidth']);integer(g.rowHeight,1,409*12700);if(g.columnWidth!==undefined)integer(g.columnWidth,1,255*9525*7);}
       assert(!/[\[\]:*?/\\\x00-\x1f]/.test(sheet.name) && !sheet.name.startsWith("'") && !sheet.name.endsWith("'"), 'invalid', 'Invalid sheet name');
@@ -390,6 +398,34 @@ export function validateDocument(value: unknown): OfficeDocument {
           const dimension = object(candidate, [size, 'hidden']);
           if (dimension[size] !== undefined) integer(dimension[size], 1);
           if (dimension.hidden !== undefined) bool(dimension.hidden);
+        }
+      }
+      if(sheet.charts!==undefined){
+        const charts=list(sheet.charts,1);assert(charts.length<=32,'limit','Chart count budget');
+        function chartRange(raw:unknown):SheetRange{
+          const r=object(raw,['row','column','rowCount','columnCount']);integer(r.row,1);integer(r.column,1);integer(r.rowCount,1,10000);integer(r.columnCount,1,1);assertCellAddress(r.row+r.rowCount-1,r.column);return r as unknown as SheetRange;
+        }
+        for(const raw of charts){
+          const c=object(raw,['kind','anchor','categories','series']);assert(['column','line','pie'].includes(String(c.kind)),'invalid','Unsupported chart type');
+          const a=object(c.anchor,['row','column','offsetX','offsetY','width','height']);integer(a.row,1,1048576);integer(a.column,1,16384);integer(a.offsetX,0,10000000);integer(a.offsetY,0,10000000);integer(a.width,1,50000000);integer(a.height,1,50000000);
+          const categories=chartRange(c.categories),series=list(c.series,1);assert(series.length<=(c.kind==='pie'?1:16),'limit','Chart series budget');
+          for(const raw of series){const s=object(raw,['label','values']),values=chartRange(s.values);assert(values.rowCount===categories.rowCount,'invalid','Chart range length mismatch');if(s.label!==undefined){const l=object(s.label,['row','column']);integer(l.row,1,1048576);integer(l.column,1,16384);}}
+        }
+      }
+      if(sheet.conditionalRules!==undefined){
+        const rules=list(sheet.conditionalRules,1);assert(rules.length<=256,'limit','Conditional rule budget exceeded');
+        const priorities=new Set<number>();let previous=0;
+        for(const raw of rules){
+          const rule=object(raw,['ranges','priority','operator','values','style','stopIfTrue']);integer(rule.priority,1,2147483647);
+          assert(!priorities.has(rule.priority)&&rule.priority>previous,'invalid','Duplicate or unordered conditional priority');priorities.add(rule.priority);previous=rule.priority;
+          assert(['equal','notEqual','lessThan','lessThanOrEqual','greaterThan','greaterThanOrEqual','between','notBetween'].includes(String(rule.operator)),'invalid','Invalid conditional operator');
+          const vals=list(rule.values);assert(vals.length===(rule.operator==='between'||rule.operator==='notBetween'?2:1)&&vals.every(v=>typeof v==='number'&&Number.isFinite(v)),'invalid','Invalid numeric conditional operands');
+          const ranges=list(rule.ranges,1);assert(ranges.length<=128,'limit','Conditional range budget exceeded');
+          for(const item of ranges){const r=object(item,['row','column','rowCount','columnCount']);integer(r.row,1);integer(r.column,1);integer(r.rowCount,1);integer(r.columnCount,1);assertCellAddress(r.row+r.rowCount-1,r.column+r.columnCount-1);}
+          const style=object(rule.style,['fill','color','bold','italic','underline']);assert(Object.keys(style).length>0,'invalid','Empty conditional style');
+          for(const key of ['fill','color'])if(style[key]!==undefined){validateColor(style[key]);assert(style[key].kind==='rgba'&&style[key].alpha===255,'unsupported','Conditional style requires opaque RGB');}
+          for(const key of ['bold','italic','underline'])if(style[key]!==undefined)bool(style[key]);
+          if(rule.stopIfTrue!==undefined)bool(rule.stopIfTrue);
         }
       }
       const merges = list(sheet.merges);

@@ -202,3 +202,9 @@ Continue on `m5-distribution-20261125`; see [M6 compatibility](M6-COMPATIBILITY.
 ## 2026-11-26 — M6.5 batch B
 
 Continue on `m5-distribution-20261125`; see [M6 compatibility](M6-COMPATIBILITY.md). Formula registry expanded 38 → 48 (conditional aggregates, VLOOKUP/HLOOKUP, MATCH and scalar INDEX). Sparse same-shape criteria ranges, bounded wildcard matching, exact and sorted numeric approximate lookup, cross-sheet dependency updates and native cache preservation. Local 288/288 full, 38/38 targeted, independent Office corpus and eleven lookup/conditional caches, build/licenses and sandboxed Linux native 3/3 passed. Exact-source CI required. Source 9e4c53c verify/Windows/macOS succeeded, Linux pending; older M6.3 run cancelled. Unsupported implicit output range expansion, array INDEX, mixed/gapped/unsorted approximate lookup, XLOOKUP and new legacy XLS function serialization remain outside profile. Public dev.2 unchanged. Next M6.6 charts and conditional formats.
+
+## 2026-11-26 — M6.6
+
+M6.5 B baseline `4c11eaa1a0adcc8ba38d8db102c1beb462efa435` passed exact-source CI [45793969267](https://github.com/xzcode/office-ex/actions/runs/45793969267).
+
+Numeric conditional rules and three native chart types with source-backed preservation, creation/deletion and live projection. Local 290/290, independent Office corpus, build/licenses, sandboxed native 3/3. See M6-COMPATIBILITY.md and docs/verification/m6/native-charts.json. Unsupported complex profiles guarded. Continue M6.7/M6.8. Exact-source CI required; published dev.2 unchanged.

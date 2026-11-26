@@ -12,7 +12,9 @@ from pptx.util import Inches as I
 from pptx.enum.text import MSO_AUTO_SIZE
 from PIL import Image
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Border, Side
+from openpyxl.styles import Border, Side, PatternFill
+from openpyxl.formatting.rule import CellIsRule
+from openpyxl.chart import BarChart, LineChart, PieChart, Reference
 ROOT=Path(__file__).resolve().parents[1]
 def generate(p):
     p.mkdir(parents=True,exist_ok=True)
@@ -26,7 +28,7 @@ def generate(p):
     s.write('A80','第八十行');s.write('Z80','远端')
     s.set_column('E:E',None,None,{'hidden':True});s.write('E1','隐藏列')
     s.set_row(2,None,None,{'hidden':True});s.write('A3','隐藏行')
-    s.conditional_format('B1:B20',{'type':'cell','criteria':'>','value':100,'format':w.add_format({'bg_color':'#FFDDAA'})})
+    s.conditional_format('B1:B20',{'type':'2_color_scale','min_color':'#FFDDAA','max_color':'#AACCEE'})
     w.add_worksheet('汇总').write('A1','第二张表')
     hidden=w.add_worksheet('隐藏');hidden.hide();hidden.write('A1','隐藏数据');w.close()
     b=Workbook();s=b.active;s.title='Report'
@@ -54,6 +56,13 @@ def generate(p):
         'COUNTIF(Data!A1:A4,"A~*")']
     for i,expression in enumerate(expressions,1):report.cell(i,2).value='='+expression
     b.save(p/'m6-lookups.xlsx')
+    b=Workbook();s=b.active;s.title='Chart report'
+    for row in [['Name','Value'],['A',2],['B',4],['C',6]]:s.append(row)
+    s.conditional_formatting.add('B2:B4',CellIsRule(operator='greaterThan',formula=['3'],fill=PatternFill('solid',fgColor='FFFFAA00')))
+    for cls,pos in [(BarChart,'D2'),(LineChart,'D20'),(PieChart,'D38')]:
+        chart=cls();chart.add_data(Reference(s,min_col=2,min_row=1,max_row=4),titles_from_data=True)
+        chart.set_categories(Reference(s,min_col=1,min_row=2,max_row=4));s.add_chart(chart,pos)
+    b.save(p/'m6-charts.xlsx')
     d=Document();d.add_heading('标题',0);d.add_paragraph('中文正文');d.add_paragraph('First item',style='List Number');d.save(p/'ordinary-text.docx')
     d=Document();t=d.add_table(rows=2,cols=2);t.style='Table Grid'
     for i,row in enumerate([['产品','数量'],['办公软件','12']]):
@@ -143,6 +152,14 @@ def verify(p):
     with ZipFile(p/'m6-lookups.xlsx') as before,ZipFile(p/'m6-lookups-edited.xlsx') as after:
         for name in ['xl/styles.xml','xl/theme/theme1.xml','docProps/core.xml','docProps/app.xml']:
             assert before.read(name)==after.read(name),name
+    for name,count in [('m6-charts-edited.xlsx',3),('m6-charts-rebuilt.xlsx',2),('m6-charts-new.xlsx',3)]:
+        chartbook=load_workbook(p/name);cs=chartbook.active;assert cs['B2'].value==17 and len(cs._charts)==count
+        assert [type(c).__name__ for c in cs._charts]==(['BarChart','PieChart'] if count==2 else ['BarChart','LineChart','PieChart'])
+        if count==2:assert cs._charts[0].series[0].val.numRef.f=="'Renamed chart'!$B$2:$B$4"
+        assert len(cs.conditional_formatting)==1
+    with ZipFile(p/'m6-charts.xlsx') as before,ZipFile(p/'m6-charts-edited.xlsx') as after:
+        for n in before.namelist():
+            if n.startswith(('xl/drawings/','xl/charts/')) or n=='xl/styles.xml':assert before.read(n)==after.read(n),n
     d=Document(p/'image-edited.docx');assert len(d.inline_shapes)==1 and d.inline_shapes[0].width==457200
     with ZipFile(p/'ordinary-image.docx') as before,ZipFile(p/'image-edited.docx') as after:
         for name in before.namelist():

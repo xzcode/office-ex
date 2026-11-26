@@ -83,3 +83,58 @@ test('M6.4 partial and mixed cell borders, explicit default geometry, and source
  assert.deepEqual(back.document.sheets[0]!.cells['1:1']!.style?.border,{width:9525,color:black});
  assert.throws(()=>writeLegacyXls(d),OfficeError);
 });
+
+test('M6.6 numeric conditional rules preserve source styles, derive paint, append styles and move ranges atomically',async()=>{
+ const {addConditionalRule,removeConditionalRule,conditionalCellStyle,insertRows,deleteRows}=await import('@office-ex/sheets');
+ const d=createDocument('sheets','conditional-rules'),sheet=d.sheets[0]!;
+ const red={kind:'rgba' as const,red:255,green:20,blue:30,alpha:255},green={...red,red:0,green:180};
+ sheet.cells['2:1']={value:{kind:'number',value:20}};
+ sheet.cells['3:1']={value:{kind:'formula',source:'=A2*2'}};
+ const s=new DocumentSession(d),r={row:2,column:1,rowCount:3,columnCount:1};
+ s.execute(addConditionalRule(s.snapshot(),sheet.id,{ranges:[r],operator:'greaterThan',values:[10],style:{fill:red,bold:true}}));
+ s.execute(addConditionalRule(s.snapshot(),sheet.id,{ranges:[r],operator:'between',values:[0,30],style:{fill:green,italic:true},stopIfTrue:true}));
+ const m=()=>s.snapshot().document as SheetsDocument;
+ assert.deepEqual(conditionalCellStyle(m().sheets[0]!.conditionalRules!,2,1,{kind:'number',value:20}),{fill:red,bold:true,italic:true});
+ assert.equal(conditionalCellStyle(m().sheets[0]!.conditionalRules!,1,1,{kind:'number',value:20}),undefined);
+ assert.equal(conditionalCellStyle(m().sheets[0]!.conditionalRules!,2,1,{kind:'string',value:'20'}),undefined);
+ const before=writeSheetsXlsx(m()),original=openSheetsXlsx(before,d.documentId,d.title);
+ assert.deepEqual(original.document.sheets[0]!.conditionalRules,m().sheets[0]!.conditionalRules);
+ assert.deepEqual(saveSheetsXlsx(before,original.document),before);
+ const oldStyles=openOpc(before).parts.get('xl/styles.xml');
+ original.document.sheets[0]!.cells['2:1']!.value={kind:'number',value:50};
+ const saved=saveSheetsXlsx(before,original.document);
+ assert.deepEqual(openOpc(saved).parts.get('xl/styles.xml'),oldStyles);
+ s.execute(insertRows(s.snapshot(),sheet.id,2,1));assert.equal(m().sheets[0]!.conditionalRules![0]!.ranges[0]!.row,3);
+ s.undo();assert.equal(m().sheets[0]!.conditionalRules![0]!.ranges[0]!.row,2);
+ s.execute(deleteRows(s.snapshot(),sheet.id,2,3));assert.equal(m().sheets[0]!.conditionalRules,undefined);s.undo();
+ s.execute(removeConditionalRule(s.snapshot(),sheet.id,1));
+ s.execute(addConditionalRule(s.snapshot(),sheet.id,{ranges:[r],operator:'lessThan',values:[0],style:{color:green}}));
+ const next=saveSheetsXlsx(before,m()),back=openSheetsXlsx(next,d.documentId,d.title);
+ assert.deepEqual(back.document.sheets[0]!.conditionalRules,m().sheets[0]!.conditionalRules);
+ assert.throws(()=>writeLegacyXls(m()),OfficeError);
+});
+
+test('M6.6 native chart graph creation, no-edit preservation, source data updates, rename and removal',async()=>{
+ const {addSheetChart,removeSheetChart,renameSheet,insertRows}=await import('@office-ex/sheets');
+ const d=createDocument('sheets','charts-model'),sheet=d.sheets[0]!;
+ sheet.cells['1:1']={value:{kind:'string',value:'Name'}};sheet.cells['1:2']={value:{kind:'string',value:'Value'}};
+ for(let i=2;i<=4;i++){sheet.cells[i+':1']={value:{kind:'string',value:'Category '+i}};sheet.cells[i+':2']={value:{kind:'number',value:i*2}};}
+ const session=new DocumentSession(d),r={row:1,column:1,rowCount:4,columnCount:2};
+ for(const kind of ['column','line','pie'] as const)session.execute(addSheetChart(session.snapshot(),sheet.id,r,kind));
+ const model=()=>session.snapshot().document as SheetsDocument;
+ const bytes=writeSheetsXlsx(model()),source=openSheetsXlsx(bytes,d.documentId,d.title);
+ assert.deepEqual(source.document.sheets[0]!.charts,model().sheets[0]!.charts);
+ assert.deepEqual(saveSheetsXlsx(bytes,source.document),bytes);
+ assert.throws(()=>insertRows(session.snapshot(),sheet.id,2),OfficeError);
+ assert.throws(()=>writeLegacyXls(model()),OfficeError);
+ const before=openOpc(bytes);
+ source.document.sheets[0]!.cells['2:2']!.value={kind:'number',value:19};
+ const edited=saveSheetsXlsx(bytes,source.document),after=openOpc(edited);
+ for(const [name,part]of before.parts)if(name.startsWith('xl/drawings/')||name.startsWith('xl/charts/'))assert.deepEqual(after.parts.get(name),part);
+ session.execute(removeSheetChart(session.snapshot(),sheet.id,1));
+ session.execute(renameSheet(session.snapshot(),sheet.id,'Changed & More'));
+ const next=saveSheetsXlsx(bytes,model()),back=openSheetsXlsx(next,d.documentId,d.title);
+ assert.deepEqual(back.document.sheets[0]!.charts,model().sheets[0]!.charts);
+ assert.equal(back.document.sheets[0]!.name,'Changed & More');
+ session.undo();session.undo();assert.equal(model().sheets[0]!.charts!.length,3);
+});
