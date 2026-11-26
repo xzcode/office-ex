@@ -48,3 +48,15 @@ Local native editor-focused checks: 4/4; independent external document-focused n
 These changes do not establish exact Microsoft Office rendering, full format compatibility, human-reviewed translations or new-source macOS/Windows package verification. The public v0.1.0-dev.1 release and tag are unchanged.
 
 Final full Linux native desktop regression: 34/34 passed on the redesigned UI, including alternate Writer mode navigation, image/table/list saves, crash recovery, and protected source preservation. See docs/verification/m5/ribbon/native-desktop.json.
+
+## Workbench V2 and merged titlebar (user-approved minimal direction)
+
+The home uses a single 50px application header, left navigation for workspace, new, recent files and recovery, and three direct native-format creation shortcuts. Old formats and OEX drafts live under Other formats / New. Recent rows use actual locally persisted opaque file IDs, names and last-use timestamps; existing older records have no fabricated timestamp. The main process retains real filesystem paths and the renderer never receives them. Opening a recent file still requires the existing capability path. No decorative banner or fake records, no inactive document action strip on the home page. Original blue document, green grid and orange presentation marks are project-owned geometry, not copied Microsoft product logos.
+
+macOS uses Electron's native hidden titleBarStyle with real traffic lights positioned at x=14/y=18 and a reserved physical-left 88px titlebar region. The merged header is draggable except interactive controls. Windows/Linux retain their native OS frames. The local Linux check verifies layout reservation only, not native macOS traffic-light behavior. The native macOS packaged verifier now checks button position, content/frame geometry and interactive no-drag region. Full native macOS visual and lifecycle acceptance remains required.
+
+![Home light, real Linux app](verification/m5/home-v2/home-light.png)
+
+![Home dark, real Linux app](verification/m5/home-v2/home-dark.png)
+
+Final Linux native desktop regression: 34/34 passed on the final Workbench V2 code. Raw report: docs/verification/m5/home-v2/native-desktop.json.

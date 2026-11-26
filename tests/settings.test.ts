@@ -86,7 +86,9 @@ test('Recent-file capabilities withhold paths and return defensive state copies'
   await store.addRecent(source, 'private.docx');
   const copy = store.value(), item = copy.recent[0]!;
   assert.equal(store.resolveRecent(item.id), source);
-  assert.deepEqual(store.publicValue().recent, [{ id: item.id, name: 'private.docx' }]);
+  assert.ok(Number.isSafeInteger(item.lastUsedAt));
+  assert.deepEqual(store.publicValue().recent, [{ id: item.id, name: 'private.docx', lastUsedAt:item.lastUsedAt }]);
+  assert.equal(Object.hasOwn(store.publicValue().recent[0]!,'path'),false);
   copy.recent[0]!.path = '/changed'; copy.theme = 'dark';
   const publicCopy = store.publicValue(); publicCopy.recent[0]!.name = 'changed';
   assert.equal(store.resolveRecent(item.id), source);

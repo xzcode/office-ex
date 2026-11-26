@@ -387,7 +387,7 @@ if(ownsProfile)app.whenReady().then(async()=>{
   const createWindow=async():Promise<void>=>{
     if(window&&!window.isDestroyed())return;
     allowClose=false;quitRequested=false;rendererReady=false;
-    window=new BrowserWindow({width:1280,height:840,minWidth:880,minHeight:600,show:false,title:'Office EX',icon:appIcon,backgroundColor:'#f7f8fa',webPreferences:{preload:join(__dirname,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false,nodeIntegrationInWorker:false,nodeIntegrationInSubFrames:false,webSecurity:true,webviewTag:false,spellcheck:false,devTools:!app.isPackaged}});
+    window=new BrowserWindow({width:1280,height:840,minWidth:880,minHeight:600,show:false,title:'Office EX',icon:appIcon,backgroundColor:'#f7f8fa',...(process.platform==='darwin'?{titleBarStyle:'hidden' as const,trafficLightPosition:{x:14,y:18}}:{}),webPreferences:{preload:join(__dirname,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false,nodeIntegrationInWorker:false,nodeIntegrationInSubFrames:false,webSecurity:true,webviewTag:false,spellcheck:false,devTools:!app.isPackaged}});
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     window.webContents.on('will-navigate',event=>event.preventDefault());
     window.webContents.on('will-attach-webview',event=>event.preventDefault());

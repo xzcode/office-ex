@@ -2,6 +2,10 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "homeNew": "New",
+    "homeOtherFormats": "Other formats",
+    "homeMore": "View all",
+    "homeNoRecovery": "No recoverable drafts",
     "ribbonAlignment": "Alignment",
     "ribbonArrange": "Arrange",
     "ribbonBorders": "Borders",
@@ -188,6 +192,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "homeNew": "新建",
+    "homeOtherFormats": "其他格式",
+    "homeMore": "查看全部",
+    "homeNoRecovery": "暂无可恢复的草稿",
     "ribbonAlignment": "对齐",
     "ribbonArrange": "排列",
     "ribbonBorders": "边框",
@@ -374,6 +382,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "homeNew": "新增",
+    "homeOtherFormats": "其他格式",
+    "homeMore": "查看全部",
+    "homeNoRecovery": "目前沒有可復原的草稿",
     "ribbonAlignment": "對齊",
     "ribbonArrange": "排列",
     "ribbonBorders": "框線",
@@ -560,6 +572,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "homeNew": "新規",
+    "homeOtherFormats": "その他の形式",
+    "homeMore": "すべて表示",
+    "homeNoRecovery": "復元できる下書きはありません",
     "ribbonAlignment": "配置",
     "ribbonArrange": "整列",
     "ribbonBorders": "罫線",
@@ -746,6 +762,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "homeNew": "새로 만들기",
+    "homeOtherFormats": "기타 형식",
+    "homeMore": "모두 보기",
+    "homeNoRecovery": "복구할 초안 없음",
     "ribbonAlignment": "맞춤",
     "ribbonArrange": "정렬",
     "ribbonBorders": "테두리",
@@ -932,6 +952,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "homeNew": "Nouveau",
+    "homeOtherFormats": "Autres formats",
+    "homeMore": "Tout afficher",
+    "homeNoRecovery": "Aucun brouillon récupérable",
     "ribbonAlignment": "Alignement",
     "ribbonArrange": "Organiser",
     "ribbonBorders": "Bordures",
@@ -1118,6 +1142,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "homeNew": "Neu",
+    "homeOtherFormats": "Weitere Formate",
+    "homeMore": "Alle anzeigen",
+    "homeNoRecovery": "Keine wiederherstellbaren Entwürfe",
     "ribbonAlignment": "Ausrichtung",
     "ribbonArrange": "Anordnen",
     "ribbonBorders": "Rahmen",
@@ -1304,6 +1332,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "homeNew": "Nuevo",
+    "homeOtherFormats": "Otros formatos",
+    "homeMore": "Ver todo",
+    "homeNoRecovery": "No hay borradores recuperables",
     "ribbonAlignment": "Alineación",
     "ribbonArrange": "Organizar",
     "ribbonBorders": "Bordes",
@@ -1490,6 +1522,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "homeNew": "Novo",
+    "homeOtherFormats": "Outros formatos",
+    "homeMore": "Ver todos",
+    "homeNoRecovery": "Nenhum rascunho recuperável",
     "ribbonAlignment": "Alinhamento",
     "ribbonArrange": "Organizar",
     "ribbonBorders": "Bordas",
@@ -1676,6 +1712,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "homeNew": "Nuovo",
+    "homeOtherFormats": "Altri formati",
+    "homeMore": "Mostra tutto",
+    "homeNoRecovery": "Nessuna bozza recuperabile",
     "ribbonAlignment": "Allineamento",
     "ribbonArrange": "Disponi",
     "ribbonBorders": "Bordi",
@@ -1862,6 +1902,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "homeNew": "Создать",
+    "homeOtherFormats": "Другие форматы",
+    "homeMore": "Показать все",
+    "homeNoRecovery": "Нет восстанавливаемых черновиков",
     "ribbonAlignment": "Выравнивание",
     "ribbonArrange": "Упорядочить",
     "ribbonBorders": "Границы",
@@ -2048,6 +2092,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "homeNew": "جديد",
+    "homeOtherFormats": "تنسيقات أخرى",
+    "homeMore": "عرض الكل",
+    "homeNoRecovery": "لا توجد مسودات قابلة للاستعادة",
     "ribbonAlignment": "محاذاة",
     "ribbonArrange": "ترتيب",
     "ribbonBorders": "حدود",
@@ -2234,6 +2282,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "homeNew": "חדש",
+    "homeOtherFormats": "פורמטים נוספים",
+    "homeMore": "הצג הכול",
+    "homeNoRecovery": "אין טיוטות לשחזור",
     "ribbonAlignment": "יישור",
     "ribbonArrange": "סידור",
     "ribbonBorders": "גבולות",
@@ -2420,6 +2472,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "homeNew": "नया",
+    "homeOtherFormats": "अन्य प्रारूप",
+    "homeMore": "सभी देखें",
+    "homeNoRecovery": "पुनर्प्राप्त करने योग्य ड्राफ़्ट नहीं हैं",
     "ribbonAlignment": "संरेखण",
     "ribbonArrange": "व्यवस्थित करें",
     "ribbonBorders": "सीमाएँ",
@@ -2606,6 +2662,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "homeNew": "สร้างใหม่",
+    "homeOtherFormats": "รูปแบบอื่น",
+    "homeMore": "ดูทั้งหมด",
+    "homeNoRecovery": "ไม่มีแบบร่างที่กู้คืนได้",
     "ribbonAlignment": "การจัดแนว",
     "ribbonArrange": "จัดเรียง",
     "ribbonBorders": "เส้นขอบ",
@@ -2792,6 +2852,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "homeNew": "Tạo mới",
+    "homeOtherFormats": "Định dạng khác",
+    "homeMore": "Xem tất cả",
+    "homeNoRecovery": "Không có bản nháp để khôi phục",
     "ribbonAlignment": "Căn chỉnh",
     "ribbonArrange": "Sắp xếp",
     "ribbonBorders": "Viền",
@@ -2978,6 +3042,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "homeNew": "Baru",
+    "homeOtherFormats": "Format lainnya",
+    "homeMore": "Lihat semua",
+    "homeNoRecovery": "Tidak ada draf yang dapat dipulihkan",
     "ribbonAlignment": "Perataan",
     "ribbonArrange": "Susun",
     "ribbonBorders": "Batas",
@@ -3164,6 +3232,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "homeNew": "Baharu",
+    "homeOtherFormats": "Format lain",
+    "homeMore": "Lihat semua",
+    "homeNoRecovery": "Tiada draf boleh dipulihkan",
     "ribbonAlignment": "Penjajaran",
     "ribbonArrange": "Susun",
     "ribbonBorders": "Sempadan",
@@ -3350,6 +3422,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "homeNew": "Yeni",
+    "homeOtherFormats": "Diğer biçimler",
+    "homeMore": "Tümünü göster",
+    "homeNoRecovery": "Kurtarılabilir taslak yok",
     "ribbonAlignment": "Hizalama",
     "ribbonArrange": "Düzenle",
     "ribbonBorders": "Kenarlıklar",
@@ -3536,6 +3612,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "homeNew": "Nieuw",
+    "homeOtherFormats": "Andere indelingen",
+    "homeMore": "Alles weergeven",
+    "homeNoRecovery": "Geen herstelbare concepten",
     "ribbonAlignment": "Uitlijning",
     "ribbonArrange": "Schikken",
     "ribbonBorders": "Randen",
@@ -3722,6 +3802,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "homeNew": "Nowy",
+    "homeOtherFormats": "Inne formaty",
+    "homeMore": "Pokaż wszystkie",
+    "homeNoRecovery": "Brak wersji roboczych do odzyskania",
     "ribbonAlignment": "Wyrównanie",
     "ribbonArrange": "Rozmieść",
     "ribbonBorders": "Obramowania",
@@ -3908,6 +3992,10 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "homeNew": "Створити",
+    "homeOtherFormats": "Інші формати",
+    "homeMore": "Показати всі",
+    "homeNoRecovery": "Немає чернеток для відновлення",
     "ribbonAlignment": "Вирівнювання",
     "ribbonArrange": "Упорядкування",
     "ribbonBorders": "Межі",

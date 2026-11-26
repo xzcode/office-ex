@@ -1,0 +1,23 @@
+{
+  "platform": "linux",
+  "arch": "x64",
+  "checks": [
+    "Single compact titlebar, original three-module marks, clean empty-state home",
+    "Home navigation, older formats, draft recovery and recent views work",
+    "All three new-file cards and merged header save actual edited native documents, including PPT text blur",
+    "Recent files reflect real local saves and open by opaque capability; open tabs remain reachable from home",
+    "Light/dark home and platform-specific titlebar safe-area geometry"
+  ],
+  "screenshots": [
+    "home-light.png",
+    "home-dark.png"
+  ],
+  "startedAt": "2026-11-26T05:59:16.790Z",
+  "macCssReservation": {
+    "left": 88,
+    "padding": 88,
+    "region": "no-drag"
+  },
+  "status": "passed",
+  "completedAt": "2026-11-26T05:59:22.857Z"
+}

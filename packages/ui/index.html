@@ -10,18 +10,26 @@
 </head>
 <body>
   <div id="app">
+    <header class="topbar" id="office-titlebar">
+      <button class="brand" id="home" aria-label="Office EX home" data-i18n-aria="homeLabel"><img class="brand-icon" src="./office-ex.png" alt="" width="30" height="30"><span>Office EX</span></button>
+      <div id="tablist" class="tablist" role="tablist" aria-label="Documents" data-i18n-aria="documents"></div>
+      <div class="titlebar-drag-space" aria-hidden="true"></div>
+      <div class="titlebar-file-actions"><button id="open" class="titlebar-open">打开文件</button><button id="settings">设置</button><button id="about">关于 Office EX</button></div>
+      <div class="toolbar-actions" hidden><button id="undo" disabled>撤销</button><button id="redo" disabled>重做</button><span class="separator"></span><button id="save-as" disabled>另存为</button><button id="save" class="solid" disabled>保存</button></div>
+      <span class="stage-pill" id="product-version"></span>
+    </header>
     <aside class="sidebar">
-      <button class="brand" id="home" aria-label="Office EX home" data-i18n-aria="homeLabel"><img class="brand-icon" src="./office-ex.png" alt="" width="40" height="40"><span>Office<span class="brand-ex">EX</span></span></button>
-      <div class="build-tag" data-i18n="previewTag">DEVELOPMENT PREVIEW</div>
-      <nav aria-label="Main" data-i18n-aria="mainNav"><button id="open" class="nav-item primary"><span>↗</span><span data-i18n="open">打开文件</span><kbd>⌘ O</kbd></button><button id="new-menu" class="nav-item"><span>＋</span><span data-i18n="newDraft">新建草稿</span></button></nav>
-      <div class="sidebar-label" data-i18n="recent">最近打开</div><div id="recent-list" class="recent-list"></div>
+      <nav class="home-navigation" aria-label="Main" data-i18n-aria="mainNav">
+        <button id="workspace-nav" class="nav-item">工作台</button>
+        <button id="new-menu" class="nav-item">新建</button>
+        <button id="recent-nav" class="nav-item">最近文件</button>
+        <button id="recovery-nav" class="nav-item">草稿恢复</button>
+      </nav>
       <div class="sidebar-spacer"></div>
-      <div class="local-badge"><span class="online-dot"></span><span data-i18n="local">本地工作 · 离线优先</span></div>
-      <button id="settings" class="nav-item settings-button"><span>⚙</span><span data-i18n="settings">设置</span></button><button id="about" class="nav-item"><span>ⓘ</span><span data-i18n="productAbout">关于 Office EX</span></button>
+      <div class="home-sidebar-footer"><span class="online-dot"></span><span data-i18n="local">本地工作 · 离线优先</span></div>
     </aside>
     <main>
-      <header class="topbar"><div id="tablist" class="tablist" role="tablist" aria-label="Documents" data-i18n-aria="documents"></div><span class="stage-pill" id="product-version"></span></header>
-      <section class="toolbar" aria-label="Document actions" data-i18n-aria="documentActions"><div id="breadcrumb" data-i18n="workspace">工作台</div><div class="toolbar-actions"><button id="undo" data-i18n="undo" disabled>撤销</button><button id="redo" data-i18n="redo" disabled>重做</button><span class="separator"></span><button id="save-as" data-i18n="saveAs" disabled>另存为</button><button id="save" class="solid" data-i18n="save" disabled>保存</button></div></section>
+      <div id="breadcrumb" hidden></div>
       <div id="message" class="message" role="status" aria-live="polite" hidden></div>
       <section id="content" class="content"></section>
       <footer><span id="status" data-i18n="ready">就绪</span><span id="document-status"></span><span id="footer-version">Office EX</span></footer>

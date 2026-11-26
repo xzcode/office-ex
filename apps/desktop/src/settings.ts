@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { OfficeError, isRecord } from '@office-ex/contracts';
 import { isLanguagePreference, isRegionalPreference, isDocumentLanguagePreference, type LanguagePreference, type RegionalPreference, type DocumentLanguagePreference } from '@office-ex/i18n';
 import { parseSettingsPatch } from './ipc-policy.js';
-export interface Settings { version: 2; theme: 'system' | 'light' | 'dark'; language: LanguagePreference; region: RegionalPreference; documentLanguage: DocumentLanguagePreference; recent: { id: string; path: string; name: string }[] }
+export interface Settings { version: 2; theme: 'system' | 'light' | 'dark'; language: LanguagePreference; region: RegionalPreference; documentLanguage: DocumentLanguagePreference; recent: { id: string; path: string; name: string; lastUsedAt?:number }[] }
 const MAX_SETTINGS_BYTES = 128 * 1024;
 const defaults = (): Settings => ({ version: 2, theme: 'system', language: 'system', region: 'system', documentLanguage: 'system', recent: [] });
 function validPath(path: unknown): path is string { return typeof path === 'string' && path.length > 0 && path.length <= 8192 && !path.includes('\0') && isAbsolute(path); }
@@ -23,9 +23,9 @@ function validate(value: unknown): Settings | null {
     !Array.isArray(value.recent)||value.recent.length>20)return null;
   const recent: Settings['recent'] = [], ids = new Set<string>(), paths = new Set<string>();
   for (const item of value.recent) {
-    if (!isRecord(item) || Object.keys(item).some(key => !['id','path','name'].includes(key)) || typeof item.id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(item.id) ||
-        !validPath(item.path) || !validName(item.name) || ids.has(item.id) || paths.has(item.path)) return null;
-    ids.add(item.id); paths.add(item.path); recent.push({id:item.id,path:item.path,name:item.name});
+    if (!isRecord(item) || Object.keys(item).some(key => !['id','path','name','lastUsedAt'].includes(key)) || typeof item.id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(item.id) ||
+        !validPath(item.path) || !validName(item.name) || item.lastUsedAt!==undefined&&(typeof item.lastUsedAt!=='number'||!Number.isSafeInteger(item.lastUsedAt)||item.lastUsedAt<0||item.lastUsedAt>8640000000000000) || ids.has(item.id) || paths.has(item.path)) return null;
+    ids.add(item.id); paths.add(item.path); recent.push({id:item.id,path:item.path,name:item.name,...(typeof item.lastUsedAt==='number'?{lastUsedAt:item.lastUsedAt}:{})});
   }
   return {version:2,theme:value.theme,language,region,documentLanguage,recent};
 }
@@ -56,7 +56,7 @@ export class SettingsStore {
     return this.value();
   }
   value(): Settings { return structuredClone(this.settings); }
-  publicValue(): Omit<Settings,'recent'> & {recent: {id:string;name:string}[]} { return { ...this.settings, recent: this.settings.recent.map(({id,name}) => ({id,name})) }; }
+  publicValue(): Omit<Settings,'recent'> & {recent: {id:string;name:string;lastUsedAt?:number}[]} { return { ...this.settings, recent: this.settings.recent.map(({id,name,lastUsedAt}) => ({id,name,...(lastUsedAt===undefined?{}:{lastUsedAt})})) }; }
   async update(patch: {theme?:unknown;language?:unknown;region?:unknown;documentLanguage?:unknown;clearRecent?:unknown}): Promise<void> {
     // Validate the whole transaction before queuing; never coerce objects to enum strings.
     const checked = parseSettingsPatch(patch);
@@ -70,7 +70,7 @@ export class SettingsStore {
   }
   async addRecent(path: string, name: string): Promise<void> {
     if (!validPath(path) || !validName(name)) throw new OfficeError('invalid','Invalid recent file metadata');
-    await this.change(current => ({...current,recent:[{id:randomUUID(),path,name},...current.recent.filter(item => item.path !== path)].slice(0,20)}));
+    await this.change(current => ({...current,recent:[{id:randomUUID(),path,name,lastUsedAt:Date.now()},...current.recent.filter(item => item.path !== path)].slice(0,20)}));
   }
   resolveRecent(id: string): string {
     const item = this.settings.recent.find(value => value.id === id);

@@ -77,16 +77,24 @@ try{
  await page.locator('#about-dialog button[value=close]').click();
  assert.equal(await page.locator('.product-card').count(),3);assert.equal(await page.locator('.internal-drafts').evaluate(el=>el.open),false);
  if(process.platform==='darwin')assert.equal(await hash(join(folder,'Contents','Resources','office-ex.icns')),await hash(join(appDir,'dist','desktop','branding','office-ex.icns')));
+ if(process.platform==='darwin'){
+  const nativeTitlebar=await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];return {buttons:w.getWindowButtonPosition(),window:w.getBounds(),content:w.getContentBounds()};});
+  assert.ok(nativeTitlebar.buttons&&nativeTitlebar.buttons.x>=8&&nativeTitlebar.buttons.x<=26&&nativeTitlebar.buttons.y>=8&&nativeTitlebar.buttons.y<=28);
+  assert.ok(Math.abs(nativeTitlebar.window.height-nativeTitlebar.content.height)<=2,'The web header must occupy the native titlebar space');
+  const header=await page.evaluate(()=>{const bar=document.querySelector('#office-titlebar'),brand=document.querySelector('#home');return {platform:document.documentElement.dataset.platform,top:bar.getBoundingClientRect().top,left:brand.getBoundingClientRect().left,padding:getComputedStyle(bar).paddingLeft,buttonRegion:getComputedStyle(brand).getPropertyValue('-webkit-app-region')||getComputedStyle(brand).getPropertyValue('app-region')};});
+  assert.equal(header.platform,'darwin');assert.equal(header.top,0);assert.ok(header.left>=88&&parseFloat(header.padding)>=88);assert.equal(header.buttonRegion,'no-drag');
+  report.nativeTitlebar={...nativeTitlebar,header};
+ }
  record('Product branding, native icon assets, real version, About and native-format home verified');
 
  await page.locator('#settings').click();await page.locator('#language').selectOption('en-US');await page.locator('#document-language').selectOption('en-US');await page.locator('#settings-dialog button[value=close]').click();
  for(const format of ['doc','docx','xls','xlsx','ppt','pptx']){
-  console.log('CHECK '+format);const name='preview-check.'+format,path=join(work,name);await page.locator('#new-'+format).click();
+  console.log('CHECK '+format);const name='preview-check.'+format,path=join(work,name);await (await revealControl(page,'#new-'+format)).click();
   await page.waitForSelector('.tab[aria-selected=true]');
   if(format==='docx'){await page.locator('#writer-page-input').waitFor();await page.locator('#writer-page-input').focus();await page.keyboard.insertText('Packaged Writer test');}
   else if(format==='ppt'||format==='pptx'){await (await revealControl(page,'#slide-insert-text')).click();await (await revealControl(page,'#slide-text-editor')).fill('Packaged Slides test');}
   await app.evaluate(({dialog},filePath)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath});dialog.showOpenDialog=async()=>({canceled:false,filePaths:[filePath]});dialog.showMessageBox=async()=>({response:1,checkboxChecked:false});},path);
-  await page.locator('#save').click();try{await page.waitForFunction(name=>document.querySelector('.tab[aria-selected=true] .tab-title')?.textContent===name,name,{timeout:30000});}catch(error){const ui=await page.evaluate(()=>({title:document.querySelector('.tab[aria-selected=true] .tab-title')?.textContent,status:document.querySelector('#document-status')?.textContent,notice:document.querySelector('#notice')?.textContent,save:document.querySelector('#save')?.disabled}));throw new Error(format+' save: '+JSON.stringify(ui)+'; '+error);}
+  await page.locator('#save').click();try{await page.waitForFunction(name=>document.querySelector('.tab[aria-selected=true] .tab-title')?.textContent===name,name,{timeout:30000});}catch(error){const ui=await page.evaluate(()=>({title:document.querySelector('.tab[aria-selected=true] .tab-title')?.textContent,status:document.querySelector('#document-status')?.textContent,notice:document.querySelector('#message')?.textContent,save:document.querySelector('#save')?.disabled}));throw new Error(format+' save: '+JSON.stringify(ui)+'; '+error);}
   const bytes=await readFile(path),inspection=await inspectForEditor(bytes,name,'package-check-'+format);assert.equal(inspection.report.readOnly,false,format);
   assert.equal(inspection.editableWriterFormat??inspection.editableSheetsFormat??inspection.editableSlidesFormat,format);
   await page.locator('.tab[aria-selected=true] .tab-close').click();await page.waitForFunction(()=>document.querySelectorAll('.tab').length===0);

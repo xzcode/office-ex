@@ -9,6 +9,12 @@ export interface RibbonTab {id:string;label:MessageKey;groups:RibbonGroup[]}
 const NS='http://www.w3.org/2000/svg';
 // Original 24-unit line pictograms, using common desktop command metaphors.
 const paths:Record<string,string>={
+ file:'M6 3h9l4 4v14H6z M15 3v5h4',
+ home:'M3 11l9-8 9 8 M6 10v11h12V10 M10 21v-7h4v7',
+ clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M12 7v5l4 2',
+ recovery:'M4 9a8 8 0 1 1 0 6 M4 4v5h5 M12 7v5l4 2',
+ info:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M12 10v7 M12 7h.1',
+ arrowNext:'M9 5l7 7-7 7',
  bold:'M7 4h6a4 4 0 0 1 0 8H7z M7 12h7a4 4 0 0 1 0 8H7z',
  italic:'M10 4h10 M4 20h10 M15 4L9 20',
  underline:'M6 4v8a6 6 0 0 0 12 0V4 M4 21h16',

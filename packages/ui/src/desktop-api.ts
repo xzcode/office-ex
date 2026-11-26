@@ -1,6 +1,6 @@
 import type { Result } from '@office-ex/contracts';
 import type { LanguagePreference, RegionalPreference, DocumentLanguagePreference } from '@office-ex/i18n';
-export interface PublicSettings { version:2;theme:'system'|'light'|'dark';language:LanguagePreference;region:RegionalPreference;documentLanguage:DocumentLanguagePreference;recent:{id:string;name:string}[] }
+export interface PublicSettings { version:2;theme:'system'|'light'|'dark';language:LanguagePreference;region:RegionalPreference;documentLanguage:DocumentLanguagePreference;recent:{id:string;name:string;lastUsedAt?:number}[] }
 export interface RecoveryItem { version:1;id:string;documentId:string;contentId:string;revision:number;createdAt:number;sha256:string;byteLength:number }
 export interface OpenFileResult {token:string;documentId:string;name:string;bytes:Uint8Array;duplicate:boolean}
 export interface TabState {id:string;title:string;dirty:boolean;revision:number}
