@@ -8,38 +8,38 @@ Office EX is written in TypeScript and runs as a desktop application. Its origin
 
 ## Download
 
-The latest published development preview is **[v0.1.0-dev.3](https://github.com/xzcode/office-ex/releases/tag/v0.1.0-dev.3)**.
+The latest published development preview is **[v0.1.0-dev.4](https://github.com/xzcode/office-ex/releases/tag/v0.1.0-dev.4)**.
 
 | Platform | Installer |
 | --- | --- |
-| Windows x64 | [Download EXE](https://github.com/xzcode/office-ex/releases/download/v0.1.0-dev.3/Office-EX-0.1.0-dev.3-win32-x64-setup.exe) |
-| macOS Apple Silicon | [Download DMG](https://github.com/xzcode/office-ex/releases/download/v0.1.0-dev.3/Office-EX-0.1.0-dev.3-darwin-arm64.dmg) |
-| Linux x64 | [Download DEB](https://github.com/xzcode/office-ex/releases/download/v0.1.0-dev.3/Office-EX-0.1.0-dev.3-linux-x64.deb) |
+| Windows x64 | [Download EXE](https://github.com/xzcode/office-ex/releases/download/v0.1.0-dev.4/Office-EX-0.1.0-dev.4-win32-x64-setup.exe) |
+| macOS Apple Silicon | [Download DMG](https://github.com/xzcode/office-ex/releases/download/v0.1.0-dev.4/Office-EX-0.1.0-dev.4-darwin-arm64.dmg) |
+| Linux x64 | [Download DEB](https://github.com/xzcode/office-ex/releases/download/v0.1.0-dev.4/Office-EX-0.1.0-dev.4-linux-x64.deb) |
 
-See [all releases](https://github.com/xzcode/office-ex/releases), [SHA-256 checksums](https://github.com/xzcode/office-ex/releases/download/v0.1.0-dev.3/SHA256SUMS), and the [release acceptance record](https://github.com/xzcode/office-ex/actions/runs/45803738626).
+See [all releases](https://github.com/xzcode/office-ex/releases), [SHA-256 checksums](https://github.com/xzcode/office-ex/releases/download/v0.1.0-dev.4/SHA256SUMS), and the [release acceptance record](https://github.com/xzcode/office-ex/actions/runs/45955956363).
 
 This is a development preview, not a production release. The Windows installer is unsigned; the macOS application uses ad-hoc signing and is not notarized. Keep system security protections enabled and back up important documents.
 
 ## Features
 
-The published dev.3 preview implements a bounded, tested subset of the following features.
+The published dev.4 preview implements a bounded, tested subset of the following features.
 
 | Module | Capabilities |
 | --- | --- |
-| Writer | DOC / DOCX editing, text styles, tables and merged cells, section layout, headers and footers, automatic page numbers, paragraph pagination |
-| Sheets | XLS / XLSX editing, virtualized cell grid, direct formatting, 48 formula functions, conditional formatting, basic column, line and pie charts |
-| Slides | PPT / PPTX editing, text and shapes, images, groups, ordinary native tables, alignment and distribution, presentation mode |
+| Writer | DOC / DOCX editing, text styles, tables and merged cells, section layout, headers and footers, automatic page numbers, first/odd/even and multi-paragraph running stories, paragraph pagination |
+| Sheets | XLS / XLSX editing, virtualized cell grid, direct formatting, 48 formula functions, conditional formatting, basic column, line and pie charts, rich text and ordinary named styles |
+| Slides | PPT / PPTX editing, text and shapes, images, groups, native merged tables, cell formatting, alignment and distribution, presentation mode |
 | PDF | PDF reading and supported document export |
-| Desktop | Multiple documents, undo/redo, native save and save as, previous-version backups, crash recovery, themes, 22 UI locales |
+| Desktop | Independent document windows by default (optional tabs), eight file associations, draggable titlebar and resizable panels, undo/redo, native save and save as, previous-version backups, crash recovery, themes, 22 UI locales |
 
-Office EX preserves original native package parts where supported. Documents outside its editable profile are protected rather than silently flattened or stripped of unsupported content. Old binary formats, advanced layout, formulas, charts, tables, printing, accessibility and reference Office fidelity are not yet fully compatible. The internal .oex draft format is not a Microsoft Office format.
+Office EX preserves original native package parts where supported. Documents outside its editable profile are protected rather than silently flattened or stripped of unsupported content. Embedded Office objects, simplified producer-specific numbering, unresolved styles, old binary formats, advanced layout, formulas, charts, tables, printing, accessibility and reference Office fidelity are not yet fully compatible. The internal .oex draft format is not a Microsoft Office format.
 
 ## Development status
 
-- **M0–M6:** development-preview delivery completed. The dev.3 candidate passed 293 core tests and Windows, macOS and Linux native package/installer verification.
-- **M7:** ongoing deeper compatibility, performance, stability and product refinement. Post-dev.3 features belong to development builds, not the currently published installer.
+- **M0–M6:** development-preview delivery completed. The dev.4 candidate passed 316 core tests and Windows, macOS and Linux native package/installer verification.
+- **M7.1–M7.5:** delivered in dev.4. Real-world format compatibility and product stability work continue; features added after dev.4 belong to future development builds.
 
-The default `master` branch currently retains the earlier implementation baseline. For current source and documentation, use the [active development branch](https://github.com/xzcode/office-ex/tree/m5-distribution-20261125). For reproducible released source, use the [dev.3 tag](https://github.com/xzcode/office-ex/tree/v0.1.0-dev.3). The README describes the published preview and identifies ongoing work separately.
+The default `master` branch currently retains the earlier implementation baseline. For current source and documentation, use the [active development branch](https://github.com/xzcode/office-ex/tree/m5-distribution-20261125). For reproducible released source, use the [dev.4 tag](https://github.com/xzcode/office-ex/tree/v0.1.0-dev.4). The README describes the published preview and identifies ongoing work separately.
 
 ## Build from source
 
