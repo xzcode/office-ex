@@ -91,3 +91,19 @@ test('M7.5 ordinary Word theme overrides, proofing hints and cached pagination m
  const tracked=alterPart(b,'word/document.xml',s=>s.replace('<w:proofErr w:type="spellStart"/>','<w:ins w:id="1"/>'));
  assert.equal((await inspectForEditor(tracked,'tracked.docx','m75-track')).report.readOnly,true);
 });
+
+test('M7.7 genuinely absent paragraph style falls back without fabricating a style or losing the native reference',()=>{
+  const bytes=alterPart(styledFixture(),'word/document.xml',s=>s.replace('w:pStyle w:val="Heading"','w:pStyle w:val="9999"'));
+  const source=openWriterDocx(bytes,'missing-style','Missing style'),p=paragraph(source.document);
+  assert.equal(p.styleId,undefined);assert.equal(p.nativeMissingStyleId,'9999');assert.equal(source.document.styles['9999'],undefined);
+  assert.deepEqual(saveWriterDocx(source,source.document),bytes);
+  const session=new DocumentSession(source.document,{saved:true});
+  session.execute(replaceParagraphRange(session.snapshot(),p.id,0,6,'Edited','dangling-edit'));
+  const edited=prepareWriterDocxSave(serializeDraft(session.snapshot().document),'missing-style',bytes),pkg=openOpc(edited);
+  assert.match(new TextDecoder().decode(pkg.parts.get(pkg.mainPart!)!),/<w:pStyle w:val="9999"\/>/);
+  for(const [path,data]of openOpc(bytes).parts)if(path!==pkg.mainPart)assert.deepEqual(pkg.parts.get(path),data,path);
+  session.execute(setParagraphNamedStyle(session.snapshot(),p.id,'Normal'));
+  const repaired=openWriterDocx(saveWriterDocx(source,session.snapshot().document),'missing-style','Missing style');
+  assert.equal(paragraph(repaired.document).nativeMissingStyleId,undefined);assert.equal(paragraph(repaired.document).styleId,'Normal');
+  session.undo();session.undo();assert.deepEqual(saveWriterDocx(source,session.snapshot().document),bytes);
+});

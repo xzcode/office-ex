@@ -21,7 +21,20 @@ def run(directory):
     end=OxmlElement('w:proofErr');end.set(qn('w:type'),'spellEnd');r._r.addnext(end)
     paragraph._p.set(qn('w14:paraId'),'11112222');paragraph._p.set(qn('w14:textId'),'33334444')
     paragraph.add_run(' 的正文及样式。')
-    d.add_heading('二、用户角色',1);d.add_paragraph('用户可以编辑和保存普通文档。')
+    pstyle=OxmlElement('w:pStyle');pstyle.set(qn('w:val'),'9999');paragraph._p.get_or_add_pPr().insert(0,pstyle)
+    sect=d.sections[0]._sectPr;sect.remove(sect.find(qn('w:pgMar')))
+    d.add_heading('二、用户角色',1);listed=d.add_paragraph('用户可以编辑和保存普通文档。')
+    numbering=d.part.numbering_part.element
+    abstract=OxmlElement('w:abstractNum');abstract.set(qn('w:abstractNumId'),'9876')
+    level=OxmlElement('w:lvl');abstract.append(level)
+    for key,value in [('numFmt','bullet'),('suff','tab'),('lvlText','•')]:
+        child=OxmlElement('w:'+key);child.set(qn('w:val'),value);level.append(child)
+    rp=OxmlElement('w:rPr');level.append(rp)
+    for key,value in [('color','3370FF'),('sz','20')]:
+        child=OxmlElement('w:'+key);child.set(qn('w:val'),value);rp.append(child)
+    first_num=numbering.find(qn('w:num'));numbering.insert(list(numbering).index(first_num),abstract)
+    instance=OxmlElement('w:num');instance.set(qn('w:numId'),'9876');aid=OxmlElement('w:abstractNumId');aid.set(qn('w:val'),'9876');instance.append(aid);numbering.append(instance)
+    np=listed._p.get_or_add_pPr().get_or_add_numPr();np.get_or_add_numId().val=9876
     d.save(p/'ordinary-word.docx')
     subprocess.run(['node','--import','tsx','tests/writer-m7-document-compat.mjs',str(p)],check=True)
     edited=Document(p/'ordinary-word-edited.docx')
@@ -29,10 +42,13 @@ def run(directory):
     assert edited.paragraphs[2].runs[0].bold and edited.paragraphs[2].runs[0].font.size==Pt(12)
     assert edited.paragraphs[2].runs[0].font.strike is True
     assert edited.paragraphs[2].runs[0]._r.rPr.find(qn('w:shd')).get(qn('w:fill'))=='EFF0F1'
+    assert edited.paragraphs[2]._p.pPr.pStyle.val=='9999'
+    assert edited.sections[0]._sectPr.find(qn('w:pgMar')) is None
+    assert edited.paragraphs[4]._p.pPr.numPr.numId.val==9876
     with ZipFile(p/'ordinary-word.docx') as before,ZipFile(p/'ordinary-word-edited.docx') as after:
         for n in before.namelist():
             if n!='word/document.xml':assert before.read(n)==after.read(n),n
-    print('Independent Chinese DOCX theme/proofing/strike/solid shading edit and preserved parts passed')
+    print('Independent Chinese DOCX decoration, missing margin/style and minimal numbering preservation passed')
 if len(sys.argv)>1:run(sys.argv[1])
 else:
     with TemporaryDirectory() as p:run(p)

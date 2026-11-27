@@ -200,7 +200,12 @@ export class DocumentSession {
     for (const operation of operations) {
       assertOperation(operation);
       assert(permittedRoots[featureId]?.includes(String(operation.path[0])), 'unsupported', 'Feature cannot modify that model region');
-      if(featureId==='WRT-02')assert(operation.op==='set'&&operation.path.length===3&&operation.path[0]==='sections'&&typeof operation.path[1]==='number'&&operation.path[2]==='page','unsupported','Page command can only replace section page geometry');
+      if(featureId==='WRT-02'){
+        const path=operation.path,index=path[1];
+        const pageUpdate=operation.op==='set'&&path[2]==='page';
+        const materialize=operation.op==='delete'&&path[2]==='nativeImplicitMargins'&&this.#document.kind==='writer'&&typeof index==='number'&&this.#document.sections[index]?.nativeImplicitMargins===true&&operations.some(p=>p.op==='set'&&p.path.length===3&&p.path[0]==='sections'&&p.path[1]===index&&p.path[2]==='page');
+        assert(path.length===3&&path[0]==='sections'&&typeof index==='number'&&(pageUpdate||materialize),'unsupported','Page command can only replace section page geometry and materialize its implicit margins');
+      }
       if(featureId==='WRT-03'&&operation.path[0]==='numbering'){
         assert(!numberingAdded&&operation.op==='set'&&operation.path.length===1&&this.#document.kind==='writer','unsupported','Numbering commands may append definitions only');
         const old=this.#document.numbering,registry=operation.value as import('./model.js').WriterNumbering;

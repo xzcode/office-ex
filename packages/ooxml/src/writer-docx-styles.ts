@@ -23,6 +23,8 @@ type StyleKind='paragraph'|'character';
 export interface ThemeProfile {colors:Readonly<Record<string,string>>;fonts:Readonly<Record<string,string>>}
 export interface DocxStyleProfile{
   styles:Record<string,NamedStyle>;
+  /** All source identifiers, including definitions outside the editable subset. */
+  declaredStyleIds:ReadonlySet<string>;
   defaults:TextStyle;
   defaultParagraph?:string;
   tableDefaultsSafe:boolean;
@@ -95,6 +97,9 @@ function readTheme(bytes:Uint8Array,options:ContainerOptions):ThemeProfile{
     }
   }
   return {colors,fonts:mapping};
+}
+export function isMissingParagraphStyle(profile:DocxStyleProfile|undefined,id:string):boolean{
+  return !!profile&&stableId(id)&&!profile.declaredStyleIds.has(id)&&!Object.hasOwn(profile.styles,id);
 }
 export function requireStyleReference(profile:DocxStyleProfile|undefined,id:string,kind:StyleKind):string{
   allowed(profile&&stableId(id)&&Object.hasOwn(profile.styles,id)&&profile.styles[id]?.kind===kind,'Missing or unsupported '+kind+' style '+id);
@@ -234,7 +239,7 @@ function readStyles(bytes:Uint8Array,options:ContainerOptions,readRun:RunReader,
   }
   const builtinStoryStyles=new Set<'Header'|'Footer'>();
   if(defaultParagraph==='Normal')for(const kind of ['Header','Footer'] as const){const entry=entries.get(kind);if(entry&&builtinStoryStyle(entry.node,kind))builtinStoryStyles.add(kind);}
-  return {styles,defaults,...(defaultParagraph?{defaultParagraph}:{}),tableDefaultsSafe:tables.length===0||builtinTableStyles.has('TableNormal'),builtinTableStyles,builtinStoryStyles};
+  return {styles,declaredStyleIds:new Set(entries.keys()),defaults,...(defaultParagraph?{defaultParagraph}:{}),tableDefaultsSafe:tables.length===0||builtinTableStyles.has('TableNormal'),builtinTableStyles,builtinStoryStyles};
 }
 function relationPath(main:string):string{
   const i=main.lastIndexOf('/');return main.slice(0,i+1)+'_rels/'+main.slice(i+1)+'.rels';
@@ -301,7 +306,7 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
   if(!stylePath&&!themePath&&!hasMetadata)return {part:main,stories,differentEvenOddPages};
   const theme=themePath?readTheme(pkg.parts.get(themePath)!,options):undefined;
   const numbering=numberingPath?readNumbering(numberingPath,pkg.parts.get(numberingPath)!,options):undefined;
-  const profile:DocxStyleProfile=stylePath?readStyles(pkg.parts.get(stylePath)!,options,readRun,readParagraph,theme,numbering):{styles:{},defaults:{},tableDefaultsSafe:true};
+  const profile:DocxStyleProfile=stylePath?readStyles(pkg.parts.get(stylePath)!,options,readRun,readParagraph,theme,numbering):{styles:{},declaredStyleIds:new Set(),defaults:{},tableDefaultsSafe:true};
   if(numbering)profile.numbering=numbering;
   if(theme)profile.theme=theme;
   return {part:main,profile,stories,settingsPath,differentEvenOddPages};

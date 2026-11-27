@@ -5,13 +5,13 @@
  */
 import type { Element, Document } from '@xmldom/xmldom';
 import { OfficeError, assert, EMU_PER_TWIP } from '@office-ex/contracts';
-import { createDocument, validateDocument, buildWriterNumberingMarkers, writerStoryKey, WRITER_STORY_KEYS, writerStoryKind, freezeData, isDocumentLanguageTag, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type Inline, type TextStyle, type WriterSection, type WriterPageStory, type WriterStoryParagraph, type WriterStoryVariant, type NamedStyle, type Table } from '@office-ex/core';
+import { createDocument, validateDocument, WRITER_IMPLICIT_MARGIN, buildWriterNumberingMarkers, writerStoryKey, WRITER_STORY_KEYS, writerStoryKind, freezeData, isDocumentLanguageTag, type DeepReadonly, type WriterDocument, type WriterBlock, type Paragraph, type TextRun, type Inline, type TextStyle, type WriterSection, type WriterPageStory, type WriterStoryParagraph, type WriterStoryVariant, type NamedStyle, type Table } from '@office-ex/core';
 import { openOpc, writeOpc, type OpcPackage } from './opc.js';
 import { parseXml, serializeXml } from './xml.js';
 import { writeZip } from './zip.js';
 import type { ContainerOptions } from './limits.js';
 import { loadMedia, planMedia, readInlinePicture, writeInlinePicture, addMediaParts, saveMediaPackage, type MediaGraph, type MediaPlan } from './writer-docx-images.js';
-import { readStyleProfile, type DocxStyleProfile, type DocxStorySource, type ThemeProfile, requireStyleReference } from './writer-docx-styles.js';
+import { readStyleProfile, type DocxStyleProfile, type DocxStorySource, type ThemeProfile, requireStyleReference, isMissingParagraphStyle } from './writer-docx-styles.js';
 
 import {readNumberingReference,numberingChanged,addNumberingParts} from './writer-docx-numbering.js';
 
@@ -156,7 +156,7 @@ export function readParagraphStyle(el:Element,reference?:(id:string)=>void,secti
   }
   return style;
 }
-function readPage(el:Element,stories:Record<string,WriterPageStory>):Pick<WriterSection,'page'|'pageExtras'|'storyRefs'|'pageNumberStart'|'differentFirstPage'>{
+function readPage(el:Element,stories:Record<string,WriterPageStory>):Pick<WriterSection,'page'|'pageExtras'|'storyRefs'|'pageNumberStart'|'differentFirstPage'|'nativeImplicitMargins'>{
   requireElement(el,'sectPr');attrs(el);const items=elements(el);let i=0;
   const refs:NonNullable<WriterSection['storyRefs']>={};
   while(items[i]&&(isW(items[i]!,'headerReference')||isW(items[i]!,'footerReference'))){
@@ -165,15 +165,18 @@ function readPage(el:Element,stories:Record<string,WriterPageStory>):Pick<Writer
     const variant=prop(ref,'type');valid(variant==='default'||variant==='first'||variant==='even','Invalid running story variant');const slot=writerStoryKey(kind,variant);valid(id&&!refs[slot]&&Object.hasOwn(stories,id)&&stories[id]!.kind===kind,'Invalid running story reference');refs[slot]=id;
   }
   if(items[i]&&isW(items[i]!,'type')){const type=items[i++]!;attrs(type,['w:val']);empty(type);valid(prop(type,'val')==='nextPage','Only next-page sections are supported');}
-  const size=items[i++]!,margins=items[i++]!;
-  valid(size&&margins&&isW(size,'pgSz')&&isW(margins,'pgMar'),'Explicit section page size and margins required');
-  attrs(size,['w:w','w:h','w:orient']);empty(size);attrs(margins,['w:top','w:right','w:bottom','w:left','w:header','w:footer','w:gutter']);empty(margins);
+  const size=items[i++]!;const margins=items[i]&&isW(items[i]!,'pgMar')?items[i++]:undefined;
+  valid(size&&isW(size,'pgSz'),'Explicit section page size required');
+  attrs(size,['w:w','w:h','w:orient']);empty(size);
+  if(margins){attrs(margins,['w:top','w:right','w:bottom','w:left','w:header','w:footer','w:gutter']);empty(margins);}
+  else valid(Object.keys(stories).length===0,'Implicit page margins with running stories require a later adapter');
   const width=numberProp(size,'w',1,31680),height=numberProp(size,'h',1,31680),orientation=prop(size,'orient');
   valid(orientation===undefined||orientation===(width>height?'landscape':'portrait'),'Inconsistent page orientation');
-  valid(prop(margins,'gutter')===undefined||prop(margins,'gutter')==='0','Unsupported gutter');
+  if(margins)valid(prop(margins,'gutter')===undefined||prop(margins,'gutter')==='0','Unsupported gutter');
+  else valid(width*EMU_PER_TWIP>2*WRITER_IMPLICIT_MARGIN&&height*EMU_PER_TWIP>2*WRITER_IMPLICIT_MARGIN,'Page too small for implicit margin preview');
   const extras:NonNullable<WriterSection['pageExtras']>={};
   for(const [name,key] of [['header','headerDistance'],['footer','footerDistance']] as const){
-    if(prop(margins,name)!==undefined){const amount=numberProp(margins,name,0,31680)*EMU_PER_TWIP;if(amount||WRITER_STORY_KEYS.some(k=>writerStoryKind(k)===name&&refs[k]))extras[key]=amount;}
+    if(margins&&prop(margins,name)!==undefined){const amount=numberProp(margins,name,0,31680)*EMU_PER_TWIP;if(amount||WRITER_STORY_KEYS.some(k=>writerStoryKind(k)===name&&refs[k]))extras[key]=amount;}
   }
   let pageNumberStart:number|undefined;
   if(items[i]&&isW(items[i]!,'pgNumType')){
@@ -188,7 +191,7 @@ function readPage(el:Element,stories:Record<string,WriterPageStory>):Pick<Writer
   const differentFirstPage=items[i]&&isW(items[i]!,'titlePg')?toggled(items[i++]!):false;
   if(items[i]&&isW(items[i]!,'docGrid')){const grid=items[i++]!;attrs(grid,['w:type','w:linePitch']);empty(grid);valid(prop(grid,'type')===undefined||prop(grid,'type')==='default','Active document grid unsupported');if(prop(grid,'linePitch')!==undefined)extras.docGridLinePitch=numberProp(grid,'linePitch',0,31680)*EMU_PER_TWIP;}
   valid(i===items.length,'Unsupported section properties');
-  return {page:{width:width*EMU_PER_TWIP,height:height*EMU_PER_TWIP,margins:{top:numberProp(margins,'top',0,31680)*EMU_PER_TWIP,right:numberProp(margins,'right',0,31680)*EMU_PER_TWIP,bottom:numberProp(margins,'bottom',0,31680)*EMU_PER_TWIP,left:numberProp(margins,'left',0,31680)*EMU_PER_TWIP}},...(Object.keys(extras).length?{pageExtras:extras}:{}),...(Object.keys(refs).length?{storyRefs:refs}:{}),...(pageNumberStart!==undefined?{pageNumberStart}:{}),...(differentFirstPage?{differentFirstPage:true as const}:{})};
+  return {page:{width:width*EMU_PER_TWIP,height:height*EMU_PER_TWIP,margins:margins?{top:numberProp(margins,'top',0,31680)*EMU_PER_TWIP,right:numberProp(margins,'right',0,31680)*EMU_PER_TWIP,bottom:numberProp(margins,'bottom',0,31680)*EMU_PER_TWIP,left:numberProp(margins,'left',0,31680)*EMU_PER_TWIP}:{top:WRITER_IMPLICIT_MARGIN,right:WRITER_IMPLICIT_MARGIN,bottom:WRITER_IMPLICIT_MARGIN,left:WRITER_IMPLICIT_MARGIN}},...(!margins?{nativeImplicitMargins:true as const}:{}),...(Object.keys(extras).length?{pageExtras:extras}:{}),...(Object.keys(refs).length?{storyRefs:refs}:{}),...(pageNumberStart!==undefined?{pageNumberStart}:{}),...(differentFirstPage?{differentFirstPage:true as const}:{})};
 }
 function simpleText(el:Element):string{
   attrs(el,['xml:space']);let text='';
@@ -426,8 +429,8 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
   let paragraphIndex=0,cellCount=0;
   const readParagraph=(p:Element,inCell=false,sectionEnd?:Element):WriterBlock=>{
     const bi=paragraphIndex++;valid(paragraphIndex<=MAX_BLOCKS,'Paragraph budget exceeded');requireElement(p,'p');attrs(p);const nodes=elements(p);
-    let style:TextStyle|undefined,styleId=profile?.defaultParagraph;let i=0;
-    if(nodes[0]&&isW(nodes[0],'pPr')){style=readParagraphStyle(nodes[0],profile?id=>{styleId=requireStyleReference(profile,id,'paragraph');}:undefined,sectionEnd,profile?.theme);i++;}
+    let style:TextStyle|undefined,styleId=profile?.defaultParagraph,nativeMissingStyleId:string|undefined;let i=0;
+    if(nodes[0]&&isW(nodes[0],'pPr')){style=readParagraphStyle(nodes[0],profile?id=>{if(isMissingParagraphStyle(profile,id)){nativeMissingStyleId=id;styleId=undefined;}else styleId=requireStyleReference(profile,id,'paragraph');}:undefined,sectionEnd,profile?.theme);i++;}
     const runs:Inline[]=[];let pageBreak=false;
     for(;i<nodes.length;i++){
       const r=nodes[i]!;if(proofingMarker(r))continue;requireElement(r,'r');attrs(r);valid(++runCount<=MAX_RUNS,'Run limit exceeded');
@@ -447,7 +450,7 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
         else if(isW(child,'br')){
           attrs(child,['w:type']);empty(child);const type=prop(child,'type');
           if(type==='page'){
-            valid(!inCell&&!sectionEnd&&!style&&!direct&&!runStyleId&&(!profile||!styleId||styleId===profile.defaultParagraph)&&nodes.length===1&&items.length===1,'Page break must occupy its own unformatted paragraph');pageBreak=true;
+            valid(!inCell&&!sectionEnd&&!style&&!nativeMissingStyleId&&!direct&&!runStyleId&&(!profile||!styleId||styleId===profile.defaultParagraph)&&nodes.length===1&&items.length===1,'Page break must occupy its own unformatted paragraph');pageBreak=true;
           }else{valid(type===undefined||type==='textWrapping','Unsupported break type');text+='\n';}
         }else unsupported('Unsupported run content '+child.localName);
       }
@@ -455,7 +458,7 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
       if(!pageBreak)runs.push({id:'r-'+bi+'-'+runs.length,type:'text',text,...(runStyleId?{styleId:runStyleId}:{}),...(direct&&Object.keys(direct).length?{style:direct}:{})});
     }
     if(pageBreak)return {id:'break-'+bi,type:'page-break'};
-    return {id:'p-'+bi,type:'paragraph',runs:runs.length?runs:[{id:'r-'+bi+'-0',type:'text',text:''}],...(styleId?{styleId}:{}),...(style&&Object.keys(style).length?{style}:{})};
+    return {id:'p-'+bi,type:'paragraph',runs:runs.length?runs:[{id:'r-'+bi+'-0',type:'text',text:''}],...(styleId?{styleId}:{}),...(nativeMissingStyleId?{nativeMissingStyleId}:{}),...(style&&Object.keys(style).length?{style}:{})};
   };
   // Section properties belong to the paragraph ending the preceding
   // section. Resolve geometry before importing its paragraphs and tables.
@@ -567,8 +570,9 @@ function mainXml(candidate:unknown,profile:DocxStyleProfile|undefined,media:Medi
   let totalRuns=0,totalText=0,paragraphCount=0,cellCount=0,imageCount=0;let body='';
   const writeParagraph=(block:DeepReadonly<Paragraph>,inCell=false,sectionEnd=''):string=>{
     valid(++paragraphCount<=MAX_BLOCKS,'Paragraph budget exceeded');let body='';
-    const paragraphStyle=block.styleId??profile?.defaultParagraph;
-    if(paragraphStyle)requireStyleReference(profile,paragraphStyle,'paragraph');
+    const paragraphStyle=block.nativeMissingStyleId??block.styleId??profile?.defaultParagraph;
+    if(block.nativeMissingStyleId)valid(isMissingParagraphStyle(profile,block.nativeMissingStyleId),'Unresolved style may only be preserved in a matching source profile');
+    else if(paragraphStyle)requireStyleReference(profile,paragraphStyle,'paragraph');
     body+='<w:p>'+writeParagraphStyle(block.style??{},paragraphStyle,sectionEnd);
     for(const inline of block.runs.length?block.runs:[{id:'empty',type:'text' as const,text:''}]){
       valid(++totalRuns<=MAX_RUNS,'Run budget exceeded');
@@ -586,7 +590,7 @@ function mainXml(candidate:unknown,profile:DocxStyleProfile|undefined,media:Medi
     const p=s.page,width=twip(p.width,1,31680),height=twip(p.height,1,31680),m=p.margins,extra=s.pageExtras;
     const refs=(['header','footer'] as const).flatMap(kind=>(['default','first','even'] as const).map(variant=>{const id=s.storyRefs?.[writerStoryKey(kind,variant)];return id?'<w:'+kind+'Reference w:type="'+variant+'" r:id="'+escapeXml(id)+'"/>':'';})).join('');
     return '<w:sectPr>'+refs+tag('pgSz',{w:width,h:height,...(width>height?{orient:'landscape'}:{})})+
-      tag('pgMar',{top:twip(m.top,0,31680),right:twip(m.right,0,31680),bottom:twip(m.bottom,0,31680),left:twip(m.left,0,31680),header:twip(extra?.headerDistance??0,0,31680),footer:twip(extra?.footerDistance??0,0,31680),gutter:0})+
+      (s.nativeImplicitMargins?'':tag('pgMar',{top:twip(m.top,0,31680),right:twip(m.right,0,31680),bottom:twip(m.bottom,0,31680),left:twip(m.left,0,31680),header:twip(extra?.headerDistance??0,0,31680),footer:twip(extra?.footerDistance??0,0,31680),gutter:0}))+
       (s.pageNumberStart===undefined?'':tag('pgNumType',{start:s.pageNumberStart,fmt:'decimal'}))+
       (extra?.columnSpace===undefined?'':tag('cols',{num:1,space:twip(extra.columnSpace,0,31680)}))+(s.differentFirstPage?'<w:titlePg/>':'')+(extra?.docGridLinePitch===undefined?'':tag('docGrid',{type:'default',linePitch:twip(extra.docGridLinePitch,0,31680)}))+'</w:sectPr>';
   };

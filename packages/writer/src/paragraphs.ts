@@ -4,7 +4,7 @@
  * Nested tables and crossing structural boundaries are never silently flattened. All changes go through DocumentSession.
  */
 import { assert, assertId, assertUnicode, graphemeBoundaries } from '@office-ex/contracts';
-import { patchCommand, validateTextStyle, assertPlainData, cloneData, inlineText, projectParagraph, assertParagraphRange, OBJECT_REPLACEMENT, type DocumentSnapshot, type DocumentCommand, type ModelPath, type DeepReadonly, type TextStyle, type Paragraph, type TextRun, type Inline, type WriterBlock, type WriterDocument } from '@office-ex/core';
+import { patchCommand, validateTextStyle, assertPlainData, cloneData, inlineText, projectParagraph, assertParagraphRange, OBJECT_REPLACEMENT, type DocumentSnapshot, type DocumentCommand, type ModelPath, type PatchOperation, type DeepReadonly, type TextStyle, type Paragraph, type TextRun, type Inline, type WriterBlock, type WriterDocument } from '@office-ex/core';
 
 type ReadRun = DeepReadonly<TextRun>;
 type ReadParagraph = DeepReadonly<Paragraph>;
@@ -152,7 +152,9 @@ export function setParagraphNamedStyle(snapshot:DocumentSnapshot,paragraphId:str
   const p=locate(snapshot,paragraphId),model=writer(snapshot);
   assertId(styleId);const style=Object.hasOwn(model.styles,styleId)?model.styles[styleId]:undefined;
   assert(style?.kind==='paragraph','unsupported','Expected a supported paragraph style');
-  return patchCommand(snapshot,'WRT-03',[{op:'set',path:[...p.parent,p.block,'styleId'],value:styleId}]);
+  const ops:PatchOperation[]=[{op:'set',path:[...p.parent,p.block,'styleId'],value:styleId}];
+  if(p.paragraph.nativeMissingStyleId)ops.push({op:'delete',path:[...p.parent,p.block,'nativeMissingStyleId']});
+  return patchCommand(snapshot,'WRT-03',ops);
 }
 /** Apply an existing character style to a grapheme-safe selection. */
 export function setCharacterNamedStyle(snapshot:DocumentSnapshot,paragraphId:string,start:number,end:number,styleId:string,operationId:string):DocumentCommand{

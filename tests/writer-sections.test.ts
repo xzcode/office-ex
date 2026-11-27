@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {OfficeError,EMU_PER_TWIP,graphemeBoundaries} from '@office-ex/contracts';
-import {createDocument,DocumentSession,makeImageResource,projectParagraph,type WriterDocument} from '@office-ex/core';
+import {createDocument,DocumentSession,makeImageResource,projectParagraph,patchCommand,type WriterDocument} from '@office-ex/core';
 import {replaceParagraphRange,splitParagraph,splitWriterSectionAfter,setWriterPage,insertImageAt,insertTableAfter,locateParagraph,formatParagraphRange,setParagraphDirection,resolveWriterRange} from '@office-ex/writer';
 import {writeWriterDocx,openWriterDocx,saveWriterDocx,openOpc,writeZip} from '@office-ex/ooxml';
 import {layoutWriter,type FontMetrics} from '@office-ex/render';
@@ -59,4 +59,24 @@ test('I18N-04 document language and direct run/paragraph direction survive DOCX 
   assert.throws(()=>layoutWriter(s.snapshot(),font),fails('unsupported')); // No false bidi fidelity claims.
   assert.throws(()=>formatParagraphRange(s.snapshot(),'paragraph-1',0,1,{language:'bad locale'},'bad'),fails('invalid'));
   assert.deepEqual(saveWriterDocx(source,source.document),bytes);
+});
+
+test('M7.7 omitted margins use explicit preview fallback, preserve omission on text save and materialize on page setting edits',()=>{
+  const {s}=example(),pkg=openOpc(writeWriterDocx(s.snapshot().document)),parts=new Map(pkg.parts),main=pkg.mainPart!,enc=new TextEncoder(),dec=new TextDecoder();
+  const xml=dec.decode(parts.get(main)!).replace(/<w:pgMar\b[^>]*\/>/,'');parts.set(main,enc.encode(xml));const bytes=writeZip(parts);
+  const source=openWriterDocx(bytes,'implicit','Implicit margins'),section=source.document.sections[0]!;
+  assert.equal(section.nativeImplicitMargins,true);assert.equal(section.page.margins.left,1440*EMU_PER_TWIP);
+  assert.deepEqual(saveWriterDocx(source,source.document),bytes);
+  const session=new DocumentSession(source.document,{saved:true});
+  assert.ok(layoutWriter(session.snapshot(),font).warnings.includes('writer.implicit-page-margins-estimated'));
+  assert.throws(()=>session.execute(patchCommand(session.snapshot(),'WRT-02',[{op:'delete',path:['sections',0,'nativeImplicitMargins']}])),fails('unsupported'));
+  assert.throws(()=>session.execute(patchCommand(session.snapshot(),'WRT-02',[{op:'set',path:['sections',0,'nativeImplicitMargins'],value:true}])),fails('unsupported'));
+  session.execute(replaceParagraphRange(session.snapshot(),section.blocks[0]!.id,0,5,'Updated','margin-text'));
+  const edited=saveWriterDocx(source,session.snapshot().document);
+  assert.doesNotMatch(dec.decode(openOpc(edited).parts.get(main)!),/<w:pgMar\b/);
+  session.execute(setWriterPage(session.snapshot(),section.id,page(11906,16838)));
+  const explicit=saveWriterDocx(source,session.snapshot().document),reopened=openWriterDocx(explicit,'implicit','Implicit margins');
+  assert.equal(reopened.document.sections[0]!.nativeImplicitMargins,undefined);assert.equal(reopened.document.sections[0]!.page.margins.left,720*EMU_PER_TWIP);
+  assert.match(dec.decode(openOpc(explicit).parts.get(main)!),/<w:pgMar\b/);
+  session.undo();session.undo();assert.deepEqual(saveWriterDocx(source,session.snapshot().document),bytes);
 });

@@ -120,6 +120,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
   const charge=(n:number)=>{clusterCount+=n;assert(clusterCount<=maxClusters,'limit','Writer layout cluster budget exceeded');};
   for(const section of model.sections){
     check();const spec=section.page,m=spec.margins;
+    if(section.nativeImplicitMargins)warnings.add('writer.implicit-page-margins-estimated');
     const usableWidth=spec.width-m.left-m.right,usableHeight=spec.height-m.top-m.bottom;
     assert(usableWidth>0&&usableHeight>0,'invalid','Page has no usable area');
     const makePage=():WriterPage=>{assert(pages.length<maxPages,'limit','Writer layout page budget exceeded');const p:WriterPage={sectionId:section.id,width:spec.width,height:spec.height,margins:m,lines:[],tableCells:[],images:[]};pages.push(p);return p;};
@@ -136,6 +137,7 @@ export function layoutWriter(snapshot:DocumentSnapshot,provider:FontMetrics,opti
     };
     const layParagraph=(block:DeepReadonly<Paragraph>,originX:number,boxWidth:number,addSpace:(n:number)=>void,place:(line:WriterLine)=>void,previous?:ReadBlock,next?:ReadBlock):void=>{
       check();assert(++blocks<=10000,'limit','Writer layout block budget exceeded');
+      if(block.nativeMissingStyleId)warnings.add('writer.missing-paragraph-style');
       const paraStyle=effective(block),g=writerParagraphGeometry(paraStyle,boxWidth),styleId=block.styleId??model.defaultParagraphStyleId;
       const sameStyle=(other:ReadBlock|undefined)=>other?.type==='paragraph'&&(other.styleId??model.defaultParagraphStyleId)===styleId;
       const before=paraStyle.contextualSpacing&&sameStyle(previous)?0:paraStyle.spaceBefore??0;

@@ -59,3 +59,21 @@ test('M5 numbering crosses sections and invalidates cached later-section marker 
  assert.equal(layout.pages[1]!.lines[0]!.listMarker?.text,'1.');assert.notEqual(layout.pages[1],old);
  assert.equal(layout.pages[1]!.lines[0]!.start,0);
 });
+
+test('M7.7 minimally specified single-level producer bullet retains marker color, size and native numbering part',async()=>{
+ const d=createDocument('writer','minimal-bullet');d.sections[0]!.blocks=[para('a','First'),para('b','Second')];const session=new DocumentSession(d);
+ session.execute(setWriterList(session.snapshot(),'a','bullet'));
+ const pkg=openOpc(writeWriterDocx(doc(session))),parts=new Map(pkg.parts),enc=new TextEncoder(),dec=new TextDecoder();
+ const minimal='<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="1"><w:lvl><w:numFmt w:val="bullet"/><w:suff w:val="tab"/><w:lvlText w:val="•"/><w:rPr><w:color w:val="3370ff"/><w:sz w:val="20"/></w:rPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num></w:numbering>';
+ parts.set('word/numbering.xml',enc.encode(minimal));const bytes=writeZip(parts);
+ const source=openWriterDocx(bytes,d.documentId,d.title),m=[...buildWriterNumberingMarkers(source.document).values()][0]!;
+ assert.equal(m.text,'•');assert.deepEqual(m.style.color,{kind:'rgba',red:51,green:112,blue:255,alpha:255});assert.equal(m.style.fontSize,127000);
+ assert.equal((await inspectForEditor(bytes,'minimal.docx',d.documentId)).report.readOnly,false);
+ const s=new DocumentSession(source.document,{saved:true}),p=source.document.sections[0]!.blocks[0]!;
+ s.execute(replaceParagraphRange(s.snapshot(),p.id,0,5,'Edited','bullet-edit'));
+ const edited=saveWriterDocx(source,s.snapshot().document);assert.deepEqual(openOpc(edited).parts.get('word/numbering.xml'),parts.get('word/numbering.xml'));
+ const copied=writeWriterDocx(s.snapshot().document),reopened=openWriterDocx(copied,d.documentId,d.title);
+ assert.deepEqual(reopened.document.numbering,source.document.numbering);
+ const invalid=new Map(parts);invalid.set('word/numbering.xml',enc.encode(minimal.replace('<w:numFmt w:val="bullet"/>','<w:numFmt w:val="decimal"/>')));
+ assert.equal((await inspectForEditor(writeZip(invalid),'invalid.docx','bad-number')).report.readOnly,true);
+});

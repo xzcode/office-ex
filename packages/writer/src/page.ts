@@ -17,7 +17,9 @@ export function setWriterPage(snapshot:DocumentSnapshot,sectionId:string,page:Wr
     }
     if(block.type==='paragraph')for(const run of block.runs)if(run.type==='image')assert(run.width<=width&&run.height<=height,'unsupported','Resize the image before reducing page size');
   }
-  return patchCommand(snapshot,'WRT-02',[{op:'set',path:['sections',index,'page'],value:page}]);
+  const ops:PatchOperation[]=[{op:'set',path:['sections',index,'page'],value:page}];
+  if(snapshot.document.sections[index]!.nativeImplicitMargins)ops.push({op:'delete',path:['sections',index,'nativeImplicitMargins']});
+  return patchCommand(snapshot,'WRT-02',ops);
 }
 
 /** All supported section boundaries start a new page. A nonfinal Word section
@@ -73,6 +75,8 @@ export function setWriterPageStory(snapshot:DocumentSnapshot,sectionId:string,ki
   // Page stories are independent of the body. Keep the existing body
   // block array and its paragraph identities on every story-only edit.
   const operations:PatchOperation[]=[{op:'set',path:['pageStories'],value:stories},{op:'set',path:['sections',index,'storyRefs'],value:refs}];
+  // Adding running stories makes the previously implicit preview margins explicit.
+  doc.sections.forEach((s,i)=>{if(s.nativeImplicitMargins)operations.push({op:'delete',path:['sections',i,'nativeImplicitMargins']});});
   if(value.differentFirstPage!==undefined){
     if(value.differentFirstPage)operations.push({op:'set',path:['sections',index,'differentFirstPage'],value:true});
     else operations.push({op:'delete',path:['sections',index,'differentFirstPage']});

@@ -11,7 +11,7 @@ export interface WriterParagraphRule {color:Color;width:number;space:number}
 /** Bounded WordprocessingML numbering. References are native positive numIds;
  * zero explicitly cancels inherited numbering. Definitions are immutable per id. */
 export interface WriterListReference {numId:number;level:number}
-export interface WriterListLevel {format:'decimal'|'bullet';start:number;pattern:string;indent:number;hanging:number;alignment:'start'|'center'|'end';neverRestart?:boolean;symbolBullet?:boolean}
+export interface WriterListLevel {format:'decimal'|'bullet';start:number;pattern:string;indent:number;hanging:number;alignment:'start'|'center'|'end';neverRestart?:boolean;symbolBullet?:boolean;markerColor?:Color;markerFontSize?:number}
 export interface WriterNumbering {nextId:number;lists:Record<string,{levels:WriterListLevel[]}>}
 export interface TextStyle {
   fontFamily?: string; fontAscii?:string; fontHighAnsi?:string; fontEastAsia?:string; fontComplex?:string; fontSize?: number; complexFontSize?:number; bold?: boolean; italic?: boolean; underline?: boolean;
@@ -33,7 +33,7 @@ export interface DocumentBase {
 }
 export interface TextRun { id: string; type: 'text'; text: string; styleId?: string; style?: TextStyle }
 export type Inline = TextRun | { id: string; type: 'tab' | 'line-break' } | { id: string; type: 'image'; resourceId: string; width: number; height: number; drawingName?:string; pictureName?:string };
-export interface Paragraph { id: string; type: 'paragraph'; styleId?: string; style?: TextStyle; runs: Inline[] }
+export interface Paragraph { id: string; type: 'paragraph'; styleId?: string; /** Dangling DOCX paragraph style reference, not an invented named style. */ nativeMissingStyleId?:string; style?: TextStyle; runs: Inline[] }
 /** Merged cells occupy a rectangular grid; only the top-left anchor owns
  * content. Covered slots reference that anchor and never hold hidden blocks. */
 export interface TableCell { id: string; blocks: WriterBlock[]; merge?: {rows:number;columns:number}; coveredBy?:string }
@@ -52,7 +52,9 @@ export function writerStoryKey(kind:WriterStoryKind,variant:WriterStoryVariant='
 export function writerStoryKind(key:WriterStoryRefKey):WriterStoryKind{return key.toLowerCase().endsWith('header')?'header':'footer';}
 export interface WriterStoryParagraph {text:string;pageNumber?:true;after?:string;styleId?:'Header'|'Footer';alignment?:'start'|'center'|'end';runStyle?:TextStyle}
 export interface WriterPageStory extends WriterStoryParagraph {kind:WriterStoryKind;additionalParagraphs?:WriterStoryParagraph[]}
-export interface WriterSection { id: string; storyRefs?:WriterStoryRefs; differentFirstPage?:true; pageNumberStart?:number; pageExtras?: {headerDistance?:number;footerDistance?:number;columnSpace?:number;docGridLinePitch?:number}; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
+/** Preview geometry for source sections without a pgMar element; not a Word fidelity guarantee. */
+export const WRITER_IMPLICIT_MARGIN=1440*635;
+export interface WriterSection { id: string; nativeImplicitMargins?:true; storyRefs?:WriterStoryRefs; differentFirstPage?:true; pageNumberStart?:number; pageExtras?: {headerDistance?:number;footerDistance?:number;columnSpace?:number;docGridLinePitch?:number}; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
 export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string; numbering?:WriterNumbering; pageStories?:Record<string,WriterPageStory>; differentEvenOddPages?:true }
 
 export type CellValue = { kind: 'blank' } | { kind: 'string'; value: string } | { kind: 'number'; value: number } | { kind: 'boolean'; value: boolean } | { kind: 'error'; value: '#NULL!' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#NAME?' | '#NUM!' | '#N/A' } | { kind: 'formula'; source: string };
@@ -357,7 +359,7 @@ export function validateDocument(value: unknown): OfficeDocument {
       assert(/^[1-9]\d*$/.test(key)&&Number(key)<Number(numbering.nextId),'invalid','Invalid numbering identity');
       const def=object(item,['levels']),levels=list(def.levels,1);assert(levels.length<=9,'invalid','Numbering level budget exceeded');
       for(const [i,candidate]of levels.entries()){
-        const level=object(candidate,['format','start','pattern','indent','hanging','alignment','neverRestart','symbolBullet']);
+        const level=object(candidate,['format','start','pattern','indent','hanging','alignment','neverRestart','symbolBullet','markerColor','markerFontSize']);
         assert(level.format==='decimal'||level.format==='bullet','unsupported','Unsupported list format');integer(level.start,1,32767);text(level.pattern,64,false);
         const pattern=String(level.pattern);
         assert(!/[\x00-\x1f\x7f]/.test(pattern),'invalid','List pattern controls');
@@ -367,6 +369,8 @@ export function validateDocument(value: unknown): OfficeDocument {
         integer(level.indent,635,31680*635);integer(level.hanging,635,Number(level.indent));assert(['start','center','end'].includes(String(level.alignment)),'invalid','Invalid list alignment');
         if(level.neverRestart!==undefined)bool(level.neverRestart);
         if(level.symbolBullet!==undefined)assert(level.format==='bullet'&&pattern==='•'&&level.symbolBullet===true,'invalid','Invalid Symbol bullet fallback');
+        if(level.markerColor!==undefined){validateColor(level.markerColor);assert(level.markerColor.kind==='rgba'&&level.markerColor.alpha===255,'unsupported','List marker color requires opaque RGB');}
+        if(level.markerFontSize!==undefined){integer(level.markerFontSize,6350,3276*6350);assert(Number(level.markerFontSize)%6350===0,'invalid','List marker size must use half points');}
       }
     }
   }
@@ -393,13 +397,14 @@ export function validateDocument(value: unknown): OfficeDocument {
   };
   const block = (candidate: unknown, depth = 0): void => {
     assert(depth <= 64, 'limit', 'Table nesting budget exceeded');
-    const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows', 'cellPadding', 'border', 'nativeTable']); id(value.id);
+    const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows', 'cellPadding', 'border', 'nativeTable','nativeMissingStyleId']); id(value.id);
     if (value.type === 'paragraph') {
       assert(!['rows','columnWidths','cellPadding','border','nativeTable'].some(k=>k in value), 'invalid', 'Unexpected paragraph fields');
+      if(value.nativeMissingStyleId!==undefined){const missing=value.nativeMissingStyleId;assert(typeof missing==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(missing)&&!['__proto__','constructor','prototype'].includes(missing)&&!Object.hasOwn(styles,missing)&&value.styleId===undefined,'invalid','Invalid unresolved native paragraph style');}
       optionalId(value.styleId, styles); if(value.styleId!==undefined){const ref=styles[String(value.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='paragraph'),'invalid','Paragraph requires a paragraph style');} if (value.style !== undefined){validateTextStyle(value.style);writerRunDecoration(value.style,false);listReference(value.style,true);}
       list(value.runs).forEach((item) => run(item));
     } else if (value.type === 'table') {
-      assert(!['runs', 'style', 'styleId'].some((key) => key in value), 'invalid', 'Unexpected table fields');
+      assert(!['runs', 'style', 'styleId','nativeMissingStyleId'].some((key) => key in value), 'invalid', 'Unexpected table fields');
       if(value.nativeTable!==undefined){const n=object(value.nativeTable,['styleId','autoWidth','autoLayout','directPadding','directBorder','look']);assert(Object.keys(n).length>0,'invalid','Empty native table metadata');if(n.styleId!==undefined)assert(n.styleId==='TableNormal'||n.styleId==='TableGrid','invalid','Unsupported native table style');for(const key of ['autoWidth','autoLayout','directPadding','directBorder'])if(n[key]!==undefined)assert(n[key]===true,'invalid','Invalid native table flag');if(n.look!==undefined){integer(n.look,0,0x7e0);assert((Number(n.look)&~0x7e0)===0,'invalid','Invalid table look mask');}}
       const widths = list(value.columnWidths, 1); widths.forEach((width) => integer(width, 1));
       assert(widths.length<=64&&widths.reduce<number>((sum,w)=>sum+Number(w),0)<=Number.MAX_SAFE_INTEGER,'limit','Table width budget exceeded');
@@ -457,7 +462,7 @@ export function validateDocument(value: unknown): OfficeDocument {
       }
     }
     const sections=list(model.sections,1);assert(sections.length<=128,'limit','Writer section budget exceeded');sections.forEach((candidate) => {
-      const section = object(candidate, ['id', 'page', 'blocks', 'pageExtras','storyRefs','pageNumberStart','differentFirstPage']); id(section.id);
+      const section = object(candidate, ['id', 'page', 'blocks', 'pageExtras','storyRefs','pageNumberStart','differentFirstPage','nativeImplicitMargins']); id(section.id);
       if(section.differentFirstPage!==undefined)assert(section.differentFirstPage===true,'invalid','Invalid first-page story option');
       if(section.pageNumberStart!==undefined)integer(section.pageNumberStart,1,32767);
       if(section.storyRefs!==undefined){
@@ -469,6 +474,7 @@ export function validateDocument(value: unknown): OfficeDocument {
       const margins = object(page.margins, ['top', 'right', 'bottom', 'left']);
       integer(margins.top, 0); integer(margins.right, 0); integer(margins.bottom, 0); integer(margins.left, 0);
       assert(margins.left + margins.right < page.width && margins.top + margins.bottom < page.height, 'invalid', 'Margins leave no content area');
+      if(section.nativeImplicitMargins!==undefined)assert(section.nativeImplicitMargins===true&&Object.values(margins).every(n=>n===WRITER_IMPLICIT_MARGIN)&&stories===undefined&&section.storyRefs===undefined&&!(section.pageExtras as WriterSection['pageExtras'])?.headerDistance&&!(section.pageExtras as WriterSection['pageExtras'])?.footerDistance,'invalid','Implicit page margins require the default preview geometry and no running stories');
       list(section.blocks, 1).forEach((candidate) => block(candidate));
     });
   } else if (model.kind === 'sheets') {

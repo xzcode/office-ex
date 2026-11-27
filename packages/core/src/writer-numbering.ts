@@ -43,7 +43,7 @@ export function buildWriterNumberingMarkers(model:WriterReadDocument):ReadonlyMa
    });
    const hanging=p.style?.firstLineIndent!==undefined?-p.style.firstLineIndent:level.hanging,indent=style.indent??level.indent;
    assert(hanging>0&&indent>=hanging,'unsupported','List marker requires an in-bounds hanging indent');
-   markers.set(p.id,{text,level,indent,hanging,style:{...style,characterSpacing:0}});
+   markers.set(p.id,{text,level,indent,hanging,style:{...style,characterSpacing:0,...(level.markerColor?{color:level.markerColor}:{}),...(level.markerFontSize!==undefined?{fontSize:level.markerFontSize}:{})}});
   }
  };
  for(const section of model.sections)visit(section.blocks);

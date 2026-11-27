@@ -20,11 +20,11 @@ export function readNumberingReference(e:Element):WriterListReference{
  attrs(e);const c=nodes(e,['ilvl','numId']),numId=intValue(c.get('numId'),0,1000000000),level=c.has('ilvl')?intValue(c.get('ilvl'),0,8):0;
  valid(numId!==0||level===0,'Disabled numbering level');return {numId,level};
 }
-function readLevel(e:Element,index:number):WriterListLevel{
- attrs(e,['ilvl','tentative']);valid(number(e,'ilvl',0,8)===index,'Noncontiguous numbering levels');
+function readLevel(e:Element,index:number,single:boolean):WriterListLevel{
+ attrs(e,['ilvl','tentative']);valid(attr(e,'ilvl')===undefined?single&&index===0:number(e,'ilvl',0,8)===index,'Noncontiguous numbering levels');
  const c=nodes(e,['start','numFmt','lvlText','lvlJc','pPr','rPr','pStyle','suff','lvlRestart']),format=value(c.get('numFmt'));
  valid(format==='decimal'||format==='bullet','Unsupported list format');
- const start=intValue(c.get('start'),1,32767),alignment=value(c.get('lvlJc'));
+ const start=!c.has('start')&&format==='bullet'?1:intValue(c.get('start'),1,32767),alignment=c.has('lvlJc')?value(c.get('lvlJc')):'left';
  valid(['left','center','right'].includes(alignment),'Unsupported marker alignment');
  valid(!c.has('suff')||value(c.get('suff'))==='tab','Only tab suffix supported');
  // Style-associated numbering is supported for the single level default
@@ -34,14 +34,23 @@ function readLevel(e:Element,index:number):WriterListLevel{
  valid(restart===undefined||restart===0||restart===index,'Unsupported list restart trigger');
  let pattern=value(c.get('lvlText')),symbolBullet=false;
  const rpr=c.get('rPr');
- if(rpr){attrs(rpr);const fonts=nodes(rpr,['rFonts']).get('rFonts');valid(fonts&&format==='bullet'&&pattern==='\uf0b7','Unsupported numbering font formatting');attrs(fonts,['ascii','hAnsi','hint']);valid(!children(fonts).length&&attr(fonts,'ascii')==='Symbol'&&attr(fonts,'hAnsi')==='Symbol'&&(!attr(fonts,'hint')||attr(fonts,'hint')==='default'),'Unsupported symbol font');pattern='•';symbolBullet=true;}
+ const paint:Pick<WriterListLevel,'markerColor'|'markerFontSize'>={};
+ if(rpr){
+  attrs(rpr);const props=nodes(rpr,['rFonts','color','sz']);const fonts=props.get('rFonts');
+  if(fonts){valid(format==='bullet'&&pattern==='\uf0b7','Unsupported numbering font formatting');attrs(fonts,['ascii','hAnsi','hint']);valid(!children(fonts).length&&attr(fonts,'ascii')==='Symbol'&&attr(fonts,'hAnsi')==='Symbol'&&(!attr(fonts,'hint')||attr(fonts,'hint')==='default'),'Unsupported symbol font');pattern='•';symbolBullet=true;}
+  if(props.has('color')){const hex=value(props.get('color'));valid(/^[0-9a-fA-F]{6}$/.test(hex),'Only explicit RGB numbering color supported');paint.markerColor={kind:'rgba',red:parseInt(hex.slice(0,2),16),green:parseInt(hex.slice(2,4),16),blue:parseInt(hex.slice(4,6),16),alpha:255};}
+  if(props.has('sz'))paint.markerFontSize=intValue(props.get('sz'),1,3276)*6350;
+ }
  if(format==='bullet')valid(Array.from(pattern).length===1&&!/[\s%\x00-\x1f\x7f\uE000-\uF8FF]/u.test(pattern),'Unsupported bullet character');
  else valid(pattern.length<=64&&!/[\x00-\x1f\x7f]/.test(pattern)&&/^(?:[^%]|%[1-9])+$/.test(pattern)&&pattern.includes('%'+(index+1))&&[...pattern.matchAll(/%([1-9])/g)].every(m=>Number(m[1])<=index+1),'Unsupported decimal pattern');
- const p=c.get('pPr');valid(p,'Missing list paragraph geometry');attrs(p);const pc=nodes(p,['ind','tabs']),ind=pc.get('ind');valid(ind,'Missing list indentation');
- attrs(ind,['left','hanging']);valid(!children(ind).length,'Nested indentation');
- const left=number(ind,'left',1,31680),hanging=number(ind,'hanging',1,left);
- const tabs=pc.get('tabs');if(tabs){attrs(tabs);const tab=nodes(tabs,['tab']).get('tab');valid(tab,'Missing list tab');attrs(tab,['val','pos']);valid(!children(tab).length&&['num','left'].includes(attr(tab,'val')??'')&&number(tab,'pos',1,31680)===left,'Unsupported list tab stop');}
- return {format,start,pattern,indent:left*EMU_PER_TWIP,hanging:hanging*EMU_PER_TWIP,alignment:alignment==='left'?'start':alignment==='right'?'end':'center',...(restart===0&&index>0?{neverRestart:true}:{}),...(symbolBullet?{symbolBullet:true}:{})};
+ const p=c.get('pPr');let left=360,hanging=180;
+ if(p){attrs(p);const pc=nodes(p,['ind','tabs']),ind=pc.get('ind');valid(ind,'Missing list indentation');
+  attrs(ind,['left','hanging']);valid(!children(ind).length,'Nested indentation');left=number(ind,'left',1,31680);hanging=number(ind,'hanging',1,left);
+  const tabs=pc.get('tabs');if(tabs){attrs(tabs);const tab=nodes(tabs,['tab']).get('tab');valid(tab,'Missing list tab');attrs(tab,['val','pos']);valid(!children(tab).length&&['num','left'].includes(attr(tab,'val')??'')&&number(tab,'pos',1,31680)===left,'Unsupported list tab stop');}
+ }else valid(single&&format==='bullet','Missing list paragraph geometry');
+ // For the simple producer bullet profile, the preview fallback is 18pt / 9pt.
+ // Existing definitions are immutable and the source numbering XML is preserved.
+ return {format,start,pattern,indent:left*EMU_PER_TWIP,hanging:hanging*EMU_PER_TWIP,alignment:alignment==='left'?'start':alignment==='right'?'end':'center',...(restart===0&&index>0?{neverRestart:true}:{}),...(symbolBullet?{symbolBullet:true}:{}),...paint};
 }
 export interface NumberingSource {path:string;numbering:WriterNumbering;maxAbstractId:number}
 export function readNumbering(path:string,bytes:Uint8Array,options:ContainerOptions):NumberingSource{
@@ -59,8 +68,8 @@ export function readNumbering(path:string,bytes:Uint8Array,options:ContainerOpti
      if(key==='lvl')levelNodes.push(child);
      else{valid(['nsid','multiLevelType','tmpl','name'].includes(key)&&!metadata.has(key),'Unsupported abstract property');metadata.add(key);const v=value(child);if(key==='multiLevelType')valid(['singleLevel','multilevel','hybridMultilevel'].includes(v),'Unsupported numbering kind');}
     }
-    valid(levelNodes.length>0&&levelNodes.length<=9,'Invalid abstract levels');levelNodes.sort((a,b)=>number(a,'ilvl',0,8)-number(b,'ilvl',0,8));
-    const levels=levelNodes.map(readLevel);
+    valid(levelNodes.length>0&&levelNodes.length<=9,'Invalid abstract levels');if(levelNodes.length>1)levelNodes.sort((a,b)=>number(a,'ilvl',0,8)-number(b,'ilvl',0,8));
+    const levels=levelNodes.map((e,i)=>readLevel(e,i,levelNodes.length===1));
     // Decimal composite patterns cannot refer to bullet ancestors.
     for(const l of levels)if(l.format==='decimal')valid([...l.pattern.matchAll(/%([1-9])/g)].every(m=>levels[Number(m[1])-1]?.format==='decimal'),'Mixed composite numbering unsupported');
     abstracts.set(id,levels);
@@ -103,7 +112,11 @@ export function addNumberingParts(parts:Map<string,Uint8Array>,main:string,sourc
    const elements=[property('start',l.start),property('numFmt',l.format)];
    if(l.neverRestart)elements.push(property('lvlRestart',0));
    elements.push(property('suff','tab'),property('lvlText',l.symbolBullet?'\uf0b7':l.pattern),property('lvlJc',l.alignment==='start'?'left':l.alignment==='end'?'right':'center'),node('pPr',{},[node('tabs',{},[node('tab',{val:'num',pos:l.indent/EMU_PER_TWIP})]),node('ind',{left:l.indent/EMU_PER_TWIP,hanging:l.hanging/EMU_PER_TWIP})]));
-   if(l.symbolBullet)elements.push(node('rPr',{},[node('rFonts',{ascii:'Symbol',hAnsi:'Symbol',hint:'default'})]));
+   const rPr:Element[]=[];
+   if(l.symbolBullet)rPr.push(node('rFonts',{ascii:'Symbol',hAnsi:'Symbol',hint:'default'}));
+   if(l.markerColor){const c=l.markerColor;valid(c.kind==='rgba'&&c.alpha===255,'Marker color requires opaque RGB');rPr.push(property('color',[c.red,c.green,c.blue].map(n=>n.toString(16).padStart(2,'0')).join('').toUpperCase()));}
+   if(l.markerFontSize!==undefined){valid(l.markerFontSize%6350===0,'Marker size requires half points');rPr.push(property('sz',l.markerFontSize/6350));}
+   if(rPr.length)elements.push(node('rPr',{},rPr));
    return node('lvl',{ilvl:i},elements);
   });
   const abstract=node('abstractNum',{abstractNumId:abstractId},[property('multiLevelType',levels.length===1?'singleLevel':'multilevel'),...levels]);

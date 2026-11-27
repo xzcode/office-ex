@@ -164,7 +164,7 @@ function writeStreams(candidate:unknown):Streams{
   const checked=validateDocument(candidate);valid(checked.kind==='writer','Expected Writer model');
   valid(checked.sections.length===1&&!Object.keys(checked.resources).length&&!Object.keys(checked.styles).length&&!checked.defaultParagraphStyleId,'DOC closed profile supports one section, direct styles and no resource objects');
   allowedStyle(checked.defaultTextStyle,[...CHAR,...PARA]);
-  const section=checked.sections[0]!;valid(!checked.pageStories&&!section.storyRefs&&!checked.differentEvenOddPages&&!section.differentFirstPage&&section.pageNumberStart===undefined,'Running stories and page numbering are unsupported in the closed DOC profile');valid(section.blocks.length<=10000,'DOC paragraph budget exceeded');valid(section.pageExtras===undefined||Object.keys(section.pageExtras).every(k=>['headerDistance','footerDistance','columnSpace'].includes(k)),'Unsupported DOC section extras');
+  const section=checked.sections[0]!;valid(!section.nativeImplicitMargins&&!checked.pageStories&&!section.storyRefs&&!checked.differentEvenOddPages&&!section.differentFirstPage&&section.pageNumberStart===undefined,'Running stories and page numbering are unsupported in the closed DOC profile');valid(section.blocks.length<=10000,'DOC paragraph budget exceeded');valid(section.pageExtras===undefined||Object.keys(section.pageExtras).every(k=>['headerDistance','footerDistance','columnSpace'].includes(k)),'Unsupported DOC section extras');
   const texts:{text:string;style:TextStyle}[][]=[],paragraphStyles:TextStyle[]=[],fonts=new Set<string>(['Arial']);
   let total=0;
   for(const block of section.blocks){
@@ -172,7 +172,7 @@ function writeStreams(candidate:unknown):Streams{
     const list:{text:string;style:TextStyle}[]=[];
     if(block.type==='page-break'){list.push({text:'\f',style:{fontFamily:'Arial',fontSize:152400}});paragraphStyles.push({});}
     else{
-      valid(!block.styleId,'Named paragraph styles require a later DOC adapter');allowedStyle(block.style??{},PARA);
+      valid(!block.styleId&&!block.nativeMissingStyleId,'Named or unresolved paragraph styles require a later DOC adapter');allowedStyle(block.style??{},PARA);
       const base=resolveTextStyle(checked.defaultTextStyle,{},[],block.style??{}).style;
       const paragraph=Object.fromEntries(PARA.filter(k=>base[k]!==undefined).map(k=>[k,base[k]])) as TextStyle;
       paragraphStyles.push(paragraph);
