@@ -1,0 +1,200 @@
+# Explicit one-shot development preview publication. Reuse verified artifacts; no rebuild.
+name: Publish Office EX v0.1.0-dev.4
+on:
+  push:
+    branches: [release/office-ex-v0.1.0-dev.4]
+    paths: ['.github/workflows/publish-preview-0.1.0-dev.4.yml']
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: office-ex-preview-v0.1.0-dev.4
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'xzcode/office-ex' && github.ref == 'refs/heads/release/office-ex-v0.1.0-dev.4'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE: 5561b171d07c908f5d630d556e35f469c60bb24b
+      SOURCE_RUN: '45955956363'
+      VERSION: 0.1.0-dev.4
+      TAG: v0.1.0-dev.4
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 5561b171d07c908f5d630d556e35f469c60bb24b
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '24.22.3'}
+      - name: Verify exact successful dev.4 run and immutable artifact identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE"
+          test "$(node -p 'require("./package.json").version')" = "$VERSION"
+          mkdir -p out/release-check
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > out/release-check/run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/jobs?per_page=100" > out/release-check/jobs.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/artifacts?per_page=100" > out/release-check/artifacts.json
+          python3 - <<'PY'
+          import os,json
+          from pathlib import Path
+          p=Path('out/release-check')
+          read=lambda n:json.loads((p/n).read_text())
+          run=read('run.json')
+          assert run['head_sha']==os.environ['SOURCE'] and run['status']=='completed' and run['conclusion']=='success'
+          assert run['path']=='.github/workflows/m5.yml' and run['event']=='push'
+          jobs=read('jobs.json')['jobs']
+          required=['verify','package-preview (ubuntu-24.04, linux, x64)','package-preview (windows-2025, win32, x64)','package-preview (macos-15, darwin, arm64)']
+          for name in required:
+              matches=[j for j in jobs if j['name']==name]
+              assert len(matches)==1 and matches[0]['conclusion']=='success',name
+          expected={'office-ex-preview-linux-x64':15178513114,'office-ex-preview-win32-x64':15179141384,'office-ex-preview-darwin-arm64':15179425356}
+          artifacts=read('artifacts.json')['artifacts']
+          assert {a['name']:a['id'] for a in artifacts}==expected
+          assert all(not a['expired'] and a['workflow_run']['head_sha']==os.environ['SOURCE'] for a in artifacts)
+          print('Verified exact source, four successful jobs and three native artifacts.')
+          PY
+      - name: Assemble verified installers and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name office-ex-preview-linux-x64 --name office-ex-preview-win32-x64 --name office-ex-preview-darwin-arm64 --dir out/release-input
+          node --input-type=module -e 'import {preparePreviewRelease} from "./scripts/prepare-preview-release.mjs"; console.log(JSON.stringify(await preparePreviewRelease("out/release-input","out/release-draft",process.env.VERSION,process.env.TAG,process.env.SOURCE,process.env.SOURCE_RUN),null,2))'
+          cd out/release-draft
+          sha256sum -c SHA256SUMS
+          cat >> RELEASE-NOTES.md <<'NOTES'
+
+          ## Changes since dev.3
+
+          - Documents open in independent native windows by default; optional tab mode, duplicate-file focusing and dirty-window confirmation.
+          - Restored draggable titlebar space, non-selectable UI labels, resizable panels and persistent widths.
+          - Native installers advertise eight file types without overriding existing default apps.
+          - Word: first/even/odd running stories, multiple story paragraphs and common theme/proofing metadata.
+          - Excel: rich shared/inline strings, named styles and chart range maintenance; compact history and incremental calculation.
+          - PowerPoint: merged native tables, structural edits and cell formatting; bounded thumbnails.
+          - Reduced duplicate file inspection and save work while retaining security and source-identity checks.
+
+          ## 中文更新说明
+
+          - 默认使用独立文档窗口，可选标签页模式；重复打开自动定位已有窗口，保留未保存关闭确认。
+          - 修复标题栏空白区拖动、界面标签意外选中；支持 Word 和 PPT 面板调宽。
+          - Windows、macOS、Linux 安装包注册 DOC、DOCX、XLS、XLSX、PPT、PPTX、PDF、OEX，不强制覆盖系统默认程序。
+          - Word：首页与奇偶页页眉页脚、多段落页眉页脚、普通主题字体颜色及校对属性兼容。
+          - Excel：富文本、命名样式、图表范围维护、增量公式计算和精简撤销历史。
+          - PowerPoint：原生表格合并拆分、行列调整、单元格格式及缩略图性能优化。
+          - 文件读写减少重复检查，保留源文件完整性校验和安全保存机制。
+          - 三平台原生打包、安装、文件关联及卸载验收通过。
+
+          本版本为开发预览版。复杂 Office 格式、参考排版精度、长期运行内存、人工语言审校及物理 IME/打印仍需完善。Windows 尚未签名，macOS 为 ad-hoc 签名且未公证；请备份重要文档，保持系统安全保护开启。旧版发布保持不变。
+          NOTES
+      - name: Create exact tag, upload and verify draft, then publish prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,subprocess,time
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          source=os.environ['SOURCE']
+          tag=os.environ['TAG']
+          version=os.environ['VERSION']
+          title='Office EX '+version+' Development Preview'
+          root=Path('out/release-draft')
+          expected={p.name:p for p in root.iterdir() if p.is_file() and p.name!='RELEASE-NOTES.md'}
+          assert len(expected)==20
+          def call(*args):
+              return subprocess.run(['gh',*args],capture_output=True,text=True)
+          def api(*args):
+              r=call('api',*args)
+              if r.returncode:raise RuntimeError(r.stderr.strip())
+              return json.loads(r.stdout)
+          def sha(p):
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for b in iter(lambda:f.read(1024*1024),b''):h.update(b)
+              return h.hexdigest()
+          hashes={name:sha(p) for name,p in expected.items()}
+          ref=f'repos/{repo}/git/ref/tags/{tag}'
+          r=call('api',ref)
+          if r.returncode:
+              if '404' not in r.stderr:raise RuntimeError(r.stderr.strip())
+              created=call('api','--method','POST',f'repos/{repo}/git/refs','-f',f'ref=refs/tags/{tag}','-f',f'sha={source}')
+              if created.returncode:raise RuntimeError(created.stderr.strip())
+          obj=api(ref)['object']
+          assert obj['type']=='commit' and obj['sha']==source,'Tag target mismatch'
+          def find():
+              r=call('api','--paginate',f'repos/{repo}/releases?per_page=100','--jq',f'.[] | select(.tag_name == "{tag}")')
+              if r.returncode:raise RuntimeError(r.stderr.strip())
+              rows=[json.loads(line) for line in r.stdout.splitlines() if line.strip()]
+              assert len(rows)<=1,'Duplicate releases for tag'
+              return rows[0] if rows else None
+          def retry_find():
+              for i in range(5):
+                  data=find()
+                  if data:return data
+                  time.sleep(2**i)
+              raise RuntimeError('Release not found after creation')
+          data=find()
+          if data is None:
+              r=call('release','create',tag,'--repo',repo,'--verify-tag','--target',source,'--draft','--prerelease','--latest=false','--title',title,'--notes-file',str(root/'RELEASE-NOTES.md'))
+              if r.returncode:print('Draft creation status:',r.stderr.strip(),flush=True)
+              data=retry_find()
+          assert data['tag_name']==tag and data['name']==title and data['prerelease']
+          endpoint=f"repos/{repo}/releases/{data['id']}"
+          def get():
+              d=api(endpoint)
+              assert d['tag_name']==tag and d['name']==title and d['prerelease']
+              return d
+          def check_asset(a):
+              name=a['name']
+              assert name in expected and a['state']=='uploaded' and a['size']==expected[name].stat().st_size,name
+              if a.get('digest'):
+                  assert a['digest']=='sha256:'+hashes[name],name+' digest mismatch'
+              else:
+                  dest=Path('out/release-check/readback')
+                  try:
+                      with dest.open('wb') as out:
+                          subprocess.run(['gh','api','-H','Accept: application/octet-stream',f"repos/{repo}/releases/assets/{a['id']}"],stdout=out,check=True)
+                      assert sha(dest)==hashes[name],name+' downloaded digest mismatch'
+                  finally:dest.unlink(missing_ok=True)
+          def assets(d):
+              result={a['name']:a for a in d['assets']}
+              assert len(result)==len(d['assets']) and set(result)<=set(expected),'Unexpected or duplicate assets'
+              return result
+          # Never overwrite an existing asset or change an already published release.
+          if data['draft']:
+              for name,p in sorted(expected.items()):
+                  for i in range(4):
+                      current=get()
+                      assert current['draft'],'Draft was published concurrently'
+                      current_assets=assets(current)
+                      if name in current_assets:
+                          check_asset(current_assets[name])
+                          print('Verified',name,flush=True)
+                          break
+                      result=call('release','upload',tag,str(p),'--repo',repo)
+                      if result.returncode:print('Upload attempt',i+1,name,result.stderr.strip(),flush=True)
+                      time.sleep(min(2**i,8))
+                  else:
+                      current_assets=assets(get())
+                      assert name in current_assets,'Missing upload '+name
+                      check_asset(current_assets[name])
+          current=get()
+          all_assets=assets(current)
+          assert set(all_assets)==set(expected),'Incomplete release'
+          for name in sorted(all_assets):check_asset(all_assets[name])
+          assert api(ref)['object']['sha']==source
+          for i in range(6):
+              data=get()
+              if not data['draft']:break
+              r=call('api','--method','PATCH',endpoint,'-F','draft=false','-F','prerelease=true','-f','make_latest=false')
+              print('Publish attempt',i+1,r.returncode,r.stderr.strip(),flush=True)
+              time.sleep(min(2**i,20))
+          data=get()
+          assert not data['draft'] and data['published_at'] and data['prerelease']
+          assert set(assets(data))==set(expected)
+          print('Confirmed public prerelease',data['html_url'],'assets',len(data['assets']),flush=True)
+          PY
