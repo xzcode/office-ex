@@ -39,14 +39,14 @@ Office EX 使用 TypeScript 开发，作为桌面应用运行。文档模型、�
 - **M0–M6：** 已完成开发预览版交付。dev.4 候选版本通过 316 项核心测试，以及 Windows、macOS、Linux 的原生打包和安装验收。
 - **M7.1–M7.5：** 已随 dev.4 交付。继续推进真实文档兼容性、稳定性和体验；dev.4 之后新增能力属于后续开发版本。
 
-默认 `master` 分支目前保留早期实现基线。最新源码和文档请查看[活跃开发分支](https://github.com/xzcode/office-ex/tree/m5-distribution-20261125)。需要与安装包一致的源码时，请使用 [dev.4 标签](https://github.com/xzcode/office-ex/tree/v0.1.0-dev.4)。本文将已发布能力与正在开发的功能区分说明。
+默认 `master` 分支现为包含 M7.6 的最新开发基线，支持对受控 DOCX、XLSX 和 PPTX 文本或数值位置进行保留式兼容编辑。这不代表完整的版式或格式兼容，新增能力尚未包含在已发布的 dev.4 安装包中。需要与安装包一致的源码时，请使用 [dev.4 标签](https://github.com/xzcode/office-ex/tree/v0.1.0-dev.4)。本文将已发布能力与正在开发的功能区分说明。
 
 ## 从源码构建
 
 使用 Node.js 24.x（至少 24.13.0）。首次安装需要下载 npm 依赖和 Electron，正常文档编辑在本地运行。
 
 ```sh
-git clone -b m5-distribution-20261125 https://github.com/xzcode/office-ex.git
+git clone https://github.com/xzcode/office-ex.git
 cd office-ex
 npm ci --ignore-scripts
 npm run setup:desktop
@@ -68,7 +68,7 @@ npm run build
 npm run smoke:desktop
 ```
 
-查看活跃开发分支的[开发交接](https://github.com/xzcode/office-ex/blob/m5-distribution-20261125/docs/HANDOFF.md)、[M6 兼容性说明](https://github.com/xzcode/office-ex/blob/m5-distribution-20261125/docs/M6-COMPATIBILITY.md)和 [M7 稳定性工作](https://github.com/xzcode/office-ex/blob/m5-distribution-20261125/docs/M7-STABILITY.md)。
+查看当前[开发交接](https://github.com/xzcode/office-ex/blob/master/docs/HANDOFF.md)、[M6 兼容性说明](https://github.com/xzcode/office-ex/blob/master/docs/M6-COMPATIBILITY.md)和 [M7 稳定性工作](https://github.com/xzcode/office-ex/blob/master/docs/M7-STABILITY.md)。
 
 ## 开源许可证
 

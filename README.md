@@ -39,14 +39,14 @@ Office EX preserves original native package parts where supported. Documents out
 - **M0–M6:** development-preview delivery completed. The dev.4 candidate passed 316 core tests and Windows, macOS and Linux native package/installer verification.
 - **M7.1–M7.5:** delivered in dev.4. Real-world format compatibility and product stability work continue; features added after dev.4 belong to future development builds.
 
-The default `master` branch currently retains the earlier implementation baseline. For current source and documentation, use the [active development branch](https://github.com/xzcode/office-ex/tree/m5-distribution-20261125). For reproducible released source, use the [dev.4 tag](https://github.com/xzcode/office-ex/tree/v0.1.0-dev.4). The README describes the published preview and identifies ongoing work separately.
+The default `master` branch is now the active development baseline through M7.6, with source-preserving compatibility editing for supported DOCX, XLSX and PPTX text/value slots. This is not full layout or format fidelity, and these changes are not included in the published dev.4 installers. For reproducible released source, use the [dev.4 tag](https://github.com/xzcode/office-ex/tree/v0.1.0-dev.4). The README describes the published preview and identifies ongoing work separately.
 
 ## Build from source
 
 Use Node.js 24.x (at least 24.13.0). The initial installation requires npm and Electron downloads; normal document editing runs locally.
 
 ```sh
-git clone -b m5-distribution-20261125 https://github.com/xzcode/office-ex.git
+git clone https://github.com/xzcode/office-ex.git
 cd office-ex
 npm ci --ignore-scripts
 npm run setup:desktop
@@ -68,7 +68,7 @@ npm run build
 npm run smoke:desktop
 ```
 
-See the active branch for the current [development handoff](https://github.com/xzcode/office-ex/blob/m5-distribution-20261125/docs/HANDOFF.md), [M6 compatibility profiles](https://github.com/xzcode/office-ex/blob/m5-distribution-20261125/docs/M6-COMPATIBILITY.md), and [M7 stability work](https://github.com/xzcode/office-ex/blob/m5-distribution-20261125/docs/M7-STABILITY.md).
+See the current [development handoff](https://github.com/xzcode/office-ex/blob/master/docs/HANDOFF.md), [M6 compatibility profiles](https://github.com/xzcode/office-ex/blob/master/docs/M6-COMPATIBILITY.md), and [M7 stability work](https://github.com/xzcode/office-ex/blob/master/docs/M7-STABILITY.md).
 
 ## License
 

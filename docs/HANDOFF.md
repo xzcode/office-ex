@@ -281,3 +281,9 @@ Prioritize lossless source-backed compatibility: model/render direct strike and 
 ## 2026-11-27 — M7.6 A
 
 Added bounded source-preserving editors for DOCX, XLSX and PPTX with explicit opt-in, shared sandbox verifier and original native part preservation. Local 320/320 core, independent three-format corpus and Linux native 3/3; final JPEG/PNG declaration fix validated in independent and native tests. Formula-dependent XLSX and complex active content remain guarded. Original private DOCX structural check and independent in-memory roundtrip passed, but exact original Office EX desktop admission/save not yet verified. See M7-STABILITY.md and native-m76-compat.json. Public dev.4 unchanged.
+
+## 2026-11-27 — M7.6 baseline merged to master
+
+Verified source `5e927a3b7d76ad40b6297588dca50a879af629fa` passed [CI 45976046293](https://github.com/xzcode/office-ex/actions/runs/45976046293) (verify and Linux x64, Windows x64, macOS ARM64 package/installer jobs all successful; tag-only draft assembly skipped). [PR #1](https://github.com/xzcode/office-ex/pull/1) merged all 62 development commits into `master` at `af16c34845144f953321cc73eb515804dcb3ad71`. The merge tree `e7a8bba25d98c57294b72fd2ad00062b736a46fd` exactly matches the verified source tree, including both bilingual README blobs. All previous branches, tags and published dev.4 assets remain unchanged.
+
+Continue M7.7 and later work from `master`; keep short-lived feature branches as needed, retain original release gates, and use the current integration/preview workflow rather than the historical M1 workflow for master. The M7.6 exact private DOCX desktop acceptance and broader compatibility gates remain open. No new release is implied by the merge.

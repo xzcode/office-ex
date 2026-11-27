@@ -1,9 +1,12 @@
-name: M5 development preview distribution
+name: Office EX integration and preview distribution
 on:
   push:
-    branches: [m5-distribution-20261125]
+    branches: [master, m5-distribution-20261125]
     tags: ['v*-dev.*']
-    paths-ignore: ['docs/**', 'README.md']
+    paths-ignore: ['docs/**', 'README.md', 'README.zh-CN.md']
+  pull_request:
+    branches: [master]
+    paths-ignore: ['docs/**', 'README.md', 'README.zh-CN.md']
   workflow_dispatch:
 permissions:
   contents: read
