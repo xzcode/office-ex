@@ -1,3 +1,4 @@
+import type {DeepReadonly} from './session.js';
 import { validateImageResource } from './images.js';
 import { OfficeError, assert, assertCellAddress, assertId, assertUnicode, isRecord, type DocumentKind } from '@office-ex/contracts';
 
@@ -97,7 +98,24 @@ export interface SlideTextFrame { autofit?:{mode:'none'}|{mode:'shape'}|{mode:'n
 export interface SlideThemeFontDetails { eastAsia?:string; complex?:string; scripts?:Record<string,string> }
 export interface SlideTheme { name:string; colors:Record<string,Extract<Color,{kind:'rgba'}>>; majorFont?:string; minorFont?:string; majorFontDetails?:SlideThemeFontDetails; minorFontDetails?:SlideThemeFontDetails }
 export const DEFAULT_SLIDE_TABLE_STYLE='{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}';
-export interface SlideTableData {columnWidths:number[];rowHeights:number[];cells:string[][];styleId:typeof DEFAULT_SLIDE_TABLE_STYLE;firstRow?:boolean;bandRow?:boolean}
+/** Coordinates in a native table are zero-based grid positions. */
+export interface SlideTableRange {row:number;column:number;rowCount:number;columnCount:number}
+export type SlideTableBorder=Pick<SlideStroke,'color'|'width'|'dash'>;
+export type SlideTableFont=Pick<TextStyle,'fontFamily'|'fontSize'|'bold'|'italic'|'underline'|'color'>;
+export interface SlideTableCellFormat {
+ fill?:Color|null;
+ borders?:Partial<Record<'left'|'right'|'top'|'bottom',SlideTableBorder|null>>;
+ textStyle?:SlideTableFont;
+ alignment?:'start'|'center'|'end';
+ verticalAlignment?:'top'|'center'|'bottom';
+ margins?:{top:number;right:number;bottom:number;left:number};
+}
+export interface SlideTableData {columnWidths:number[];rowHeights:number[];cells:string[][];styleId:typeof DEFAULT_SLIDE_TABLE_STYLE;firstRow?:boolean;bandRow?:boolean;merges?:SlideTableRange[];formats?:Record<string,SlideTableCellFormat>}
+export function slideTableCoverage(table:DeepReadonly<SlideTableData>):Map<string,DeepReadonly<SlideTableRange>>{
+ const covered=new Map<string,DeepReadonly<SlideTableRange>>();
+ for(const m of table.merges??[])for(let r=m.row;r<m.row+m.rowCount;r++)for(let c=m.column;c<m.column+m.columnCount;c++)covered.set(r+':'+c,m);
+ return covered;
+}
 export type Shape = (ShapeBase & {type:'table';table:SlideTableData}) | (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: SlidePreset; connector?:true; connections?:SlideConnections }) | (ShapeBase & { type: 'image'; resourceId: string; crop?:SlideCrop }) | (ShapeBase & {type:'group';childSpace:SlideChildSpace;children:Shape[]});
 export interface Slide { id: string; background: Color; shapes: Shape[] }
 export interface SlidesDocument extends DocumentBase { kind: 'slides'; size: { width: number; height: number }; slides: Slide[]; theme?: SlideTheme }
@@ -233,6 +251,49 @@ export function validateGeometry(value: unknown): asserts value is Geometry {
   const geometry = object(value, ['x', 'y', 'width', 'height', 'rotation']);
   integer(geometry.x); integer(geometry.y); integer(geometry.width, 0); integer(geometry.height, 0); integer(geometry.rotation);
   assert(Number.isSafeInteger(geometry.x + geometry.width) && Number.isSafeInteger(geometry.y + geometry.height), 'invalid', 'Geometry sum exceeds safe precision');
+}
+
+/** Shared validation for native table grid transactions and import. */
+export function validateSlideTableData(value:unknown,geometry?:Geometry|DeepReadonly<Geometry>):asserts value is SlideTableData{
+ const table=object(value,['columnWidths','rowHeights','cells','styleId','firstRow','bandRow','merges','formats']);
+ assert(table.styleId===DEFAULT_SLIDE_TABLE_STYLE,'unsupported','Unknown slide table style');
+ const cols=list(table.columnWidths,1),rows=list(table.rowHeights,1),cells=list(table.cells,1);
+ assert(cols.length<=64&&rows.length<=200&&rows.length*cols.length<=2000&&cells.length===rows.length,'limit','Slide table budget');
+ for(const v of [...cols,...rows])integer(v,1,2147483647);
+ const width=cols.reduce<number>((n,v)=>n+Number(v),0),height=rows.reduce<number>((n,v)=>n+Number(v),0);
+ assert(width<=2147483647&&height<=2147483647,'limit','Slide table extent budget');
+ if(geometry)assert(width===geometry.width&&height===geometry.height,'invalid','Slide table geometry mismatch');
+ for(const raw of cells){const row=list(raw);assert(row.length===cols.length,'invalid','Nonrectangular slide table');for(const v of row){text(v,4096);assertUnicode(v);assert(!/[\x00-\x09\x0b-\x1f\x7f]/.test(String(v)),'invalid','Unsupported slide table control character');}}
+ for(const key of ['firstRow','bandRow'])if(table[key]!==undefined)bool(table[key]);
+ const covered=new Set<string>(),hidden=new Set<string>();
+ if(table.merges!==undefined){
+  const merges=list(table.merges,1);assert(merges.length<=1000,'limit','Slide table merge budget');
+  for(const raw of merges){
+   const m=object(raw,['row','column','rowCount','columnCount']);integer(m.row,0,rows.length-1);integer(m.column,0,cols.length-1);integer(m.rowCount,1,rows.length-m.row);integer(m.columnCount,1,cols.length-m.column);
+   assert(m.rowCount*m.columnCount>1,'invalid','Trivial slide table merge');
+   for(let r:number=m.row;r<m.row+m.rowCount;r++)for(let c:number=m.column;c<m.column+m.columnCount;c++){
+    const key=r+':'+c;assert(!covered.has(key),'invalid','Overlapping slide table merges');covered.add(key);
+    if(r!==m.row||c!==m.column){assert((cells[r] as string[])[c]==='','invalid','Covered slide table cell contains text');hidden.add(key);}
+   }
+  }
+ }
+ if(table.formats!==undefined){
+  assert(isRecord(table.formats)&&Object.keys(table.formats).length>0&&Object.keys(table.formats).length<=2000,'invalid','Invalid slide table format map');
+  for(const [key,raw]of Object.entries(table.formats)){
+   const m=/^(0|[1-9]\d*):(0|[1-9]\d*)$/.exec(key);
+   assert(m&&Number(m[1])<rows.length&&Number(m[2])<cols.length&&!hidden.has(key),'invalid','Invalid or covered table format coordinate');
+   const f=object(raw,['fill','borders','textStyle','alignment','verticalAlignment','margins']);assert(Object.keys(f).length>0,'invalid','Empty cell format');
+   if(f.fill!==undefined&&f.fill!==null)validateColor(f.fill);
+   if(f.textStyle!==undefined){const font=object(f.textStyle,['fontFamily','fontSize','bold','italic','underline','color']);assert(Object.keys(font).length>0,'invalid','Empty cell font');validateTextStyle(font);if(font.fontSize!==undefined)assert(Number(font.fontSize)%127===0&&Number(font.fontSize)>=12700,'invalid','Invalid DrawingML cell font size');}
+   if(f.alignment!==undefined)assert(['start','center','end'].includes(String(f.alignment)),'invalid','Invalid cell alignment');
+   if(f.verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(f.verticalAlignment)),'invalid','Invalid cell vertical alignment');
+   if(f.margins!==undefined){const margins=object(f.margins,['top','right','bottom','left']);for(const k of ['top','right','bottom','left'])integer(margins[k],0,51206400);}
+   if(f.borders!==undefined){const borders=object(f.borders,['left','right','top','bottom']);assert(Object.keys(borders).length>0,'invalid','Empty cell border map');for(const raw of Object.values(borders))if(raw!==null){
+    const b=object(raw,['color','width','dash']);validateColor(b.color);integer(b.width,1,12700*100);
+    if(b.dash!==undefined)assert(['solid','dash','dot','dashDot','lgDash','lgDashDot','lgDashDotDot','sysDash','sysDot','sysDashDot','sysDashDotDot'].includes(String(b.dash)),'invalid','Invalid cell border dash');
+   }}
+  }
+ }
 }
 
 /** All model boundaries use this validator, including recovery and import adapters. */
@@ -518,14 +579,7 @@ export function validateDocument(value: unknown): OfficeDocument {
         if(shape.type==='table'){
           assert(depth===0&&!shape.flipH&&!shape.flipV&&!('fill'in shape)&&!('stroke'in shape)&&!('runs'in shape)&&!('resourceId'in shape)&&!('textStyle'in shape)&&!('textFrame'in shape),'unsupported','Only top-level unrotated tables with native cell paint are supported');
           const g=shape.geometry as Geometry;assert(g.rotation===0,'unsupported','Table rotation outside profile');
-          const table=object(shape.table,['columnWidths','rowHeights','cells','styleId','firstRow','bandRow']);
-          assert(table.styleId===DEFAULT_SLIDE_TABLE_STYLE,'unsupported','Unknown slide table style');
-          const cols=list(table.columnWidths,1),rows=list(table.rowHeights,1),cells=list(table.cells,1);
-          assert(cols.length<=64&&rows.length<=200&&rows.length*cols.length<=2000&&cells.length===rows.length,'limit','Slide table budget');
-          for(const v of [...cols,...rows])integer(v,1,2147483647);
-          assert(cols.reduce<number>((n,v)=>n+Number(v),0)===g.width&&rows.reduce<number>((n,v)=>n+Number(v),0)===g.height,'invalid','Slide table geometry mismatch');
-          for(const raw of cells){const row=list(raw);assert(row.length===cols.length,'invalid','Nonrectangular slide table');for(const v of row){text(v,4096);assert(!/[\x00-\x09\x0b-\x1f\x7f]/.test(String(v)),'invalid','Unsupported slide table control character');}}
-          for(const key of ['firstRow','bandRow'])if(table[key]!==undefined)bool(table[key]);
+          validateSlideTableData(shape.table,g);
         }
         else if (shape.type === 'text') {
           assert(!('resourceId' in shape), 'invalid', 'Unexpected text shape fields'); list(shape.runs).forEach((item) => run(item, true));

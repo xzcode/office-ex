@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /** Only trusted model values become DOM. Source markup is never inserted. */
 import { EMU_PER_CSS_PIXEL, ROTATION_UNITS_PER_DEGREE } from '@office-ex/contracts';
-import type { Color, DeepReadonly, TextStyle, Geometry, SlideDash, SlideArrow } from '@office-ex/core';
+import {slideTableCoverage,type Color,type DeepReadonly,type TextStyle,type Geometry,type SlideDash,type SlideArrow} from '@office-ex/core';
 import type { SlideScene, SlideSceneShape } from '@office-ex/render';
 import { bundledFontFamily } from '@office-ex/pdf';
 const px=(emu:number)=>emu/EMU_PER_CSS_PIXEL+'px';
@@ -61,11 +61,20 @@ export function createSlideShapeElement(shape:SlideSceneShape,fitOverride?:numbe
   }else if(shape.type==='table'){
     const grid=document.createElement('div');grid.className='slides-native-table';
     Object.assign(grid.style,{display:'grid',width:'100%',height:'100%',gridTemplateColumns:shape.table.columnWidths.map(v=>v+'fr').join(' '),gridTemplateRows:shape.table.rowHeights.map(v=>v+'fr').join(' '),overflow:'hidden'});
+    const coverage=slideTableCoverage(shape.table);
     for(const [ri,row]of shape.table.cells.entries())for(const [ci,text]of row.entries()){
+      const merge=coverage.get(ri+':'+ci);if(merge&&(merge.row!==ri||merge.column!==ci))continue;
+      const format=shape.table.formats?.[ri+':'+ci];
       const cell=document.createElement('div');cell.className='slides-table-cell';cell.dataset.row=String(ri);cell.dataset.column=String(ci);cell.textContent=text;
       const head=shape.table.firstRow&&ri===0,band=shape.table.bandRow&&ri%2===1,c=shape.accent;
-      applySlideTextStyle(cell,{...shape.font,bold:!!head,color:head?{kind:'rgba',red:255,green:255,blue:255,alpha:255}:shape.font.color},text);
+      applySlideTextStyle(cell,{...shape.font,bold:!!head,color:head?{kind:'rgba',red:255,green:255,blue:255,alpha:255}:shape.font.color,...format?.textStyle},text);
       Object.assign(cell.style,{minWidth:'0',minHeight:'0',overflow:'hidden',whiteSpace:'pre-wrap',overflowWrap:'break-word',border:'1px solid white',boxSizing:'border-box',padding:'4px 8px',background:head?slideCssColor(c):band?'rgba('+c.red+','+c.green+','+c.blue+',.22)':'rgba('+c.red+','+c.green+','+c.blue+',.10)'});
+      Object.assign(cell.style,{gridRow:(ri+1)+' / span '+(merge?.rowCount??1),gridColumn:(ci+1)+' / span '+(merge?.columnCount??1),display:'flex',flexDirection:'column',justifyContent:format?.verticalAlignment==='center'?'center':format?.verticalAlignment==='bottom'?'flex-end':'flex-start',textAlign:format?.alignment??'start'});
+      if(format?.fill!==undefined)cell.style.background=format.fill===null?'transparent':slideCssColor(format.fill);
+      if(format?.margins){const m=format.margins;cell.style.padding=[m.top,m.right,m.bottom,m.left].map(px).join(' ');}
+      for(const [key,property]of [['left','borderLeft'],['right','borderRight'],['top','borderTop'],['bottom','borderBottom']] as const){
+       const edge=format?.borders?.[key];if(edge!==undefined)cell.style[property]=edge===null?'none':px(edge.width)+' '+(edge.dash==='dot'||edge.dash==='sysDot'?'dotted':edge.dash&&edge.dash!=='solid'?'dashed':'solid')+' '+slideCssColor(edge.color);
+      }
       grid.append(cell);
     }
     element.append(grid);

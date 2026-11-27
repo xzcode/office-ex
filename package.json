@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "check:architecture": "node scripts/check-architecture.mjs",
     "test": "node --import tsx --test tests/*.test.ts tests/preview-release.test.mjs",
-    "test:interop": "python tests/smoke_export.py && python tests/cfb_interop.py && python tests/writer_docx_interop.py && python tests/writer_styles_interop.py && python tests/writer_table_interop.py && python tests/writer_images_interop.py && python tests/writer_integrated_interop.py && python tests/writer_completion_interop.py && python tests/sheets_interop.py && python tests/slides_interop.py && python tests/sheets_external_interop.py && python tests/writer_numbering_interop.py && python tests/office_external_compat.py && python tests/sheets_m7_interop.py && python tests/writer_m7_stories_interop.py",
+    "test:interop": "python tests/smoke_export.py && python tests/cfb_interop.py && python tests/writer_docx_interop.py && python tests/writer_styles_interop.py && python tests/writer_table_interop.py && python tests/writer_images_interop.py && python tests/writer_integrated_interop.py && python tests/writer_completion_interop.py && python tests/sheets_interop.py && python tests/slides_interop.py && python tests/sheets_external_interop.py && python tests/writer_numbering_interop.py && python tests/office_external_compat.py && python tests/sheets_m7_interop.py && python tests/writer_m7_stories_interop.py && python tests/slides_m7_tables_interop.py",
     "build": "node scripts/build.mjs",
     "start": "npm run build && electron apps/desktop",
     "smoke:desktop": "npm run build && node --import tsx scripts/smoke-desktop.mjs",

@@ -2,6 +2,11 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "slideTableStartRow": "Start row",
+    "slideTableStartColumn": "Start column",
+    "slideTableRowCount": "Selected rows",
+    "slideTableColumnCount": "Selected columns",
+    "slideTableResetFormat": "Reset cell format",
     "writerStoryVariant": "Page type",
     "writerStoryDefaultPage": "Default / odd page",
     "writerStoryFirstPage": "First page",
@@ -235,6 +240,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "slideTableStartRow": "起始行",
+    "slideTableStartColumn": "起始列",
+    "slideTableRowCount": "选中行数",
+    "slideTableColumnCount": "选中列数",
+    "slideTableResetFormat": "重置单元格格式",
     "writerStoryVariant": "页面类型",
     "writerStoryDefaultPage": "默认 / 奇数页",
     "writerStoryFirstPage": "首页",
@@ -468,6 +478,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "slideTableStartRow": "起始列",
+    "slideTableStartColumn": "起始欄",
+    "slideTableRowCount": "選取列數",
+    "slideTableColumnCount": "選取欄數",
+    "slideTableResetFormat": "重設儲存格格式",
     "writerStoryVariant": "頁面類型",
     "writerStoryDefaultPage": "預設 / 奇數頁",
     "writerStoryFirstPage": "首頁",
@@ -701,6 +716,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "slideTableStartRow": "開始行",
+    "slideTableStartColumn": "開始列",
+    "slideTableRowCount": "選択行数",
+    "slideTableColumnCount": "選択列数",
+    "slideTableResetFormat": "セル書式をリセット",
     "writerStoryVariant": "ページの種類",
     "writerStoryDefaultPage": "既定 / 奇数ページ",
     "writerStoryFirstPage": "先頭ページ",
@@ -934,6 +954,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "slideTableStartRow": "시작 행",
+    "slideTableStartColumn": "시작 열",
+    "slideTableRowCount": "선택 행 수",
+    "slideTableColumnCount": "선택 열 수",
+    "slideTableResetFormat": "셀 서식 초기화",
     "writerStoryVariant": "페이지 유형",
     "writerStoryDefaultPage": "기본 / 홀수 페이지",
     "writerStoryFirstPage": "첫 페이지",
@@ -1167,6 +1192,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "slideTableStartRow": "Ligne de départ",
+    "slideTableStartColumn": "Colonne de départ",
+    "slideTableRowCount": "Lignes sélectionnées",
+    "slideTableColumnCount": "Colonnes sélectionnées",
+    "slideTableResetFormat": "Réinitialiser le format de cellule",
     "writerStoryVariant": "Type de page",
     "writerStoryDefaultPage": "Page par défaut / impaire",
     "writerStoryFirstPage": "Première page",
@@ -1400,6 +1430,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "slideTableStartRow": "Startzeile",
+    "slideTableStartColumn": "Startspalte",
+    "slideTableRowCount": "Ausgewählte Zeilen",
+    "slideTableColumnCount": "Ausgewählte Spalten",
+    "slideTableResetFormat": "Zellformat zurücksetzen",
     "writerStoryVariant": "Seitentyp",
     "writerStoryDefaultPage": "Standard / ungerade Seite",
     "writerStoryFirstPage": "Erste Seite",
@@ -1633,6 +1668,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "slideTableStartRow": "Fila inicial",
+    "slideTableStartColumn": "Columna inicial",
+    "slideTableRowCount": "Filas seleccionadas",
+    "slideTableColumnCount": "Columnas seleccionadas",
+    "slideTableResetFormat": "Restablecer formato de celda",
     "writerStoryVariant": "Tipo de página",
     "writerStoryDefaultPage": "Página predeterminada / impar",
     "writerStoryFirstPage": "Primera página",
@@ -1866,6 +1906,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "slideTableStartRow": "Linha inicial",
+    "slideTableStartColumn": "Coluna inicial",
+    "slideTableRowCount": "Linhas selecionadas",
+    "slideTableColumnCount": "Colunas selecionadas",
+    "slideTableResetFormat": "Redefinir formato da célula",
     "writerStoryVariant": "Tipo de página",
     "writerStoryDefaultPage": "Página padrão / ímpar",
     "writerStoryFirstPage": "Primeira página",
@@ -2099,6 +2144,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "slideTableStartRow": "Riga iniziale",
+    "slideTableStartColumn": "Colonna iniziale",
+    "slideTableRowCount": "Righe selezionate",
+    "slideTableColumnCount": "Colonne selezionate",
+    "slideTableResetFormat": "Ripristina formato cella",
     "writerStoryVariant": "Tipo di pagina",
     "writerStoryDefaultPage": "Pagina predefinita / dispari",
     "writerStoryFirstPage": "Prima pagina",
@@ -2332,6 +2382,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "slideTableStartRow": "Начальная строка",
+    "slideTableStartColumn": "Начальный столбец",
+    "slideTableRowCount": "Выбранные строки",
+    "slideTableColumnCount": "Выбранные столбцы",
+    "slideTableResetFormat": "Сбросить формат ячейки",
     "writerStoryVariant": "Тип страницы",
     "writerStoryDefaultPage": "По умолчанию / нечётная",
     "writerStoryFirstPage": "Первая страница",
@@ -2565,6 +2620,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "slideTableStartRow": "صف البداية",
+    "slideTableStartColumn": "عمود البداية",
+    "slideTableRowCount": "الصفوف المحددة",
+    "slideTableColumnCount": "الأعمدة المحددة",
+    "slideTableResetFormat": "إعادة ضبط تنسيق الخلية",
     "writerStoryVariant": "نوع الصفحة",
     "writerStoryDefaultPage": "افتراضي / صفحة فردية",
     "writerStoryFirstPage": "الصفحة الأولى",
@@ -2798,6 +2858,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "slideTableStartRow": "שורת התחלה",
+    "slideTableStartColumn": "עמודת התחלה",
+    "slideTableRowCount": "שורות נבחרות",
+    "slideTableColumnCount": "עמודות נבחרות",
+    "slideTableResetFormat": "איפוס עיצוב תא",
     "writerStoryVariant": "סוג עמוד",
     "writerStoryDefaultPage": "ברירת מחדל / עמוד אי-זוגי",
     "writerStoryFirstPage": "עמוד ראשון",
@@ -3031,6 +3096,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "slideTableStartRow": "प्रारंभिक पंक्ति",
+    "slideTableStartColumn": "प्रारंभिक स्तंभ",
+    "slideTableRowCount": "चयनित पंक्तियाँ",
+    "slideTableColumnCount": "चयनित स्तंभ",
+    "slideTableResetFormat": "सेल स्वरूप रीसेट करें",
     "writerStoryVariant": "पृष्ठ प्रकार",
     "writerStoryDefaultPage": "डिफ़ॉल्ट / विषम पृष्ठ",
     "writerStoryFirstPage": "पहला पृष्ठ",
@@ -3264,6 +3334,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "slideTableStartRow": "แถวเริ่มต้น",
+    "slideTableStartColumn": "คอลัมน์เริ่มต้น",
+    "slideTableRowCount": "แถวที่เลือก",
+    "slideTableColumnCount": "คอลัมน์ที่เลือก",
+    "slideTableResetFormat": "รีเซ็ตรูปแบบเซลล์",
     "writerStoryVariant": "ประเภทหน้า",
     "writerStoryDefaultPage": "ค่าเริ่มต้น / หน้าคี่",
     "writerStoryFirstPage": "หน้าแรก",
@@ -3497,6 +3572,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "slideTableStartRow": "Hàng bắt đầu",
+    "slideTableStartColumn": "Cột bắt đầu",
+    "slideTableRowCount": "Số hàng chọn",
+    "slideTableColumnCount": "Số cột chọn",
+    "slideTableResetFormat": "Đặt lại định dạng ô",
     "writerStoryVariant": "Loại trang",
     "writerStoryDefaultPage": "Mặc định / trang lẻ",
     "writerStoryFirstPage": "Trang đầu",
@@ -3730,6 +3810,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "slideTableStartRow": "Baris awal",
+    "slideTableStartColumn": "Kolom awal",
+    "slideTableRowCount": "Baris terpilih",
+    "slideTableColumnCount": "Kolom terpilih",
+    "slideTableResetFormat": "Setel ulang format sel",
     "writerStoryVariant": "Jenis halaman",
     "writerStoryDefaultPage": "Bawaan / halaman ganjil",
     "writerStoryFirstPage": "Halaman pertama",
@@ -3963,6 +4048,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "slideTableStartRow": "Baris mula",
+    "slideTableStartColumn": "Lajur mula",
+    "slideTableRowCount": "Baris dipilih",
+    "slideTableColumnCount": "Lajur dipilih",
+    "slideTableResetFormat": "Tetapkan semula format sel",
     "writerStoryVariant": "Jenis halaman",
     "writerStoryDefaultPage": "Lalai / halaman ganjil",
     "writerStoryFirstPage": "Halaman pertama",
@@ -4196,6 +4286,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "slideTableStartRow": "Başlangıç satırı",
+    "slideTableStartColumn": "Başlangıç sütunu",
+    "slideTableRowCount": "Seçili satırlar",
+    "slideTableColumnCount": "Seçili sütunlar",
+    "slideTableResetFormat": "Hücre biçimini sıfırla",
     "writerStoryVariant": "Sayfa türü",
     "writerStoryDefaultPage": "Varsayılan / tek sayfa",
     "writerStoryFirstPage": "İlk sayfa",
@@ -4429,6 +4524,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "slideTableStartRow": "Beginrij",
+    "slideTableStartColumn": "Beginkolom",
+    "slideTableRowCount": "Geselecteerde rijen",
+    "slideTableColumnCount": "Geselecteerde kolommen",
+    "slideTableResetFormat": "Celopmaak herstellen",
     "writerStoryVariant": "Paginatype",
     "writerStoryDefaultPage": "Standaard / oneven pagina",
     "writerStoryFirstPage": "Eerste pagina",
@@ -4662,6 +4762,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "slideTableStartRow": "Wiersz początkowy",
+    "slideTableStartColumn": "Kolumna początkowa",
+    "slideTableRowCount": "Wybrane wiersze",
+    "slideTableColumnCount": "Wybrane kolumny",
+    "slideTableResetFormat": "Zresetuj format komórki",
     "writerStoryVariant": "Typ strony",
     "writerStoryDefaultPage": "Domyślna / nieparzysta",
     "writerStoryFirstPage": "Pierwsza strona",
@@ -4895,6 +5000,11 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "slideTableStartRow": "Початковий рядок",
+    "slideTableStartColumn": "Початковий стовпець",
+    "slideTableRowCount": "Вибрані рядки",
+    "slideTableColumnCount": "Вибрані стовпці",
+    "slideTableResetFormat": "Скинути формат клітинки",
     "writerStoryVariant": "Тип сторінки",
     "writerStoryDefaultPage": "Типова / непарна",
     "writerStoryFirstPage": "Перша сторінка",

@@ -129,7 +129,7 @@ def generate(p):
     for i,row in enumerate([['类别','数量'],['文件','12']]):
         for j,value in enumerate(row):t.cell(i,j).text=value
     s=r.slides.add_slide(r.slide_layouts[5]);s.shapes.title.text='第二张幻灯片';r.save(p/'m6-slide-table.pptx')
-    t.cell(0,0).merge(t.cell(0,1));r.save(p/'advanced.pptx')
+    t.cell(0,0).merge(t.cell(0,1));t.cell(0,0).text_frame.paragraphs[0].runs[0].font.bold=True;r.save(p/'advanced.pptx')
 def verify(p):
     subprocess.run([os.environ.get('NODE','node'),'--import','tsx','tests/office-external-compat.mjs',str(p)],cwd=ROOT,check=True)
     a=load_workbook(p/'standard-edited.xlsx',data_only=True);assert a['销售']['B1'].value==300 and a['销售']['B2'].value==600

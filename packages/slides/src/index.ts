@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /** Presentation commands use stable IDs and one atomic patch per user action. */
 import { assert, assertId, assertUnicode, graphemeBoundaries } from '@office-ex/contracts';
-import { DEFAULT_SLIDE_TABLE_STYLE, cloneData, patchCommand, DEFAULT_SLIDE_THEME_COLORS, validateColor, validateGeometry, validateSlideCrop, walkSlideShapes, resolveSlideConnector, isConnectorTarget, nearestSlideConnections, connectorGeometry, validateTextStyle, validateSlideParagraph, resolveTextStyle, splitSlideParagraphs, firstSlideParagraphRun, validateImageResource, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type SlidesDocument, type Slide, type Shape, type Geometry, type Color, type TextRun, type TextStyle, type SlideTextFrame, type SlideCrop, type SlideStroke, type SlideConnections, type ModelPath, type SlideParagraphFormat, type SlideTheme, type ImageResource, type PatchOperation } from '@office-ex/core';
+import { DEFAULT_SLIDE_TABLE_STYLE, slideTableCoverage, validateSlideTableData, cloneData, patchCommand, DEFAULT_SLIDE_THEME_COLORS, validateColor, validateGeometry, validateSlideCrop, walkSlideShapes, resolveSlideConnector, isConnectorTarget, nearestSlideConnections, connectorGeometry, validateTextStyle, validateSlideParagraph, resolveTextStyle, splitSlideParagraphs, firstSlideParagraphRun, validateImageResource, type DocumentSnapshot, type DocumentCommand, type DeepReadonly, type SlidesDocument, type Slide, type Shape, type Geometry, type Color, type TextRun, type TextStyle, type SlideTextFrame, type SlideTableData, type SlideTableRange, type SlideTableCellFormat, type SlideCrop, type SlideStroke, type SlideConnections, type ModelPath, type SlideParagraphFormat, type SlideTheme, type ImageResource, type PatchOperation } from '@office-ex/core';
 
 export type PresentationSnapshot = DeepReadonly<SlidesDocument>;
 export type SlideSnapshot = DeepReadonly<Slide>;
@@ -268,9 +268,73 @@ export function insertSlideTable(snapshot:DocumentSnapshot,slideId:string,rows:n
 }
 export function editSlideTable(snapshot:DocumentSnapshot,slideId:string,shapeId:string,cells:readonly (readonly string[])[]):DocumentCommand{
  const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type==='table','invalid','Expected slide table');
- const table=l.shape.table;assert(cells.length===table.rowHeights.length&&cells.every(row=>row.length===table.columnWidths.length),'invalid','Table cell dimensions changed');
- for(const row of cells)for(const value of row){assertUnicode(value);assert(value.length<=4096,'limit','Slide table cell text budget');}
- return command(snapshot,[{op:'set',path:[...l.path,'table','cells'],value:cells}]);
+ const table=cloneData(l.shape.table) as SlideTableData;table.cells=cells.map(r=>[...r]);
+ return replaceSlideTable(snapshot,slideId,shapeId,table);
+}
+export function replaceSlideTable(snapshot:DocumentSnapshot,slideId:string,shapeId:string,table:DeepReadonly<SlideTableData>):DocumentCommand{
+ const l=locateShape(snapshot,slideId,shapeId);assert(l.shape.type==='table','invalid','Expected slide table');validateSlideTableData(table);
+ const geometry={...l.shape.geometry,width:table.columnWidths.reduce((a,b)=>a+b,0),height:table.rowHeights.reduce((a,b)=>a+b,0)};
+ return command(snapshot,[{op:'set',path:[...l.path,'table'],value:table},{op:'set',path:[...l.path,'geometry'],value:geometry}]);
+}
+export type SlideTableEdit=
+ |{kind:'merge';range:SlideTableRange}
+ |{kind:'split';row:number;column:number}
+ |{kind:'insert'|'delete';axis:'row'|'column';index:number}
+ |{kind:'format';range:SlideTableRange;format:SlideTableCellFormat}
+ |{kind:'resetFormat';range:SlideTableRange};
+const sameCellFormat=(a:unknown,b:unknown)=>JSON.stringify(a??{})===JSON.stringify(b??{});
+/** Pure shared operations for a dialog draft or a standalone atomic command. */
+export function editSlideTableGrid(input:DeepReadonly<SlideTableData>,action:SlideTableEdit):SlideTableData{
+ validateSlideTableData(input);const t=cloneData(input) as SlideTableData,rows=t.rowHeights.length,cols=t.columnWidths.length,coverage=slideTableCoverage(t);
+ const key=(r:number,c:number)=>r+':'+c;
+ const check=(r:number,c:number)=>assert(Number.isSafeInteger(r)&&Number.isSafeInteger(c)&&r>=0&&r<rows&&c>=0&&c<cols,'invalid','Invalid table cell');
+ const rangeCheck=(r:SlideTableRange)=>{check(r.row,r.column);assert(Number.isSafeInteger(r.rowCount)&&r.rowCount>0&&Number.isSafeInteger(r.columnCount)&&r.columnCount>0,'invalid','Invalid table range');check(r.row+r.rowCount-1,r.column+r.columnCount-1);};
+ const format=(r:number,c:number)=>t.formats?.[key(r,c)];
+ const setFormat=(r:number,c:number,value:SlideTableCellFormat|undefined)=>{if(value&&Object.keys(value).length)(t.formats??={})[key(r,c)]=value;else if(t.formats)delete t.formats[key(r,c)];};
+ if(action.kind==='merge'){
+  const r=action.range;rangeCheck(r);assert(r.rowCount*r.columnCount>1,'invalid','Select multiple cells');
+  const parts:string[]=[],anchor=format(r.row,r.column);
+  for(let i=r.row;i<r.row+r.rowCount;i++)for(let j=r.column;j<r.column+r.columnCount;j++){
+   assert(!coverage.has(key(i,j)),'unsupported','Split existing merges before merging this range');
+   const other=format(i,j);assert(!other||sameCellFormat(other,anchor),'unsupported','Reset conflicting cell formatting before merging');
+   if(t.cells[i]![j]!)parts.push(t.cells[i]![j]!);
+   t.cells[i]![j]='';if(i!==r.row||j!==r.column)setFormat(i,j,undefined);
+  }
+  t.cells[r.row]![r.column]=parts.join('\n');(t.merges??=[]).push({...r});
+ }else if(action.kind==='split'){
+  check(action.row,action.column);const m=coverage.get(key(action.row,action.column));assert(m,'invalid','Cell is not merged');
+  t.merges=t.merges!.filter(r=>r.row!==m.row||r.column!==m.column);
+ }else if(action.kind==='format'||action.kind==='resetFormat'){
+  const r=action.range;rangeCheck(r);const touched=new Set<string>();
+  for(let i=r.row;i<r.row+r.rowCount;i++)for(let j=r.column;j<r.column+r.columnCount;j++){
+   const m=coverage.get(key(i,j)),rr=m?.row??i,cc=m?.column??j,k=key(rr,cc);if(touched.has(k))continue;touched.add(k);
+   if(action.kind==='resetFormat')setFormat(rr,cc,undefined);
+   else{const prior=format(rr,cc)??{},f=action.format;setFormat(rr,cc,{...prior,...f,...(f.textStyle?{textStyle:{...prior.textStyle,...f.textStyle}}:{}),...(f.borders?{borders:{...prior.borders,...f.borders}}:{})});}
+  }
+ }else{
+  const axis=action.axis,dim=axis==='row'?'row':'column',count=axis==='row'?'rowCount':'columnCount',sizes=axis==='row'?t.rowHeights:t.columnWidths,index=action.index,insert=action.kind==='insert';
+  assert(Number.isSafeInteger(index)&&index>=0&&index<(insert?sizes.length+1:sizes.length),'invalid','Invalid table dimension index');
+  assert(insert||sizes.length>1,'invalid','Retain at least one table row and column');
+  const map=(v:number)=>insert?(v>=index?v+1:v):v===index?undefined:v>index?v-1:v;
+  // Capture surviving merged origins before deleting any grid slots.
+  const merges:SlideTableRange[]=[],rescued:{row:number;column:number;text:string;format?:SlideTableCellFormat}[]=[];
+  for(const m of t.merges??[]){
+   const start=m[dim],last=start+m[count]-1;let next=start,length=m[count];
+   if(insert){if(index<=start)next++;else if(index<=last)length++;}
+   else if(index<start)next--;
+   else if(index<=last){length--;if(length>0&&index===start)rescued.push({row:dim==='row'?start:m.row,column:dim==='column'?start:m.column,text:t.cells[m.row]![m.column]!,format:format(m.row,m.column)});}
+   if(length>0){const n={...m,[dim]:next,[count]:length};if(n.rowCount*n.columnCount>1)merges.push(n);}
+  }
+  const formats:Record<string,SlideTableCellFormat>={};
+  for(const [k,f]of Object.entries(t.formats??{})){const [r,c]=k.split(':').map(Number),v=map(axis==='row'?r!:c!);if(v!==undefined)formats[key(axis==='row'?v:r!,axis==='column'?v:c!)]=f;}
+  if(insert){sizes.splice(index,0,sizes[Math.max(0,Math.min(sizes.length-1,index-1))]!);if(axis==='row')t.cells.splice(index,0,Array<string>(cols).fill(''));else for(const r of t.cells)r.splice(index,0,'');}
+  else{sizes.splice(index,1);if(axis==='row')t.cells.splice(index,1);else for(const r of t.cells)r.splice(index,1);}
+  t.merges=merges;t.formats=formats;
+  for(const item of rescued){t.cells[item.row]![item.column]=item.text;setFormat(item.row,item.column,item.format);}
+ }
+ if(!t.merges?.length)delete t.merges;else t.merges.sort((a,b)=>a.row-b.row||a.column-b.column);
+ if(!t.formats||!Object.keys(t.formats).length)delete t.formats;
+ validateSlideTableData(t);return t;
 }
 /** Equalize spacing in the local coordinate space. Rotated objects are
  * intentionally outside this profile; use existing manual alignment. */

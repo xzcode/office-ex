@@ -21,7 +21,10 @@ export function buildSlideScene(snapshot:DocumentSnapshot,slideId:string):SlideS
   };
   const project=(shape:DeepReadonly<Shape>):SlideSceneShape=>{
     const base:SceneBase={id:shape.id,geometry:shape.geometry,...(shape.fill?{fill:color(shape.fill)}:{}),...(shape.stroke?{stroke:{...shape.stroke,color:color(shape.stroke.color)}}:{}),...(shape.flipH?{flipH:true}:{}),...(shape.flipV?{flipV:true}:{})};
-    if(shape.type==='table')return {...base,type:'table',table:shape.table,font:{fontFamily:resolveSlideThemeFont(doc.defaultTextStyle.fontFamily,doc.theme)??'sans-serif',fontSize:doc.defaultTextStyle.fontSize??228600,color:color({kind:'theme',name:'dk1'})},accent:color({kind:'theme',name:'accent1'})};
+    if(shape.type==='table'){
+      const formats=shape.table.formats?Object.fromEntries(Object.entries(shape.table.formats).map(([key,f])=>[key,{...f,...(f.fill?{fill:color(f.fill)}:{}),...(f.textStyle?{textStyle:{...f.textStyle,...(f.textStyle.color?{color:color(f.textStyle.color)}:{}),...(f.textStyle.fontFamily?{fontFamily:resolveSlideThemeFont(f.textStyle.fontFamily,doc.theme)}:{})}}:{}),...(f.borders?{borders:Object.fromEntries(Object.entries(f.borders).map(([edge,b])=>[edge,b?{...b,color:color(b.color)}:null]))}:{})}])):undefined;
+      return {...base,type:'table',table:{...shape.table,...(formats?{formats}:{})},font:{fontFamily:resolveSlideThemeFont(doc.defaultTextStyle.fontFamily,doc.theme)??'sans-serif',fontSize:doc.defaultTextStyle.fontSize??228600,color:color({kind:'theme',name:'dk1'})},accent:color({kind:'theme',name:'accent1'})};
+    }
     if(shape.type==='group')return {...base,type:'group',childSpace:shape.childSpace,children:shape.children.map(project)};
     if(shape.type==='image'){
       const resource=doc.resources[shape.resourceId];if(!resource?.dataBase64)diagnostics.push({code:'slides.image-unavailable',featureId:'SLD-02',severity:'warning',messageKey:'slides.imageUnavailable',safeAction:'none'});

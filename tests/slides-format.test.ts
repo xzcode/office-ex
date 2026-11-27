@@ -216,3 +216,23 @@ test('M6.7 native DrawingML table round trip preserves text, grid and flags; leg
  const {DocumentSession}=await import('@office-ex/core');const {insertSlideTable,editSlideTable}=await import('@office-ex/slides');const s=new DocumentSession(createDocument('slides','m6-table'));
  s.execute(insertSlideTable(s.snapshot(),'slide-1',2,2,'grid'));s.execute(editSlideTable(s.snapshot(),'slide-1','grid',[['名称','Value'],['多行\n文本','42']]));const d=s.snapshot().document as SlidesDocument;const b=writeSlidesPptx(d);const opened=openSlidesPptx(b,d.documentId).document;const shape=opened.slides[0]!.shapes[0]!;assert.equal(shape.type,'table');if(shape.type!=='table')return;assert.deepEqual(shape.table.cells,[['名称','Value'],['多行\n文本','42']]);assert.equal(shape.table.firstRow,true);assert.equal(shape.table.bandRow,true);assert.deepEqual(saveSlidesPptx(b,opened),b);shape.table.cells[1]![1]='43';const out=openSlidesPptx(saveSlidesPptx(b,opened),d.documentId).document;const read=out.slides[0]!.shapes[0]!;assert.equal(read.type,'table');if(read.type==='table')assert.equal(read.table.cells[1]![1],'43');assert.throws(()=>writeLegacyPpt(d),fail('unsupported'));
 });
+
+test('M7.3 rectangular native merge flags, independent cell formatting and source roundtrip',async()=>{
+ const {DocumentSession}=await import('@office-ex/core');const {insertSlideTable,editSlideTableGrid,replaceSlideTable}=await import('@office-ex/slides');
+ const s=new DocumentSession(createDocument('slides','table-m7'));s.execute(insertSlideTable(s.snapshot(),'slide-1',3,3,'grid'));
+ const shape=(s.snapshot().document as SlidesDocument).slides[0]!.shapes[0]!;assert.equal(shape.type,'table');if(shape.type!=='table')return;
+ const t=structuredClone(shape.table);t.cells[0]![0]='A';t.cells[0]![1]='B';t.cells[1]![0]='C';t.cells[1]![1]='D';
+ const color={kind:'rgba' as const,red:20,green:40,blue:120,alpha:255};
+ let table=editSlideTableGrid(t,{kind:'merge',range:{row:0,column:0,rowCount:2,columnCount:2}});
+ table=editSlideTableGrid(table,{kind:'format',range:{row:0,column:0,rowCount:1,columnCount:1},format:{fill:color,borders:{left:{color,width:19050,dash:'dash'},bottom:null},textStyle:{fontFamily:'Arial',fontSize:203200,bold:true,italic:false,color},alignment:'center',verticalAlignment:'center',margins:{left:10000,right:20000,top:30000,bottom:40000}}});
+ s.execute(replaceSlideTable(s.snapshot(),'slide-1','grid',table));
+ const bytes=writeSlidesPptx(s.snapshot().document as SlidesDocument),source=openSlidesPptx(bytes,'table-m7'),actual=source.document.slides[0]!.shapes[0]!;
+ assert.equal(actual.type,'table');if(actual.type!=='table')return;assert.deepEqual(actual.table.merges,table.merges);assert.deepEqual(actual.table.cells,table.cells);assert.deepEqual(actual.table.formats,table.formats);
+ assert.deepEqual(saveSlidesPptx(bytes,source.document),bytes);
+ const opc=openOpc(bytes),path='ppt/slides/slide1.xml',dec=new TextDecoder(),enc=new TextEncoder(),xml=dec.decode(opc.parts.get(path)!);
+ assert.match(xml,/rowSpan="2" gridSpan="2"/);assert.match(xml,/gridSpan="2" vMerge="1"/);assert.match(xml,/rowSpan="2" hMerge="1"/);
+ for(const broken of [xml.replace('hMerge="1" vMerge="1"','vMerge="1"'),xml.replace('rowSpan="2" gridSpan="2"','rowSpan="3" gridSpan="2"')]){
+  assert.notEqual(broken,xml);const parts=new Map(opc.parts);parts.set(path,enc.encode(broken));assert.throws(()=>openSlidesPptx(writeZip(parts),'broken'),fail('unsupported'));
+ }
+ assert.throws(()=>writeLegacyPpt(s.snapshot().document as SlidesDocument),fail('unsupported'));
+});

@@ -373,3 +373,17 @@
 #writer-story-dialog label input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
 #writer-story-dialog .writer-story-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 .writer-native-running-story{pointer-events:none}
+
+/* Native presentation table editor: one draft, one undoable apply. */
+#slide-table-dialog{width:min(940px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto}
+#slide-table-dialog .slide-table-tools:not([hidden]){display:grid;gap:8px;margin:8px 0 12px}
+#slide-table-dialog .slide-table-bar{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+#slide-table-dialog .slide-table-bar label{display:flex;align-items:center;gap:5px;margin:0;font-size:12px}
+#slide-table-dialog .slide-table-bar label input[type=number]{width:62px;min-width:0}
+#slide-table-dialog .slide-table-bar label input[type=color]{width:34px;height:30px;padding:2px}
+#slide-table-dialog .slide-table-bar label input[type=text],#slide-table-dialog .slide-table-bar label select{width:125px;max-width:100%;min-width:0}
+#slide-table-cells textarea{width:100%;height:100%;min-width:0;min-height:64px;resize:none;white-space:pre-wrap}
+#slide-table-cells .table-range-selected{outline:2px solid var(--accent);outline-offset:-2px}
+#slide-table-dialog button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent)}
+#slide-table-dialog #slide-table-apply,#slide-table-dialog #slide-table-cancel{margin-top:12px}
+#slide-table-cells[hidden]{display:none!important}

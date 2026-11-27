@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import { EMU_PER_CSS_PIXEL, EMU_PER_POINT, ROTATION_UNITS_PER_DEGREE, OfficeError } from '@office-ex/contracts';
-import { walkSlideShapes, isConnectorTarget, resolveSlideConnector, previewModelPatch, type PatchOperation, type DocumentSnapshot, type DocumentCommand, type ImageResource, type Shape, type Geometry, type TextStyle, type SlideParagraphFormat, type Color, type DeepReadonly, type SlidePreset, type SlideCrop, type SlideStroke, type SlideDash } from '@office-ex/core';
-import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, insertSlideTable, editSlideTable, distributeSlideShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes, connectSlideShapes, setSlideConnections, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
+import { cloneData,slideTableCoverage,resolveSlideThemeColor,resolveSlideThemeFont,walkSlideShapes, isConnectorTarget, resolveSlideConnector, previewModelPatch, type PatchOperation, type DocumentSnapshot, type DocumentCommand, type ImageResource, type Shape, type Geometry, type TextStyle, type SlideParagraphFormat, type Color, type DeepReadonly, type SlidePreset, type SlideCrop, type SlideStroke, type SlideDash,type SlideTableData,type SlideTableRange,type SlideTableCellFormat } from '@office-ex/core';
+import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateShape, presentation, insertShapes, insertSlideTable, replaceSlideTable, editSlideTableGrid, type SlideTableEdit, distributeSlideShapes, removeShapes, duplicateShapes, setShapeGeometries, setShapePaint, reorderShapes, alignShapes, insertSlideImage, aspectFitImage, shapeText, replaceShapeText, slideTextEditDiff, formatShapeText, formatSlideParagraphs, setShapeTextFrame, setSlideBackground, setSlideSize, setSlideTheme, DEFAULT_SLIDE_THEME, pasteShapes, groupShapes, ungroupShape, canUngroupShape, setSlideImageCrop, flipSlideShapes, connectSlideShapes, setSlideConnections, type ShapeSnapshot, type ShapeAlignment, type LayerMove } from '@office-ex/slides';
 import { buildSlideScene, walkSlideScene, hitTest, shapeTransform, inverse, transform, multiply, IDENTITY, groupChildTransform, slideShapeParentTransform, type Matrix, type SlideScene, type Point } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import {installRibbon,ribbonNodes,type RibbonState,decorateOfficeButton} from './office-ribbon.js';
@@ -117,22 +117,102 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   const tableHeader=element('header');tableHeader.append(element('h2',t('slideTable')),button('close',()=>tableDialog.close(),tableHeader,'slide-table-close',false,false));tableDialog.append(tableHeader);
   const dims=element('div');const rowInput=element('input'),colInput=element('input');for(const [input,identifier,value,max]of [[rowInput,'slide-table-rows','3','200'],[colInput,'slide-table-columns','3','64']] as const){input.type='number';input.min='1';input.max=max;input.value=value;input.id=identifier;}
   field('writerTableRows',rowInput,dims);field('writerTableColumns',colInput,dims);tableDialog.append(dims);
+  const tableTools=element('div','','slide-table-tools'),rangeBar=element('div','','slide-table-bar'),structureBar=element('div','','slide-table-bar'),formatBar=element('div','','slide-table-bar');
+  tableTools.append(rangeBar,structureBar,formatBar);tableDialog.append(tableTools);
   const matrix=element('div');matrix.id='slide-table-cells';tableDialog.append(matrix);
-  let tableId:string|undefined;
+  let tableId:string|undefined,tableDraft:SlideTableData|undefined,tableRevision=0;
+  const numberField=(key:MessageKey,name:string,parent:HTMLElement,value='1')=>{
+    const input=element('input');input.id=name;input.type='number';input.min='1';input.step='1';input.value=value;field(key,input,parent);return input;
+  };
+  const tableRow=numberField('slideTableStartRow','slide-table-row',rangeBar),tableColumn=numberField('slideTableStartColumn','slide-table-column',rangeBar);
+  const spanRows=numberField('slideTableRowCount','slide-table-span-rows',rangeBar),spanColumns=numberField('slideTableColumnCount','slide-table-span-columns',rangeBar);
+  const chosenRange=():SlideTableRange=>({row:tableRow.valueAsNumber-1,column:tableColumn.valueAsNumber-1,rowCount:spanRows.valueAsNumber,columnCount:spanColumns.valueAsNumber});
+  function chooseTableCell(r:number,c:number,rs=1,cs=1){tableRow.value=String(r+1);tableColumn.value=String(c+1);spanRows.value=String(rs);spanColumns.value=String(cs);syncTableRange();}
+  function syncTableRange(){
+    if(!tableDraft)return;const rows=tableDraft.rowHeights.length,cols=tableDraft.columnWidths.length;
+    tableRow.max=String(rows);tableColumn.max=String(cols);
+    const clamp=(v:number,min:number,max:number)=>Math.min(max,Math.max(min,Number.isFinite(v)?Math.trunc(v):min));
+    tableRow.value=String(clamp(tableRow.valueAsNumber,1,rows));tableColumn.value=String(clamp(tableColumn.valueAsNumber,1,cols));
+    spanRows.max=String(rows-tableRow.valueAsNumber+1);spanColumns.max=String(cols-tableColumn.valueAsNumber+1);
+    spanRows.value=String(clamp(spanRows.valueAsNumber,1,Number(spanRows.max)));spanColumns.value=String(clamp(spanColumns.valueAsNumber,1,Number(spanColumns.max)));
+    const range=chosenRange(),coverage=slideTableCoverage(tableDraft),origin=coverage.get(range.row+':'+range.column);
+    for(const cell of matrix.querySelectorAll<HTMLTextAreaElement>('textarea[data-row]')){
+      const r=Number(cell.dataset.row),c=Number(cell.dataset.column),m=coverage.get(r+':'+c);
+      const selected=r<range.row+range.rowCount&&range.row<r+(m?.rowCount??1)&&c<range.column+range.columnCount&&range.column<c+(m?.columnCount??1);
+      cell.classList.toggle('table-range-selected',selected);
+    }
+    const f=tableDraft.formats?.[(origin?.row??range.row)+':'+(origin?.column??range.column)];
+    const visibleColor=(c:DeepReadonly<Color>|null|undefined,fallback:string)=>colorHex(c?resolveSlideThemeColor(c,doc().theme):undefined,fallback);
+    tableFill.value=visibleColor(f?.fill,'#ffffff');tableInk.value=visibleColor(f?.textStyle?.color,'#182030');
+    tableBorder.value=visibleColor(f?.borders?.left?.color,'#182030');tableBorderWidth.value=String((f?.borders?.left?.width??12700)/EMU_PER_POINT);
+    tableFamily.value=f?.textStyle?.fontFamily??'';tableSize.value=String((f?.textStyle?.fontSize??228600)/EMU_PER_POINT);
+    tableBold.setAttribute('aria-pressed',String(!!f?.textStyle?.bold));tableItalic.setAttribute('aria-pressed',String(!!f?.textStyle?.italic));tableUnderline.setAttribute('aria-pressed',String(!!f?.textStyle?.underline));
+    tableAlignment.value=f?.alignment??'start';tableVertical.value=f?.verticalAlignment??'top';
+    mergeTable.disabled=range.rowCount*range.columnCount<=1;splitTable.disabled=!origin;
+    deleteRow.disabled=rows<=1;deleteCol.disabled=cols<=1;addRow.disabled=rows>=200||(rows+1)*cols>2000;addCol.disabled=cols>=64||rows*(cols+1)>2000;
+  }
+  for(const control of [tableRow,tableColumn,spanRows,spanColumns])control.onchange=syncTableRange;
+  function changeTableDraft(action:SlideTableEdit){
+    if(!tableDraft)return;const range=chosenRange();tableDraft=editSlideTableGrid(tableDraft,action);
+    renderTableDraft();
+    const keepRange=action.kind==='merge'||action.kind==='format'||action.kind==='resetFormat';
+    chooseTableCell(Math.min(range.row,tableDraft.rowHeights.length-1),Math.min(range.column,tableDraft.columnWidths.length-1),keepRange?range.rowCount:1,keepRange?range.columnCount:1);
+  }
+  const mergeTable=button('writerMergeCells',()=>changeTableDraft({kind:'merge',range:chosenRange()}),structureBar,'slide-table-merge');
+  const splitTable=button('writerSplitCell',()=>changeTableDraft({kind:'split',row:chosenRange().row,column:chosenRange().column}),structureBar,'slide-table-split');
+  const addRow=button('writerAddRow',()=>changeTableDraft({kind:'insert',axis:'row',index:chosenRange().row+1}),structureBar,'slide-table-add-row');
+  const deleteRow=button('writerDeleteRow',()=>changeTableDraft({kind:'delete',axis:'row',index:chosenRange().row}),structureBar,'slide-table-delete-row');
+  const addCol=button('writerAddColumn',()=>changeTableDraft({kind:'insert',axis:'column',index:chosenRange().column+1}),structureBar,'slide-table-add-column');
+  const deleteCol=button('writerDeleteColumn',()=>changeTableDraft({kind:'delete',axis:'column',index:chosenRange().column}),structureBar,'slide-table-delete-column');
+  const applyFormat=(format:SlideTableCellFormat)=>changeTableDraft({kind:'format',range:chosenRange(),format});
+  const colorField=(name:string,value:string)=>{const c=element('input');c.type='color';c.id=name;c.value=value;return c;};
+  const tableFill=colorField('slide-table-fill','#ffffff'),tableInk=colorField('slide-table-text-color','#182030'),tableBorder=colorField('slide-table-border-color','#182030');
+  field('sheetFillColor',tableFill,formatBar);tableFill.onchange=()=>safe(()=>applyFormat({fill:rgb(tableFill.value)}));
+  field('writerTextColor',tableInk,formatBar);tableInk.onchange=()=>safe(()=>applyFormat({textStyle:{color:rgb(tableInk.value)}}));
+  field('writerTableBorder',tableBorder,formatBar);const tableBorderWidth=numberField('slideStrokeWidth','slide-table-border-width',formatBar);tableBorderWidth.min='0';tableBorderWidth.max='100';tableBorderWidth.step='.25';
+  button('writerTableBorder',()=>{
+    const width=Math.round(tableBorderWidth.valueAsNumber*EMU_PER_POINT);if(!Number.isFinite(width)||width<0||width>12700*100)throw new OfficeError('invalid','Invalid table border width');
+    const border=width?{color:rgb(tableBorder.value),width}:null;
+    applyFormat({borders:{left:border,right:border,top:border,bottom:border}});
+  },formatBar,'slide-table-apply-border');
+  const tableFamily=element('input');tableFamily.id='slide-table-font';tableFamily.placeholder=t('ribbonFont');field('writerFontFamily',tableFamily,formatBar);
+  tableFamily.onchange=()=>safe(()=>{if(tableFamily.value.trim())applyFormat({textStyle:{fontFamily:tableFamily.value.trim()}});});
+  const tableSize=numberField('writerFontSize','slide-table-font-size',formatBar,'18');tableSize.max='1638';tableSize.step='.01';tableSize.onchange=()=>safe(()=>applyFormat({textStyle:{fontSize:Math.round(tableSize.valueAsNumber*100)*127}}));
+  const tableBold=button('writerBold',()=>applyFormat({textStyle:{bold:tableBold.getAttribute('aria-pressed')!=='true'}}),formatBar,'slide-table-bold');
+  const tableItalic=button('writerItalic',()=>applyFormat({textStyle:{italic:tableItalic.getAttribute('aria-pressed')!=='true'}}),formatBar,'slide-table-italic');
+  const tableUnderline=button('writerUnderline',()=>applyFormat({textStyle:{underline:tableUnderline.getAttribute('aria-pressed')!=='true'}}),formatBar,'slide-table-underline');
+  const tableAlignment=element('select');tableAlignment.id='slide-table-align';for(const [v,k]of [['start','writerAlignLeft'],['center','writerAlignCenter'],['end','writerAlignRight']] as const){const o=element('option',t(k));o.value=v;tableAlignment.append(o);}field('ribbonAlignment',tableAlignment,formatBar);tableAlignment.onchange=()=>safe(()=>applyFormat({alignment:tableAlignment.value as SlideTableCellFormat['alignment']}));
+  const tableVertical=element('select');tableVertical.id='slide-table-vertical';for(const [v,k]of [['top','slideAlignTop'],['center','slideAlignMiddle'],['bottom','slideAlignBottom']] as const){const o=element('option',t(k));o.value=v;tableVertical.append(o);}field('ribbonAlignment',tableVertical,formatBar);tableVertical.onchange=()=>safe(()=>applyFormat({verticalAlignment:tableVertical.value as SlideTableCellFormat['verticalAlignment']}));
+  button('slideTableResetFormat',()=>changeTableDraft({kind:'resetFormat',range:chosenRange()}),formatBar,'slide-table-reset-format');
+  function renderTableDraft(){
+    matrix.replaceChildren();if(!tableDraft)return;
+    const table=tableDraft,coverage=slideTableCoverage(table);
+    Object.assign(matrix.style,{display:'grid',gridTemplateColumns:'repeat('+table.columnWidths.length+', minmax(90px,1fr))',gridTemplateRows:'repeat('+table.rowHeights.length+',minmax(64px,auto))',gap:'4px',maxHeight:'45vh',overflow:'auto'});
+    for(const [r,row]of table.cells.entries())for(const [c,value]of row.entries()){
+      const merge=coverage.get(r+':'+c);if(merge&&(merge.row!==r||merge.column!==c))continue;
+      const input=element('textarea');input.dataset.row=String(r);input.dataset.column=String(c);input.value=value;input.maxLength=4096;input.rows=2;input.setAttribute('aria-label',t('writerCell',{row:host.number(r+1),column:host.number(c+1)}));
+      input.style.gridRow=(r+1)+' / span '+(merge?.rowCount??1);input.style.gridColumn=(c+1)+' / span '+(merge?.columnCount??1);
+      const f=table.formats?.[r+':'+c],cssColor=(v:Color)=>slideCssColor(resolveSlideThemeColor(v,doc().theme));
+      if(f?.fill!==undefined)input.style.background=f.fill===null?'transparent':cssColor(f.fill);
+      if(f?.textStyle){const s=f.textStyle;if(s.color)input.style.color=cssColor(s.color);if(s.bold!==undefined)input.style.fontWeight=s.bold?'700':'400';if(s.italic!==undefined)input.style.fontStyle=s.italic?'italic':'normal';if(s.underline!==undefined)input.style.textDecoration=s.underline?'underline':'none';if(s.fontFamily)input.style.fontFamily=resolveSlideThemeFont(s.fontFamily,doc().theme)??s.fontFamily;if(s.fontSize)input.style.fontSize=Math.min(32,s.fontSize/EMU_PER_CSS_PIXEL)+'px';}
+      input.style.textAlign=f?.alignment??'start';
+      input.onfocus=()=>chooseTableCell(r,c,merge?.rowCount??1,merge?.columnCount??1);
+      input.oninput=()=>{table.cells[r]![c]=input.value;};
+      matrix.append(input);
+    }
+    syncTableRange();
+  }
   const applyTable=button('writerApplyPage',()=>{
-    if(tableId){
-      const selected=locateShape(snap(),state.slideId!,tableId).shape;if(selected.type!=='table')return;
-      const values=selected.table.cells.map((row,r)=>row.map((_,c)=>matrix.querySelector<HTMLTextAreaElement>('[data-row="'+r+'"][data-column="'+c+'"]')!.value));
-      if(apply(editSlideTable(snap(),state.slideId!,tableId,values)))tableDialog.close();
+    if(tableId&&tableDraft){
+      if(snap().revision!==tableRevision)throw new OfficeError('conflict','Table changed while dialog was open');
+      if(apply(replaceSlideTable(snap(),state.slideId!,tableId,tableDraft)))tableDialog.close();
     }else{const shapeId=id();if(apply(insertSlideTable(snap(),state.slideId!,rowInput.valueAsNumber,colInput.valueAsNumber,shapeId))){tableDialog.close();choose([shapeId]);}}
   },tableDialog,'slide-table-apply');
+  button('cancel',()=>tableDialog.close(),tableDialog,'slide-table-cancel',false,false);
   root.append(tableDialog);
   function openTable(editing:boolean){
-    tableId=undefined;matrix.replaceChildren();dims.hidden=editing;
-    if(editing){const s=selected()[0];if(s?.type!=='table')return;tableId=s.id;
-      Object.assign(matrix.style,{display:'grid',gridTemplateColumns:'repeat('+s.table.columnWidths.length+', minmax(80px,1fr))',gap:'4px',maxHeight:'55vh',overflow:'auto'});
-      for(const [r,row]of s.table.cells.entries())for(const [c,value]of row.entries()){const input=element('textarea');input.dataset.row=String(r);input.dataset.column=String(c);input.value=value;input.maxLength=4096;input.rows=2;input.setAttribute('aria-label',String(r+1)+', '+String(c+1));matrix.append(input);}
-    }
+    tableId=undefined;tableDraft=undefined;matrix.replaceChildren();dims.hidden=editing;tableTools.hidden=!editing;matrix.hidden=!editing;
+    if(editing){const s=selected()[0];if(s?.type!=='table')return;tableId=s.id;tableRevision=snap().revision;tableDraft=cloneData(s.table) as SlideTableData;tableRow.value=tableColumn.value=spanRows.value=spanColumns.value='1';renderTableDraft();}
     tableDialog.showModal();
   }
   const insertTableButton=button('slideTable',()=>openTable(false),toolbar,'slide-insert-table');

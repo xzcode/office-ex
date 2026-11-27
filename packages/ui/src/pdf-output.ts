@@ -61,7 +61,7 @@ export async function prepareDocumentPdfOutput(snapshot: DocumentSnapshot, conta
       else if (block.type === 'table') for (const row of block.rows) for (const cell of row.cells) for (const paragraph of cell.blocks) { assert(paragraph.type === 'paragraph', 'unsupported', 'Nested table printing is unsupported'); paragraphFonts(model, paragraph); }
     }
   } else for (const slide of model.slides) for (const shape of walkSlideScene(buildSlideScene(snapshot, slide.id).shapes)){
-    if(shape.type==='table'){fontStyle(shape.font);for(const row of shape.table.cells)for(const text of row)assertPdfTextCoverage(text);}
+    if(shape.type==='table'){fontStyle(shape.font);for(const f of Object.values(shape.table.formats??{}))if(f.textStyle)fontStyle({...shape.font,...f.textStyle});for(const row of shape.table.cells)for(const text of row)assertPdfTextCoverage(text);}
     if(shape.type==='text')for (const paragraph of shape.paragraphs) { fontStyle(paragraph.style); if(paragraph.marker){fontStyle(paragraph.marker.style);assertPdfTextCoverage(paragraph.marker.text);} for (const run of paragraph.runs) { fontStyle(run.style); assertPdfTextCoverage(run.text); } }
   }
   await ensurePdfFonts();

@@ -6,7 +6,7 @@
  */
 import { XMLSerializer, type Element } from '@xmldom/xmldom';
 import { OfficeError } from '@office-ex/contracts';
-import { DEFAULT_SLIDE_TABLE_STYLE, walkSlideShapes, resolveSlideConnector, isConnectorTarget, type SlideConnections, type SlideConnection, type SlidePreset, type SlideArrow, type SlideDash, createDocument, validateDocument, makeImageResource, decodeImageBytes, resolveTextStyle, DEFAULT_SLIDE_THEME_COLORS, resolveSlideThemeColor, resolveSlideThemeFont, splitSlideParagraphs, firstSlideParagraphRun, type SlideParagraphFormat, type SlideBullet, type SlideTextFrame, type SlidesDocument, type Slide, type Shape, type TextRun, type TextStyle, type Color, type DeepReadonly } from '@office-ex/core';
+import { DEFAULT_SLIDE_TABLE_STYLE, slideTableCoverage, validateSlideTableData, type SlideTableData, type SlideTableRange, type SlideTableCellFormat, type SlideTableBorder, walkSlideShapes, resolveSlideConnector, isConnectorTarget, type SlideConnections, type SlideConnection, type SlidePreset, type SlideArrow, type SlideDash, createDocument, validateDocument, makeImageResource, decodeImageBytes, resolveTextStyle, DEFAULT_SLIDE_THEME_COLORS, resolveSlideThemeColor, resolveSlideThemeFont, splitSlideParagraphs, firstSlideParagraphRun, type SlideParagraphFormat, type SlideBullet, type SlideTextFrame, type SlidesDocument, type Slide, type Shape, type TextRun, type TextStyle, type Color, type DeepReadonly } from '@office-ex/core';
 import { openOpc, type OpcPackage, type OpcRelationship } from './opc.js';
 import { parseXml, childElements } from './xml.js';
 import { writeZip } from './zip.js';
@@ -114,7 +114,15 @@ function shapeXml(shape:DeepReadonly<Shape>,numericIds:ReadonlyMap<string,number
  const g=shape.geometry,no=numericIds.get(shape.id)!,name=esc(shape.id),flags=(shape.flipH?' flipH="1"':'')+(shape.flipV?' flipV="1"':''),xStart='<a:xfrm rot="'+g.rotation+'"'+flags+'><a:off x="'+g.x+'" y="'+g.y+'"/><a:ext cx="'+g.width+'" cy="'+g.height+'"/>',identity='<p:cNvPr id="'+no+'" name="'+name+'"/>';
  if(shape.type==='table'){
   const t=shape.table,style='<a:tblPr firstRow="'+Number(!!t.firstRow)+'" bandRow="'+Number(!!t.bandRow)+'"><a:tableStyleId>'+t.styleId+'</a:tableStyleId></a:tblPr>';
-  const rows=t.cells.map((row,i)=>'<a:tr h="'+t.rowHeights[i]+'">'+row.map(text=>'<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>'+text.split('\n').map(v=>'<a:p>'+(v?'<a:r><a:t xml:space="preserve">'+esc(v)+'</a:t></a:r>':'')+'</a:p>').join('')+'</a:txBody><a:tcPr/></a:tc>').join('')+'</a:tr>').join('');
+  const coverage=slideTableCoverage(t);
+  const rows=t.cells.map((row,i)=>'<a:tr h="'+t.rowHeights[i]+'">'+row.map((text,j)=>{
+   const m=coverage.get(i+':'+j),f=t.formats?.[i+':'+j];
+   const flags=m?tableMergeAttributes(m,i,j):'';
+   const props=f?.textStyle?runStyleXml(f.textStyle,'rPr',d):'';
+   const pPr=f?.alignment?'<a:pPr algn="'+({start:'l',center:'ctr',end:'r'}[f.alignment])+'"/>':'';
+   const paragraphs=text.split('\n').map(v=>'<a:p>'+pPr+(v?'<a:r>'+props+'<a:t xml:space="preserve">'+esc(v)+'</a:t></a:r>':f?.textStyle?runStyleXml(f.textStyle,'endParaRPr',d):'')+'</a:p>').join('');
+   return '<a:tc'+flags+'><a:txBody><a:bodyPr/><a:lstStyle/>'+paragraphs+'</a:txBody>'+tableCellFormatXml(f,d)+'</a:tc>';
+  }).join('')+'</a:tr>').join('');
   return '<p:graphicFrame><p:nvGraphicFramePr>'+identity+'<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="'+g.x+'" y="'+g.y+'"/><a:ext cx="'+g.width+'" cy="'+g.height+'"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl>'+style+'<a:tblGrid>'+t.columnWidths.map(w=>'<a:gridCol w="'+w+'"/>').join('')+'</a:tblGrid>'+rows+'</a:tbl></a:graphicData></a:graphic></p:graphicFrame>';
  }
  if(shape.type==='group'){
@@ -299,6 +307,44 @@ function parseShapeGroup(e:Element,id:string,opc:OpcPackage,rel:OpcRelationship[
  gate(depth<16&&nodes.length>0,'Invalid group depth or size');const flipH=bool(get(x,'flipH')),flipV=bool(get(x,'flipV'));
  return {id,type:'group',geometry,childSpace,...(flipH?{flipH}:{}),...(flipV?{flipV}:{}),children:nodes.map((node,i)=>{claimShapeId(node,ids);gate(!activePlaceholder(node),'Grouped placeholder inheritance');return parseShape(node,id+'-c'+(i+1),opc,rel,d,used,theme,defaults,ids,depth+1);})};
 }
+function tableMergeAttributes(m:DeepReadonly<SlideTableRange>,r:number,c:number):string{
+ return (r===m.row&&m.rowCount>1?' rowSpan="'+m.rowCount+'"':'')+(c===m.column&&m.columnCount>1?' gridSpan="'+m.columnCount+'"':'')+(c>m.column?' hMerge="1"':'')+(r>m.row?' vMerge="1"':'');
+}
+const tableEdges=[['left','lnL'],['right','lnR'],['top','lnT'],['bottom','lnB']] as const;
+function tableCellFormatXml(f:DeepReadonly<SlideTableCellFormat>|undefined,d:Deck):string{
+ if(!f)return '<a:tcPr/>';
+ const attrs=(f.margins?(['left','right','top','bottom'] as const).map((k,i)=>' '+['marL','marR','marT','marB'][i]+'="'+f.margins![k]+'"').join(''):'')+(f.verticalAlignment?' anchor="'+({top:'t',center:'ctr',bottom:'b'}[f.verticalAlignment])+'"':'');
+ const lines=tableEdges.map(([key,tag])=>{
+  const b=f.borders?.[key];if(b===undefined)return '';
+  return b===null?'<a:'+tag+'><a:noFill/></a:'+tag+'>':'<a:'+tag+' w="'+b.width+'"><a:solidFill>'+colorXml(b.color,d)+'</a:solidFill><a:prstDash val="'+(b.dash??'solid')+'"/></a:'+tag+'>';
+ }).join('');
+ const fill=f.fill===null?'<a:noFill/>':f.fill?'<a:solidFill>'+colorXml(f.fill,d)+'</a:solidFill>':'';
+ return '<a:tcPr'+attrs+'>'+lines+fill+'</a:tcPr>';
+}
+const tableCanonical=(v:unknown):string=>v===null||typeof v!=='object'?JSON.stringify(v):Array.isArray(v)?'['+v.map(tableCanonical).join(',')+']':'{'+Object.entries(v).filter(([,x])=>x!==undefined).sort(([a],[b])=>a.localeCompare(b)).map(([k,x])=>JSON.stringify(k)+':'+tableCanonical(x)).join(',')+'}';
+function readTableCellFormat(pr:Element):SlideTableCellFormat{
+ attrs(pr,['marL','marR','marT','marB','anchor','anchorCtr','vert']);
+ gate(!bool(get(pr,'anchorCtr'))&&(get(pr,'vert')??'horz')==='horz','Unsupported cell text orientation');
+ const f:SlideTableCellFormat={},p=children(pr,['a:lnL','a:lnR','a:lnT','a:lnB','a:solidFill','a:noFill']);
+ if(['marL','marR','marT','marB'].some(k=>get(pr,k)!==undefined))f.margins={left:num(get(pr,'marL')??'91440',0,51206400),right:num(get(pr,'marR')??'91440',0,51206400),top:num(get(pr,'marT')??'45720',0,51206400),bottom:num(get(pr,'marB')??'45720',0,51206400)};
+ const anchor=get(pr,'anchor');if(anchor!==undefined){gate(['t','ctr','b'].includes(anchor),'Unsupported cell anchor');f.verticalAlignment=({t:'top',ctr:'center',b:'bottom'} as const)[anchor as 't'];}
+ const fill=one(p,'solidFill',false),none=one(p,'noFill',false);gate(!(fill&&none),'Conflicting table cell fill');if(fill)f.fill=readColor(fill);if(none){empty(none);f.fill=null;}
+ for(const [key,tag]of tableEdges){
+  const line=one(p,tag,false);if(!line)continue;
+  attrs(line,['w','cap','cmpd','algn']);gate((get(line,'cap')??'flat')==='flat'&&(get(line,'cmpd')??'sng')==='sng'&&(get(line,'algn')??'ctr')==='ctr','Unsupported table border style');
+  const lc=children(line,['a:solidFill','a:noFill','a:prstDash']),color=one(lc,'solidFill',false),none=one(lc,'noFill',false),dash=one(lc,'prstDash',false);
+  gate(!!color!==!!none,'Unsupported table border fill');let value:SlideTableBorder|null=null;
+  if(none)empty(none);
+  if(color)value={color:readColor(color),width:num(get(line,'w')??'12700',1,12700*100)};
+  if(dash){empty(dash,['val']);const v=get(dash,'val');gate(['solid','dash','dot','dashDot','lgDash','lgDashDot','lgDashDotDot','sysDash','sysDot','sysDashDot','sysDashDotDot'].includes(v??''),'Unsupported table border dash');if(value&&v!=='solid')value.dash=v as SlideDash;}
+  (f.borders??={})[key]=value;
+ }
+ return f;
+}
+function readTableFont(e:Element|undefined):NonNullable<SlideTableCellFormat['textStyle']>{
+ if(!e)return {};
+ const s=readRunStyle(e);gate(Object.keys(s).every(k=>['fontFamily','fontSize','bold','italic','underline','color'].includes(k)),'Unsupported table font properties');return s;
+}
 function parseSlideTable(e:Element,id:string,depth:number):Shape{
  gate(depth===0,'Grouped tables outside profile');attrs(e,[]);const c=children(e,['p:nvGraphicFramePr','p:xfrm','a:graphic']),nv=one(c,'nvGraphicFramePr')!;
  attrs(nv,[]);const n=children(nv,['p:cNvPr','p:cNvGraphicFramePr','p:nvPr']);empty(one(n,'cNvPr')!,['id','name','descr','title']);empty(one(n,'nvPr')!);
@@ -309,19 +355,47 @@ function parseSlideTable(e:Element,id:string,depth:number):Shape{
  const tbl=one(children(gd,['a:tbl']),'tbl')!;attrs(tbl,[]);const tc=children(tbl,['a:tblPr','a:tblGrid','a:tr']),pr=one(tc,'tblPr')!;attrs(pr,['firstRow','bandRow']);
  const style=leaf(one(children(pr,['a:tableStyleId']),'tableStyleId')!);gate(style===DEFAULT_SLIDE_TABLE_STYLE,'Unknown slide table style');
  const grid=one(tc,'tblGrid')!;attrs(grid,[]);const columnWidths=children(grid,['a:gridCol']).map(col=>{empty(col,['w']);return num(get(col,'w'),1);});
- const rowHeights:number[]=[],cells:string[][]=[];
+ const rowHeights:number[]=[],cells:string[][]=[],merges:SlideTableRange[]=[],formats:Record<string,SlideTableCellFormat>={};
+ const flags:{rowSpan:number;gridSpan:number;hMerge:boolean;vMerge:boolean}[][]=[];
  const rows=tc.filter(x=>x.localName==='tr');gate(columnWidths.length>=1&&columnWidths.length<=64&&rows.length>=1&&rows.length<=200&&rows.length*columnWidths.length<=2000,'Slide table budget');
- for(const row of rows){
+ for(const [ri,row]of rows.entries()){
   attrs(row,['h']);rowHeights.push(num(get(row,'h'),1));const columns=children(row,['a:tc']);gate(columns.length===columnWidths.length,'Nonrectangular slide table');
-  cells.push(columns.map(cell=>{
-   attrs(cell,[]);const parts=children(cell,['a:txBody','a:tcPr']);empty(one(parts,'tcPr')!);const body=one(parts,'txBody')!;attrs(body,[]);
+  flags.push([]);
+  cells.push(columns.map((cell,ci)=>{
+   attrs(cell,['rowSpan','gridSpan','hMerge','vMerge']);
+   const slot={rowSpan:num(get(cell,'rowSpan')??'1',1,rows.length),gridSpan:num(get(cell,'gridSpan')??'1',1,columnWidths.length),hMerge:bool(get(cell,'hMerge')),vMerge:bool(get(cell,'vMerge'))};flags[ri]!.push(slot);
+   if(!slot.hMerge&&!slot.vMerge&&(slot.rowSpan>1||slot.gridSpan>1))merges.push({row:ri,column:ci,rowCount:slot.rowSpan,columnCount:slot.gridSpan});
+   const parts=children(cell,['a:txBody','a:tcPr']),f=readTableCellFormat(one(parts,'tcPr')!),body=one(parts,'txBody')!;attrs(body,[]);
    const bc=children(body,['a:bodyPr','a:lstStyle','a:p']);empty(one(bc,'bodyPr')!);empty(one(bc,'lstStyle')!);
-   const paragraphs=bc.filter(x=>x.localName==='p');gate(paragraphs.length>=1,'Missing table cell paragraphs');
-   return paragraphs.map(p=>{attrs(p,[]);return children(p,['a:r']).map(r=>{attrs(r,[]);return leaf(one(children(r,['a:t']),'t')!,['xml:space']);}).join('');}).join('\n');
+   const paragraphs=bc.filter(x=>x.localName==='p');gate(paragraphs.length>=1&&paragraphs.length<=4097,'Missing or excessive table cell paragraphs');
+   let uniform:NonNullable<SlideTableCellFormat['textStyle']>|undefined,alignment:SlideTableCellFormat['alignment']|undefined,haveParagraph=false;
+   const record=(style:NonNullable<SlideTableCellFormat['textStyle']>)=>{if(uniform)gate(tableCanonical(uniform)===tableCanonical(style),'Mixed table cell font formatting');else uniform=style;};
+   const text=paragraphs.map(p=>{
+    attrs(p,[]);const pc=children(p,['a:pPr','a:r','a:endParaRPr']),pr=one(pc,'pPr',false),end=one(pc,'endParaRPr',false);
+    let base:NonNullable<SlideTableCellFormat['textStyle']>={},align:SlideTableCellFormat['alignment'];
+    if(pr){attrs(pr,['algn']);const a=get(pr,'algn');if(a!==undefined){gate(['l','r','ctr'].includes(a),'Unsupported cell paragraph alignment');align=({l:'start',r:'end',ctr:'center'} as const)[a as 'l'];}base=readTableFont(one(children(pr,['a:defRPr']),'defRPr',false));}
+    if(haveParagraph)gate(alignment===align,'Mixed table cell paragraph alignment');else{alignment=align;haveParagraph=true;}
+    const runs=pc.filter(x=>x.localName==='r');
+    const value=runs.map(r=>{attrs(r,[]);const rc=children(r,['a:rPr','a:t']),style={...base,...readTableFont(one(rc,'rPr',false))};record(style);return leaf(one(rc,'t')!,['xml:space']);}).join('');
+    if(!runs.length)record({...base,...readTableFont(end)});
+    else if(end)gate(tableCanonical({...base,...readTableFont(end)})===tableCanonical(uniform),'Mixed table paragraph-end font');
+    return value;
+   }).join('\n');
+   if(uniform&&Object.keys(uniform).length)f.textStyle=uniform;if(alignment)f.alignment=alignment;
+   if(Object.keys(f).length)formats[ri+':'+ci]=f;
+   return text;
   }));
  }
- gate(columnWidths.reduce((a,b)=>a+b,0)===geometry.width&&rowHeights.reduce((a,b)=>a+b,0)===geometry.height,'Slide table geometry mismatch');
- return {id,type:'table',geometry,table:{columnWidths,rowHeights,cells,styleId:DEFAULT_SLIDE_TABLE_STYLE,firstRow:bool(get(pr,'firstRow')),bandRow:bool(get(pr,'bandRow'))}};
+ const table:SlideTableData={columnWidths,rowHeights,cells,styleId:DEFAULT_SLIDE_TABLE_STYLE,firstRow:bool(get(pr,'firstRow')),bandRow:bool(get(pr,'bandRow')),...(merges.length?{merges}:{}),...(Object.keys(formats).length?{formats}:{})};
+ // The model rejects content/style on hidden continuations and overlapping
+ // or out-of-bounds rectangles. Every native flag must match its owner.
+ try{validateSlideTableData(table,geometry);}catch(e){gate(false,'Invalid or unsupported merged table grid: '+(e instanceof Error?e.message:String(e)));}
+ const coverage=slideTableCoverage(table);
+ for(const [r,row]of flags.entries())for(const [c,slot]of row.entries()){
+  const m=coverage.get(r+':'+c);
+  gate(slot.hMerge===!!(m&&c>m.column)&&slot.vMerge===!!(m&&r>m.row)&&slot.rowSpan===(m&&r===m.row?m.rowCount:1)&&slot.gridSpan===(m&&c===m.column?m.columnCount:1),'Malformed table merge continuation');
+ }
+ return {id,type:'table',geometry,table};
 }
 function parseShape(e:Element,id:string,opc:OpcPackage,rels:OpcRelationship[],d:SlidesDocument,used:Set<string>,themeElement:Element,paragraphDefaults:readonly Element[]=[],ids:Set<number>=new Set(),depth=0,numericIds?:ReadonlyMap<number,string>):Shape{if(e.localName==='graphicFrame')return parseSlideTable(e,id,depth);if(e.localName==='grpSp')return parseShapeGroup(e,id,opc,rels,d,used,themeElement,paragraphDefaults,ids,depth);const connector=e.localName==='cxnSp',connections=connector?readConnectorBindings(e,numericIds):undefined;if(connector)e=normalizeConnector(e,!!connections);attrs(e,[]);const pic=e.localName==='pic',c=children(e,pic?['p:nvPicPr','p:blipFill','p:spPr']:['p:nvSpPr','p:spPr','p:txBody','p:style']);const nv=one(c,pic?'nvPicPr':'nvSpPr')!;attrs(nv,[]);const nc=children(nv,pic?['p:cNvPr','p:cNvPicPr','p:nvPr']:['p:cNvPr','p:cNvSpPr','p:nvPr']);const identity=one(nc,'cNvPr')!;empty(identity,['id','name','descr','title']);gate((get(identity,'descr')??'').length<=4096&&(get(identity,'title')??'').length<=1024,'Shape description budget');empty(one(nc,'nvPr')!);const obj=one(nc,pic?'cNvPicPr':'cNvSpPr')!;if(pic){attrs(obj,[]);const locks=children(obj,['a:picLocks']);if(locks[0])empty(locks[0],['noChangeAspect']);gate(locks.length<=1,'Picture locks');}else empty(obj,['txBox']);const pr=one(c,'spPr')!;attrs(pr,[]);const sc=children(pr,['a:xfrm','a:prstGeom','a:solidFill','a:noFill','a:ln','a:effectLst']);const effect=one(sc,'effectLst',false);if(effect)empty(effect);const x=one(sc,'xfrm')!;attrs(x,['rot','flipH','flipV']);const flipH=bool(get(x,'flipH')),flipV=bool(get(x,'flipV'));const xc=children(x,['a:off','a:ext']),off=one(xc,'off')!,ext=one(xc,'ext')!;empty(off,['x','y']);empty(ext,['cx','cy']);const geometry={x:num(get(off,'x')),y:num(get(off,'y')),width:num(get(ext,'cx'),0),height:num(get(ext,'cy'),0),rotation:num(get(x,'rot')??'0',-21600000,21600000)};const g=one(sc,'prstGeom')!;attrs(g,['prst']);const gc=children(g,['a:avLst']);gate(gc.length<=1,'Custom geometry');if(gc[0])empty(gc[0]);const preset=get(g,'prst');gate(['rect','ellipse','line','roundRect','triangle','diamond','parallelogram'].includes(preset??''),'Preset shape');const fill=one(sc,'solidFill',false),no=one(sc,'noFill',false);gate(!(fill&&no)&&(fill||no||pic),'Unresolved or conflicting fill');if(no)empty(no);const ln=one(sc,'ln',false);gate(ln||pic||bool(get(obj,'txBox')),'Unresolved line fill');let stroke:Shape['stroke'];if(ln){attrs(ln,['w','cap','cmpd','algn']);gate((get(ln,'cap')??'flat')==='flat'&&(get(ln,'cmpd')??'sng')==='sng'&&(get(ln,'algn')??'ctr')==='ctr','Line style');const lc=children(ln,['a:solidFill','a:noFill','a:prstDash','a:headEnd','a:tailEnd']),color=one(lc,'solidFill',false),none=one(lc,'noFill',false);gate(Boolean(color)!==Boolean(none),'Line fill');if(none)empty(none);if(color)stroke={width:num(get(ln,'w')??'12700',0),color:readColor(color)};const dash=one(lc,'prstDash',false);if(dash){empty(dash,['val']);const val=get(dash,'val')??'';gate(['solid','dash','dot','dashDot','lgDash','lgDashDot','lgDashDotDot','sysDash','sysDot','sysDashDot','sysDashDotDot'].includes(val),'Unsupported dash');if(stroke&&val!=='solid')stroke.dash=val as SlideDash;}for(const [key,tag]of [['head','headEnd'],['tail','tailEnd']] as const){const node=one(lc,tag,false);if(!node)continue;empty(node,['type','w','len']);const type=get(node,'type')??'none';gate(['none','triangle','arrow'].includes(type),'Unsupported line end');const width=get(node,'w'),length=get(node,'len');gate((!width||['sm','med','lg'].includes(width))&&(!length||['sm','med','lg'].includes(length)),'Invalid line end size');if(type!=='none'){gate(stroke&&preset==='line','Unsupported shape arrow');stroke[key]={type:type as SlideArrow['type'],...(width?{width:width as SlideArrow['width']}:{}),...(length?{length:length as SlideArrow['length']}: {})};}}}const base={id,geometry,...(flipH?{flipH}:{}),...(flipV?{flipV}:{}),...(fill?{fill:readColor(fill)}:{}),...(stroke?{stroke}:{})};if(pic){gate(!stroke?.dash||stroke.dash==='solid','Picture dash outline outside editable profile');gate(preset==='rect','Nonrectangular picture');const bf=one(c,'blipFill')!;attrs(bf,[]);const bc=children(bf,['a:blip','a:srcRect','a:stretch']);const bl=one(bc,'blip')!;empty(bl,['r:embed']);const sr=one(bc,'stretch')!;attrs(sr,[]);empty(one(children(sr,['a:fillRect']),'fillRect')!);const r=rels.find(x=>x.id===bl.getAttributeNS(R,'embed')&&x.type===R+'/image');gate(r?.targetPart,'Missing picture relation');used.add(r.targetPart);const resource=makeImageResource(opc.parts.get(r.targetPart)!);gate(opc.contentTypes.get(r.targetPart)===resource.mimeType,'Picture content type');d.resources[resource.id]=resource;const cropNode=one(bc,'srcRect',false);let crop;if(cropNode){empty(cropNode,['l','t','r','b']);crop={left:num(get(cropNode,'l')??'0',0,99999),top:num(get(cropNode,'t')??'0',0,99999),right:num(get(cropNode,'r')??'0',0,99999),bottom:num(get(cropNode,'b')??'0',0,99999)};gate(crop.left+crop.right<100000&&crop.top+crop.bottom<100000,'Invalid picture crop');}return {...base,type:'image',resourceId:resource.id,...(crop&&Object.values(crop).some(Boolean)?{crop}:{})};}const body=one(c,'txBody',false),isText=bool(get(obj,'txBox')),content=body?readText(body,id,paragraphDefaults):undefined;const hasText=isText||Boolean(content?.runs.some(r=>r.text.length));gate(!isText||body,'Textbox content missing');checkExplicitShapeStyle(one(c,'style',false),fill,no,ln,effect,hasText,themeElement);if(hasText){gate(preset==='rect'&&content&&!flipH&&!flipV&&(!stroke?.dash||stroke.dash==='solid'),'Unsupported text shape geometry or dash');gate(content.textFrame?.autofit?.mode!=='shape'||isText&&depth===0&&geometry.rotation===0&&content.textFrame.verticalAlignment==='top','Shape autofit requires a direct unrotated top-anchored textbox');return {...base,type:'text',...content};}return {...base,type:preset as SlidePreset,...(connector?{connector:true as const}:{}),...(connections?{connections}:{})};}
 /** Core document properties are independent of the editable scene. Accept only

@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "sandbox": true,
+  "checks": [
+    "Imported merged native grid displays actual spanning cells and direct cell paint",
+    "Cancel discards the entire table edit draft",
+    "Native row/column insert, split, font, fill and border edits apply in one undoable transaction",
+    "Saved PPTX reopens with merged structure, direct formatting and unchanged source parts"
+  ],
+  "status": "passed"
+}

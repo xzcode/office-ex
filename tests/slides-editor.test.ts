@@ -204,3 +204,38 @@ test('M6.7 table insertion, text editing, geometry and undo keep a real rectangu
 test('M6.8 distribute selected objects in one undoable geometry transaction',async()=>{
  const {distributeSlideShapes}=await import('@office-ex/slides');const s=sample();const b=s.snapshot();s.execute(setShapeGeometries(s.snapshot(),'slide-1',{rect:{...geometry,x:0},ellipse:{...geometry,x:2000000},text:{...geometry,x:9000000}}));const before=s.snapshot();s.execute(distributeSlideShapes(s.snapshot(),'slide-1',['rect','ellipse','text'],'horizontal'));const sh=model(s).slides[0]!.shapes;assert.equal(sh[1]!.geometry.x,4500000);assert.equal(sh[0]!.geometry.x,0);assert.equal(sh[2]!.geometry.x,9000000);s.undo();assert.deepEqual(s.snapshot().document,before.document);s.undo();assert.deepEqual(s.snapshot().document,b.document);
 });
+
+test('M7.3 merged table operations preserve all text, guard overlaps and preserve surviving anchor on row deletion',async()=>{
+ const {insertSlideTable,editSlideTableGrid,replaceSlideTable}=await import('@office-ex/slides');
+ const s=sample();s.execute(insertSlideTable(s.snapshot(),'slide-1',3,3,'native-table'));
+ const initial=locateShape(s.snapshot(),'slide-1','native-table').shape;assert.equal(initial.type,'table');if(initial.type!=='table')return;
+ let table=structuredClone(initial.table) as import('@office-ex/core').SlideTableData;
+ table.cells=[['A','B','C'],['D','E','F'],['G','H','I']];
+ table=editSlideTableGrid(table,{kind:'format',range:{row:0,column:0,rowCount:1,columnCount:1},format:{fill:{kind:'rgba',red:20,green:40,blue:60,alpha:255},textStyle:{bold:true}}});
+ table=editSlideTableGrid(table,{kind:'merge',range:{row:0,column:0,rowCount:2,columnCount:2}});
+ assert.equal(table.cells[0]![0],'A\nB\nD\nE');assert.equal(table.cells[1]![1],'');
+ assert.throws(()=>editSlideTableGrid(table,{kind:'merge',range:{row:1,column:1,rowCount:2,columnCount:2}}),fails('unsupported'));
+ table=editSlideTableGrid(table,{kind:'insert',axis:'row',index:1});assert.equal(table.merges![0]!.rowCount,3);
+ table=editSlideTableGrid(table,{kind:'delete',axis:'row',index:0});assert.equal(table.merges![0]!.rowCount,2);assert.equal(table.cells[0]![0],'A\nB\nD\nE');assert.equal(table.formats!['0:0']!.textStyle?.bold,true);
+ table=editSlideTableGrid(table,{kind:'insert',axis:'column',index:1});assert.equal(table.merges![0]!.columnCount,3);
+ table=editSlideTableGrid(table,{kind:'delete',axis:'column',index:0});assert.equal(table.merges![0]!.columnCount,2);assert.equal(table.cells[0]![0],'A\nB\nD\nE');
+ s.execute(replaceSlideTable(s.snapshot(),'slide-1','native-table',table));const saved=locateShape(s.snapshot(),'slide-1','native-table').shape;assert.equal(saved.type,'table');if(saved.type!=='table')return;
+ assert.equal(saved.geometry.width,table.columnWidths.reduce((a,b)=>a+b,0));assert.equal(saved.geometry.height,table.rowHeights.reduce((a,b)=>a+b,0));
+ s.undo();assert.deepEqual(locateShape(s.snapshot(),'slide-1','native-table').shape,initial);s.redo();
+ const split=editSlideTableGrid(table,{kind:'split',row:1,column:1});assert.equal(split.merges,undefined);assert.equal(split.cells[0]![0],'A\nB\nD\nE');assert.equal(split.cells[1]![1],'');
+});
+test('M7.3 table formats are anchor-scoped, resettable, preserve direct styles and reject covered content',async()=>{
+ const {insertSlideTable,editSlideTableGrid,replaceSlideTable}=await import('@office-ex/slides');const s=sample();s.execute(insertSlideTable(s.snapshot(),'slide-1',2,3,'native-table'));
+ const shape=locateShape(s.snapshot(),'slide-1','native-table').shape;assert.equal(shape.type,'table');if(shape.type!=='table')return;
+ const red={kind:'rgba' as const,red:190,green:30,blue:40,alpha:255};
+ const styled=editSlideTableGrid(shape.table,{kind:'format',range:{row:0,column:1,rowCount:1,columnCount:1},format:{fill:red}});
+ assert.throws(()=>editSlideTableGrid(styled,{kind:'merge',range:{row:0,column:0,rowCount:1,columnCount:2}}),fails('unsupported'));
+ let table=editSlideTableGrid(styled,{kind:'resetFormat',range:{row:0,column:1,rowCount:1,columnCount:1}});
+ table=editSlideTableGrid(table,{kind:'merge',range:{row:0,column:0,rowCount:2,columnCount:2}});
+ table=editSlideTableGrid(table,{kind:'format',range:{row:1,column:1,rowCount:1,columnCount:1},format:{fill:red,borders:{bottom:{width:12700,color:red,dash:'dash'}},textStyle:{fontSize:203200,bold:true,color:red},alignment:'center',verticalAlignment:'bottom'}});
+ assert.deepEqual(Object.keys(table.formats!),['0:0']);assert.equal(table.formats!['0:0']!.alignment,'center');
+ const bad=structuredClone(table);bad.cells[1]![1]='hidden';assert.throws(()=>replaceSlideTable(s.snapshot(),'slide-1','native-table',bad),fails('invalid'));
+ s.execute(replaceSlideTable(s.snapshot(),'slide-1','native-table',table));const projected=buildSlideScene(s.snapshot(),'slide-1').shapes.at(-1)!;
+ assert.equal(projected.type,'table');if(projected.type==='table'){assert.equal(projected.table.merges?.[0]?.rowCount,2);assert.deepEqual(projected.table.formats?.['0:0']?.fill,red);}
+ table=editSlideTableGrid(table,{kind:'resetFormat',range:{row:1,column:1,rowCount:1,columnCount:1}});assert.equal(table.formats,undefined);
+});
