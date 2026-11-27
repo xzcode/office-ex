@@ -106,7 +106,7 @@ export function replaceParagraphRange(snapshot:DocumentSnapshot,paragraphId:stri
   const right=sliceRuns(p.runs,end,p.text.length,used,allocate);
   return runPatch(snapshot,p,nonEmpty([...left,...(replacement?[inserted(template,replacement,allocate)]:[]),...right],template,allocate));
 }
-const CHARACTER_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'];
+const CHARACTER_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold','writerStrike','writerShading'];
 /** Split affected runs at grapheme-safe range endpoints and apply direct character style. */
 export function formatParagraphRange(snapshot:DocumentSnapshot,paragraphId:string,start:number,end:number,style:TextStyle,operationId:string):DocumentCommand{
   const p=locate(snapshot,paragraphId);assertParagraphRange(p.paragraph,start,end);assertPlainData(style);validateTextStyle(style);

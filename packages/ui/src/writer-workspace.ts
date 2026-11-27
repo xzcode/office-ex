@@ -106,6 +106,9 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
     const unit=EMU_PER_CSS_PIXEL,px=(value:number)=>value/unit;
     ctx.setTransform(canvas.width/px(page.width),0,0,canvas.height/px(page.height),0,0);
     ctx.save();ctx.beginPath();ctx.rect(px(page.margins.left),px(page.margins.top),px(page.width-page.margins.left-page.margins.right),px(page.height-page.margins.top-page.margins.bottom));ctx.clip();
+    for(const line of page.lines)for(const fragment of line.fragments){
+      const shade=fragment.style.writerShading;if(shade?.kind==='rgba'){ctx.fillStyle=safeColor({color:shade});ctx.fillRect(px(fragment.x),px(line.baseline-fragment.request.size*0.82),px(fragment.width),px(fragment.request.size));}
+    }
     if(state.paragraphId){
       try{
         ctx.fillStyle='#dce8ff';
@@ -123,6 +126,7 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
       const r=fragment.request,family=/^(sans-serif|serif|monospace|system-ui)$/.test(r.family)?r.family:JSON.stringify(r.family);
       ctx.font=(r.italic?'italic ':'')+(r.bold?'bold ':'')+px(r.size)+'px '+family;
       ctx.letterSpacing=px(r.characterSpacing??0)+'px';ctx.fontKerning=r.kerning??'auto';ctx.fillStyle=safeColor(fragment.style);ctx.fillText(fragment.text,px(fragment.x),px(line.baseline));
+      if(fragment.style.writerStrike)ctx.fillRect(px(fragment.x),px(line.baseline-r.size*0.28),px(fragment.width),Math.max(0.5,px(r.size*0.05)));
       if(fragment.style.underline){ctx.fillRect(px(fragment.x),px(line.baseline+r.size*0.06),px(fragment.width),Math.max(0.5,px(r.size*0.05)));}
     }
     for(const line of page.lines)if(line.bottomBorder){const b=line.bottomBorder;ctx.fillStyle=safeColor({color:b.rule.color});ctx.fillRect(px(b.x),px(line.y+line.height-b.rule.width),px(b.width),px(b.rule.width));}
@@ -136,7 +140,10 @@ export function writerWorkspace(host:WriterHost,state:WriterViewState):HTMLEleme
       const f=story.fragment;if(!f||story.baseline===undefined)continue;
       const r=f.request,family=/^(sans-serif|serif|monospace|system-ui)$/.test(r.family)?r.family:JSON.stringify(r.family);
       ctx.font=(r.italic?'italic ':'')+(r.bold?'bold ':'')+px(r.size)+'px '+family;ctx.textBaseline='alphabetic';ctx.textAlign='left';ctx.direction=r.direction;
+      const shade=f.style.writerShading;if(shade?.kind==='rgba'){ctx.fillStyle=safeColor({color:shade});ctx.fillRect(px(f.x),px(story.baseline-r.size*0.82),px(f.width),px(r.size));}
       ctx.fillStyle=safeColor(f.style);ctx.fillText(f.text,px(f.x),px(story.baseline));
+      if(f.style.writerStrike)ctx.fillRect(px(f.x),px(story.baseline-r.size*0.28),px(f.width),Math.max(0.5,px(r.size*0.05)));
+      if(f.style.underline)ctx.fillRect(px(f.x),px(story.baseline+r.size*0.06),px(f.width),Math.max(0.5,px(r.size*0.05)));
     }
     pageText.textContent=t('writerPageNumber',{current:host.number(state.pageIndex+1),total:host.number(layout.pages.length)});
     previous.disabled=state.pageIndex===0;next.disabled=state.pageIndex===layout.pages.length-1;

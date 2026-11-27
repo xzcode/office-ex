@@ -16,7 +16,8 @@ function fontFamily(value:string|undefined):string{return !value?'sans-serif':ge
 function styleText(el:HTMLElement,style:DeepReadonly<TextStyle>):void{
   el.style.fontFamily=[...new Set([style.fontAscii??style.fontFamily,style.fontHighAnsi,style.fontEastAsia,style.fontComplex].filter((v):v is string=>!!v))].map(v=>bundledFontFamily(v,style.language)).concat(bundledFontFamily(undefined,style.language)).join(', ');el.style.fontSize=px(style.fontSize??152400);
   el.style.fontWeight=style.bold?'700':'400';el.style.fontStyle=style.italic?'italic':'normal';
-  el.style.textDecoration=style.underline?'underline':'none';
+  el.style.textDecoration=[style.underline?'underline':'',style.writerStrike?'line-through':''].filter(Boolean).join(' ')||'none';
+  const shade=style.writerShading;if(shade?.kind==='rgba')el.style.backgroundColor='rgb('+[shade.red,shade.green,shade.blue].join(',')+')';
   if(style.characterSpacing!==undefined)el.style.letterSpacing=px(style.characterSpacing);
   if(style.kerningThreshold!==undefined)el.style.fontKerning=(style.fontSize??152400)>=style.kerningThreshold?'normal':'none';
   const c=style.color;el.style.color=c?.kind==='rgba'?'rgba('+[c.red,c.green,c.blue,c.alpha/255].join(',')+')':'#20242c';

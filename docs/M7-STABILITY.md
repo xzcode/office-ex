@@ -105,3 +105,10 @@ Prioritize lossless source-backed compatibility: model/render direct strike and 
 ### M7.6 A — CI and master integration
 
 Exact source `5e927a3b7d76ad40b6297588dca50a879af629fa` passed [CI 45976046293](https://github.com/xzcode/office-ex/actions/runs/45976046293) (verify plus native package/installation on Linux x64, Windows x64 and macOS ARM64). Tag-only draft assembly was skipped as intended. [PR #1](https://github.com/xzcode/office-ex/pull/1) merged the development baseline at `af16c34845144f953321cc73eb515804dcb3ad71`; its tree matches the verified source exactly. This establishes a development baseline, not formal format fidelity or acceptance of the exact private source. Existing release tags and assets are unchanged.
+
+
+## M7.7 A — direct Word run decoration and integration infrastructure
+
+- Support direct single strike with explicit off and solid opaque RGB character shading, including the producer-specific missing shading pattern, and explicit nil. Preserve these values in the Writer model, range formatting, rich clipboard, native browser and fallback canvas projections, DOCX write/reopen and the shared native PDF projection. Patterned/theme/automatic-color shading, named toggle styles and double strike remain outside the semantic profile. Scope is deliberately restricted to Writer text runs and uniform running-story run styles; other document kinds reject the new Writer-specific properties.
+- The reduced strike and shading producer probes now require full semantic admission. Independent python-docx fixture checks strike, shading and unaffected part bytes after a Chinese-text edit. Exact private-document end-to-end acceptance, missing margin defaults, unresolved styles, minimal numbering, bookmarks and embedded workbook semantic editing remain open.
+- Master integration Ubuntu dependency installation uses only signed Ubuntu archive sources. The earlier failure was an unrelated preinstalled Microsoft APT endpoint returning 403, not a product test failure. Existing release tags remain unchanged.

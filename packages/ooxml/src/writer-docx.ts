@@ -23,7 +23,7 @@ const ROOT_REL=REL+'/officeDocument';
 const CT='http://schemas.openxmlformats.org/package/2006/content-types',PKG='http://schemas.openxmlformats.org/package/2006/relationships';
 const MAIN_TYPE='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml';
 const DECL='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const CHAR_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'];
+const CHAR_KEYS=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold','writerStrike','writerShading'];
 const PARA_KEYS=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','pageBreakBefore','outlineLevel','widowControl','paragraphDirection','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList'];
 const MAX_BLOCKS=10000;
 const MAX_RUNS=50000;
@@ -77,6 +77,15 @@ export function readRunStyle(el:Element,reference?:(id:string)=>void,theme?:Them
       case 'rStyle':{valid(reference,'Unexpected character style reference');attrs(child,['w:val']);empty(child);const id=prop(child,'val');valid(id,'Missing character style reference');reference(id);break;}
       case 'b':{const value=toggled(child);if(named){if(value)toggles?.push('bold');}else style.bold=value;break;}
       case 'i':{const value=toggled(child);if(named){if(value)toggles?.push('italic');}else style.italic=value;break;}
+      case 'strike':{valid(!named,'Named strike toggle is outside this profile');style.writerStrike=toggled(child);break;}
+      case 'shd':{
+        valid(!named,'Named run shading is outside this profile');attrs(child,['w:val','w:fill','w:color']);empty(child);
+        const kind=prop(child,'val')??'clear',fill=prop(child,'fill'),foreground=prop(child,'color');
+        valid(foreground===undefined||foreground==='auto'||/^[0-9a-fA-F]{6}$/.test(foreground),'Unsupported shading foreground');
+        if(kind==='nil'){valid(fill===undefined||fill==='auto'||/^[0-9a-fA-F]{6}$/.test(fill),'Unsupported nil shading');style.writerShading=null;break;}
+        valid(kind==='clear'&&fill!==undefined&&/^[0-9a-fA-F]{6}$/.test(fill),'Only solid RGB run shading is supported');
+        style.writerShading={kind:'rgba',red:parseInt(fill.slice(0,2),16),green:parseInt(fill.slice(2,4),16),blue:parseInt(fill.slice(4,6),16),alpha:255};break;
+      }
       case 'u':{attrs(child,['w:val']);empty(child);const value=prop(child,'val');valid(value==='single'||value==='none','Unsupported underline');style.underline=value==='single';break;}
       case 'spacing':attrs(child,['w:val']);empty(child);style.characterSpacing=numberProp(child,'val',-31680,31680)*EMU_PER_TWIP;break;
       case 'kern':attrs(child,['w:val']);empty(child);style.kerningThreshold=numberProp(child,'val',0,3276)*6350;break;
@@ -493,6 +502,7 @@ function writeRunStyle(style:DeepReadonly<TextStyle>,styleId?:string):string{
     const mapped=style.fontAscii!==undefined||style.fontHighAnsi!==undefined||style.fontEastAsia!==undefined||style.fontComplex!==undefined;const fonts:Record<string,string>={};for(const [key,value] of [['ascii',mapped?style.fontAscii:style.fontFamily],['hAnsi',mapped?style.fontHighAnsi:style.fontFamily],['eastAsia',mapped?style.fontEastAsia:style.fontFamily],['cs',mapped?style.fontComplex:style.fontFamily]] as const)if(value!==undefined)fonts[key]=value;r+=tag('rFonts',fonts);
   }
   for(const [key,xml] of [['bold','b'],['italic','i']] as const)if(style[key]!==undefined)r+=tag(xml,{val:style[key]?1:0});
+  if(style.writerStrike!==undefined)r+=tag('strike',{val:style.writerStrike?1:0});
   if(style.color!==undefined){
     valid(style.color.kind==='rgba'&&style.color.alpha===255,'Theme or translucent text color unsupported');
     const v=[style.color.red,style.color.green,style.color.blue].map(n=>n.toString(16).padStart(2,'0')).join('').toUpperCase();r+=tag('color',{val:v});
@@ -502,6 +512,11 @@ function writeRunStyle(style:DeepReadonly<TextStyle>,styleId?:string):string{
   if(style.fontSize!==undefined){const n=Math.round(style.fontSize/6350);valid(n>=1&&n<=3276,'Font size outside DOCX limits');r+=tag('sz',{val:n});}
   if(style.complexFontSize!==undefined){const n=Math.round(style.complexFontSize/6350);valid(n>=1&&n<=3276,'Complex font size outside DOCX limits');r+=tag('szCs',{val:n});}
   if(style.underline!==undefined)r+=tag('u',{val:style.underline?'single':'none'});
+  if(style.writerShading!==undefined){
+    const c=style.writerShading;
+    if(c===null)r+=tag('shd',{val:'nil'});
+    else{valid(c.kind==='rgba'&&c.alpha===255,'Run shading requires opaque RGB');r+=tag('shd',{val:'clear',color:'auto',fill:[c.red,c.green,c.blue].map(n=>n.toString(16).padStart(2,'0')).join('').toUpperCase()});}
+  }
   if(style.runDirection!==undefined)r+=tag('rtl',{val:style.runDirection==='rtl'?1:0});
   const langs:Record<string,string>={};for(const [key,property] of [['val','language'],['eastAsia','eastAsiaLanguage'],['bidi','bidiLanguage']] as const)if(style[property]!==undefined)langs[key]=style[property]!;
   if(Object.keys(langs).length)r+=tag('lang',langs);

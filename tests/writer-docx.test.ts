@@ -2,9 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OfficeError } from '@office-ex/contracts';
-import { createDocument, DocumentSession, type WriterDocument } from '@office-ex/core';
+import { createDocument, DocumentSession, validateDocument, type WriterDocument } from '@office-ex/core';
 import { openWriterDocx, writeWriterDocx, saveWriterDocx, openOpc, writeZip } from '@office-ex/ooxml';
-import { replaceParagraphRange, paragraphText } from '@office-ex/writer';
+import { replaceParagraphRange, paragraphText, formatParagraphRange, copyWriterFragment, pasteWriterFragment } from '@office-ex/writer';
 const fails=(code:string)=>(e:unknown)=>e instanceof OfficeError&&e.code===code;
 export function fixture():WriterDocument{
   const doc=createDocument('writer','fixture','Multilingual');
@@ -84,4 +84,38 @@ test('WRT-04 control-only and empty runs round-trip without invented text',()=>{
   if(block.type!=='paragraph')throw Error();
   assert.deepEqual(block.runs.map(run=>run.type==='text'?run.text:run.type),['\t','\n','']);
   assert.deepEqual(saveWriterDocx(source,source.document),bytes);
+});
+
+test('M7.7 direct Writer strike and solid shading survive editing, clipboard, undo and native DOCX save',()=>{
+  const d=createDocument('writer','decorations'),shade={kind:'rgba' as const,red:239,green:240,blue:241,alpha:255};
+  d.sections[0]!.blocks=[{id:'p1',type:'paragraph',runs:[{id:'r1',type:'text',text:'Alpha',style:{writerStrike:true,writerShading:shade,underline:true}},{id:'r2',type:'text',text:' Beta',style:{writerStrike:false,writerShading:null}}]}];
+  const bytes=writeWriterDocx(d),source=openWriterDocx(bytes,d.documentId,d.title);
+  assert.deepEqual(saveWriterDocx(source,source.document),bytes);
+  const p=source.document.sections[0]!.blocks[0]!;if(p.type!=='paragraph')throw Error();
+  const first=p.runs[0]!,second=p.runs[1]!;if(first.type!=='text'||second.type!=='text')throw Error();
+  assert.deepEqual(first.style?.writerShading,shade);assert.equal(first.style?.writerStrike,true);assert.equal(first.style?.underline,true);assert.equal(second.style?.writerStrike,false);assert.equal(second.style?.writerShading,null);
+  const s=new DocumentSession(source.document,{saved:true});
+  const range={anchor:{paragraphId:p.id,offset:0},focus:{paragraphId:p.id,offset:5}};
+  const fragment=copyWriterFragment(s.snapshot(),range);
+  s.execute(pasteWriterFragment(s.snapshot(),{anchor:{paragraphId:p.id,offset:10},focus:{paragraphId:p.id,offset:10}},fragment.rich,'decorate-paste').command);
+  s.execute(formatParagraphRange(s.snapshot(),p.id,0,2,{writerStrike:false,writerShading:null},'decorate-clear'));
+  const edited=saveWriterDocx(source,s.snapshot().document),reopened=openWriterDocx(edited,d.documentId,d.title);
+  const out=reopened.document.sections[0]!.blocks[0]!;if(out.type!=='paragraph')throw Error();
+  assert.equal(out.runs.map(r=>r.type==='text'?r.text:'').join(''),'Alpha BetaAlpha');
+  const texts=out.runs.filter(r=>r.type==='text');
+  assert.equal(texts[0]!.style?.writerStrike,false);assert.equal(texts[0]!.style?.writerShading,null);
+  assert.equal(texts.at(-1)!.style?.writerStrike,true);assert.deepEqual(texts.at(-1)!.style?.writerShading,shade);
+  const before=openOpc(bytes),after=openOpc(edited);
+  for(const [path,data] of before.parts)if(path!==before.mainPart)assert.deepEqual(after.parts.get(path),data);
+  s.undo();s.undo();assert.deepEqual(saveWriterDocx(source,s.snapshot().document),bytes);
+});
+test('M7.7 producer omitted shading pattern is admitted; patterned/theme shading and double strike stay guarded',()=>{
+  const d=createDocument('writer','decorate-import');d.sections[0]!.blocks=[{id:'p',type:'paragraph',runs:[{id:'r',type:'text',text:'Marked',style:{bold:true}}]}];
+  const pkg=openOpc(writeWriterDocx(d)),enc=new TextEncoder(),dec=new TextDecoder(),xml=dec.decode(pkg.parts.get(pkg.mainPart!)!);
+  const make=(extra:string)=>{const parts=new Map(pkg.parts);parts.set(pkg.mainPart!,enc.encode(xml.replace('</w:rPr>',extra+'</w:rPr>')));return writeZip(parts);};
+  const source=openWriterDocx(make('<w:strike w:val="true"/><w:shd w:fill="EFF0F1"/>'),d.documentId,d.title);
+  const p=source.document.sections[0]!.blocks[0]!;if(p.type!=='paragraph'||p.runs[0]?.type!=='text')throw Error();
+  assert.equal(p.runs[0].style?.writerStrike,true);assert.equal(p.runs[0].style?.writerShading?.kind,'rgba');
+  for(const markup of ['<w:shd w:val="pct20" w:fill="EFF0F1"/>','<w:shd w:val="clear" w:themeFill="accent1" w:fill="EFF0F1"/>','<w:dstrike/>'])assert.throws(()=>openWriterDocx(make(markup),d.documentId,d.title),fails('unsupported'));
+  const slide=createDocument('slides','no-writer-decorations');slide.defaultTextStyle.writerStrike=true;assert.throws(()=>validateDocument(slide),fails('unsupported'));
 });

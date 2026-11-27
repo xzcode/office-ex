@@ -8,7 +8,7 @@ import {createDocument,validateDocument,validateImageResource,resolveTextStyle,a
 import {resolveWriterRange,type WriterRange,type WriterPoint} from './ranges.js';
 import {sliceWriterRuns,writerIdAllocator,templateAt,nonEmpty} from './paragraphs.js';
 const MAX_CLIPBOARD=8*1024*1024;
-const CHAR=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'] as const;
+const CHAR=['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold','writerStrike','writerShading'] as const;
 const PARA=['alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','pageBreakBefore','outlineLevel','widowControl','paragraphDirection','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList'] as const;
 export const WRITER_CLIPBOARD_TYPE='application/x-office-ex-writer-fragment+json';
 interface Fragment {magic:'office-ex-writer-fragment';version:1;paragraphs:Paragraph[];resources:Record<string,ResourceRef>;numbering?:WriterNumbering}

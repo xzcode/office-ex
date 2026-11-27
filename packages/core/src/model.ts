@@ -18,6 +18,8 @@ export interface TextStyle {
   color?: Color; language?:string; eastAsiaLanguage?:string; bidiLanguage?:string; runDirection?:'ltr'|'rtl'; paragraphDirection?:'ltr'|'rtl'; alignment?: 'start' | 'center' | 'end' | 'justify';
   slideParagraph?:SlideParagraphFormat;
   characterSpacing?:number; kerningThreshold?:number;
+  /** Writer direct run decoration; null explicitly denotes no shading. */
+  writerStrike?:boolean; writerShading?:Color|null;
   rightIndent?:number; firstLineIndent?:number; contextualSpacing?:boolean;
   paragraphBottomBorder?:WriterParagraphRule|null;
   writerList?:WriterListReference;
@@ -213,7 +215,7 @@ export function validateSlideParagraph(value:unknown):asserts value is SlidePara
   }
 }
 export function validateTextStyle(value: unknown): asserts value is TextStyle {
-  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','pageBreakBefore','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection','slideParagraph','characterSpacing','kerningThreshold','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList']);
+  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','pageBreakBefore','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection','slideParagraph','characterSpacing','kerningThreshold','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList','writerStrike','writerShading']);
   for(const key of ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex'])if(style[key]!==undefined){text(style[key],512,false);assert(!/[\x00-\x1f\x7f]/.test(style[key] as string),'invalid','Invalid font family');}
   if (style.fontSize !== undefined) integer(style.fontSize, 1, 12_700 * 1638);
   if(style.complexFontSize!==undefined)integer(style.complexFontSize,1,12_700*1638);
@@ -224,6 +226,8 @@ export function validateTextStyle(value: unknown): asserts value is TextStyle {
   for(const key of ['keepNext','keepLines','pageBreakBefore','widowControl'])if(style[key]!==undefined)bool(style[key]);
   for (const key of ['bold', 'italic', 'underline']) if (style[key] !== undefined) bool(style[key]);
   if (style.color !== undefined) validateColor(style.color);
+  if(style.writerStrike!==undefined)bool(style.writerStrike);
+  if(style.writerShading!==undefined&&style.writerShading!==null){validateColor(style.writerShading);assert(style.writerShading.kind==='rgba'&&style.writerShading.alpha===255,'unsupported','Writer run shading requires opaque RGB');}
   for(const key of ['language','eastAsiaLanguage','bidiLanguage'])if(style[key]!==undefined)assert(isDocumentLanguageTag(style[key]),'invalid','Invalid document language tag');
   for(const key of ['runDirection','paragraphDirection'])if(style[key]!==undefined)assert(style[key]==='ltr'||style[key]==='rtl','invalid','Invalid document direction');
   if (style.alignment !== undefined) assert(['start', 'center', 'end', 'justify'].includes(String(style.alignment)), 'invalid', 'Invalid text alignment');
@@ -246,6 +250,10 @@ export function validateSlideCrop(value:unknown):asserts value is SlideCrop{
   const crop=object(value,['left','top','right','bottom']);
   for(const k of ['left','top','right','bottom'])integer(crop[k],0,99999);
   assert(Number(crop.left)+Number(crop.right)<100000&&Number(crop.top)+Number(crop.bottom)<100000,'invalid','Image crop removes the entire image');
+}
+function writerRunDecoration(style:unknown,allowed:boolean):void{
+  const s=style as TextStyle|undefined;
+  assert(allowed||s?.writerStrike===undefined&&s?.writerShading===undefined,'unsupported','Writer run decorations are direct Writer text properties only');
 }
 export function validateGeometry(value: unknown): asserts value is Geometry {
   const geometry = object(value, ['x', 'y', 'width', 'height', 'rotation']);
@@ -329,7 +337,7 @@ export function validateDocument(value: unknown): OfficeDocument {
     assertId(key);
     const style = object(item, ['id', 'name', 'basedOn', 'kind', 'toggles', 'properties']);
     assert(style.id === key, 'invalid', 'Style identifier mismatch'); text(style.name, 512, false);
-    optionalId(style.basedOn, styles); validateTextStyle(style.properties);
+    optionalId(style.basedOn, styles); validateTextStyle(style.properties);writerRunDecoration(style.properties,false);
     if(style.kind!==undefined)assert(style.kind==='paragraph'||style.kind==='character','invalid','Invalid named style kind');
     if(style.toggles!==undefined){assert(Array.isArray(style.toggles)&&style.toggles.length<=2&&new Set(style.toggles).size===style.toggles.length&&style.toggles.every(k=>(k==='bold'||k==='italic')&&!Object.hasOwn(style.properties as object,k)),'invalid','Invalid named style toggle');}
     if(style.kind!==undefined&&style.basedOn!==undefined){const parent=styles[String(style.basedOn)];assert(isRecord(parent)&&parent.kind===style.kind,'invalid','Named style inheritance crosses style kinds');}
@@ -341,7 +349,7 @@ export function validateDocument(value: unknown): OfficeDocument {
       const ancestor = styles[parent]; assert(isRecord(ancestor), 'invalid', 'Missing parent style'); parent = ancestor.basedOn;
     }
   }
-  validateTextStyle(model.defaultTextStyle);
+  validateTextStyle(model.defaultTextStyle);writerRunDecoration(model.defaultTextStyle,false);
   const numbering=model.kind==='writer'&&model.numbering!==undefined?object(model.numbering,['nextId','lists']):undefined;
   if(numbering){
     integer(numbering.nextId,1,1000000001);assert(isRecord(numbering.lists),'invalid','Invalid numbering definitions');const entries=Object.entries(numbering.lists);assert(entries.length<=2048,'limit','Numbering definition budget exceeded');
@@ -374,7 +382,7 @@ export function validateDocument(value: unknown): OfficeDocument {
     const inline = object(candidate, ['id', 'type', 'text', 'styleId', 'style', 'resourceId', 'width', 'height', 'drawingName', 'pictureName']); id(inline.id);
     if (inline.type === 'text') {
       assert(!['resourceId', 'width', 'height', 'drawingName', 'pictureName'].some((key) => key in inline), 'invalid', 'Unexpected text run fields');
-      text(inline.text); optionalId(inline.styleId, styles); if(inline.styleId!==undefined){const ref=styles[String(inline.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='character'),'invalid','Text run requires a character style');} if (inline.style !== undefined){validateTextStyle(inline.style);listReference(inline.style,false);}
+      text(inline.text); optionalId(inline.styleId, styles); if(inline.styleId!==undefined){const ref=styles[String(inline.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='character'),'invalid','Text run requires a character style');} if (inline.style !== undefined){validateTextStyle(inline.style);writerRunDecoration(inline.style,model.kind==='writer');listReference(inline.style,false);}
     } else if (inline.type === 'image' && !textOnly) {
       assert(!['text', 'style', 'styleId'].some((key) => key in inline), 'invalid', 'Unexpected image fields');
       assert(inline.resourceId !== undefined, 'invalid', 'Missing image resource'); optionalId(inline.resourceId, resources);
@@ -388,7 +396,7 @@ export function validateDocument(value: unknown): OfficeDocument {
     const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows', 'cellPadding', 'border', 'nativeTable']); id(value.id);
     if (value.type === 'paragraph') {
       assert(!['rows','columnWidths','cellPadding','border','nativeTable'].some(k=>k in value), 'invalid', 'Unexpected paragraph fields');
-      optionalId(value.styleId, styles); if(value.styleId!==undefined){const ref=styles[String(value.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='paragraph'),'invalid','Paragraph requires a paragraph style');} if (value.style !== undefined){validateTextStyle(value.style);listReference(value.style,true);}
+      optionalId(value.styleId, styles); if(value.styleId!==undefined){const ref=styles[String(value.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='paragraph'),'invalid','Paragraph requires a paragraph style');} if (value.style !== undefined){validateTextStyle(value.style);writerRunDecoration(value.style,false);listReference(value.style,true);}
       list(value.runs).forEach((item) => run(item));
     } else if (value.type === 'table') {
       assert(!['runs', 'style', 'styleId'].some((key) => key in value), 'invalid', 'Unexpected table fields');
@@ -444,7 +452,7 @@ export function validateDocument(value: unknown): OfficeDocument {
         if(s.after!==undefined){assert(s.pageNumber===true,'invalid','Text after missing PAGE field');text(s.after,4096,false);assert(!/[\x00-\x1f\x7f]/.test(String(s.after)),'invalid','Running story must be single-line text');}
         if(s.styleId!==undefined)assert(s.styleId===(kind==='header'?'Header':'Footer'),'invalid','Unexpected running story style');
         if(s.alignment!==undefined)assert(['start','center','end'].includes(String(s.alignment)),'invalid','Invalid story alignment');
-        if(s.runStyle!==undefined){validateTextStyle(s.runStyle);assert(Object.keys(s.runStyle as object).every(k=>['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'].includes(k)),'unsupported','Unsupported running story run format');}
+        if(s.runStyle!==undefined){validateTextStyle(s.runStyle);assert(Object.keys(s.runStyle as object).every(k=>['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold','writerStrike','writerShading'].includes(k)),'unsupported','Unsupported running story run format');}
         }
       }
     }
@@ -583,7 +591,7 @@ export function validateDocument(value: unknown): OfficeDocument {
         }
         else if (shape.type === 'text') {
           assert(!('resourceId' in shape), 'invalid', 'Unexpected text shape fields'); list(shape.runs).forEach((item) => run(item, true));
-          if(shape.textStyle!==undefined)validateTextStyle(shape.textStyle);
+          if(shape.textStyle!==undefined){validateTextStyle(shape.textStyle);writerRunDecoration(shape.textStyle,false);}
           if(shape.textFrame!==undefined){
             const frame=object(shape.textFrame,['wrap','verticalAlignment','margins','direction','autofit']);
             if(frame.autofit!==undefined){const fit=object(frame.autofit,['mode','fontScale','lineReduction']);if(fit.mode==='none'||fit.mode==='shape')assert(Object.keys(fit).length===1,'invalid','Unexpected text fit values');else{assert(fit.mode==='normal','invalid','Unsupported text fit mode');integer(fit.fontScale,1000,100000);integer(fit.lineReduction,0,99000);}}
@@ -618,7 +626,7 @@ export function validateDocument(value: unknown): OfficeDocument {
 
 export function validateCell(value: unknown, styles: Record<string, unknown> = {}): asserts value is Cell {
   const cell = object(value, ['value', 'styleId', 'numberFormat', 'style','richText','namedStyle']); optionalId(cell.styleId, styles);
-  if(cell.style!==undefined){assert(isRecord(cell.style),'invalid','Invalid cell style');const {fill,border,borderEdges,verticalAlignment,wrapText,...font}=cell.style;validateTextStyle(font);if(fill!==undefined)validateColor(fill);if(border!==undefined){const edge=object(border,['color','width']);validateColor(edge.color);integer(edge.width,1,12700*12);}if(borderEdges!==undefined){
+  if(cell.style!==undefined){assert(isRecord(cell.style),'invalid','Invalid cell style');const {fill,border,borderEdges,verticalAlignment,wrapText,...font}=cell.style;validateTextStyle(font);writerRunDecoration(font,false);if(fill!==undefined)validateColor(fill);if(border!==undefined){const edge=object(border,['color','width']);validateColor(edge.color);integer(edge.width,1,12700*12);}if(borderEdges!==undefined){
       assert(border===undefined,'invalid','Conflicting uniform and per-edge cell borders');
       const edges=object(borderEdges,['left','right','top','bottom']);assert(Object.keys(edges).length>0,'invalid','Empty cell edge set');
       for(const item of Object.values(edges)){const edge=object(item,['line','color']);assert(['hair','thin','medium','thick','dotted','dashed','mediumDashed','double','dashDot','mediumDashDot','dashDotDot','mediumDashDotDot','slantDashDot'].includes(String(edge.line)),'invalid','Unsupported cell border line');validateColor(edge.color);}

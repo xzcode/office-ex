@@ -44,6 +44,6 @@ for(const [name,bytes]of Object.entries(cases)){
  const i=await inspectForEditor(bytes,name+'.docx','probe-'+name);
  results.push({name,editable:!i.report.readOnly,reason:i.semanticFailure?.detail??null,preview:!!i.officeTextPreview});
  console.log(JSON.stringify(results.at(-1)));
- if(name==='control')assert.equal(i.report.readOnly,false);
+ if(['control','strike','shading'].includes(name))assert.equal(i.report.readOnly,false,name+': '+i.semanticFailure?.detail);
 }
 if(process.argv[2])await writeFile(process.argv[2],JSON.stringify({source:'synthetic reduced reproductions',results},null,2)+'\n');

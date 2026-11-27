@@ -13,6 +13,8 @@ def run(directory):
     d=Document();d.add_heading('需求文档',0);d.add_heading('一、功能概述',1)
     paragraph=d.add_paragraph();r=paragraph.add_run('普通文档');r.bold=True;r.font.size=Pt(12);r.font.color.theme_color=MSO_THEME_COLOR_INDEX.ACCENT_1
     r.font.name='Calibri';fonts=r._r.rPr.rFonts;fonts.set(qn('w:asciiTheme'),'minorHAnsi');fonts.set(qn('w:hAnsiTheme'),'minorHAnsi');fonts.set(qn('w:hint'),'default')
+    r.font.strike=True
+    shade=OxmlElement('w:shd');shade.set(qn('w:val'),'clear');shade.set(qn('w:fill'),'EFF0F1');r._r.rPr.append(shade)
     proof=OxmlElement('w:noProof');r._r.rPr.append(proof)
     marker=OxmlElement('w:lastRenderedPageBreak');r._r.insert(1,marker)
     start=OxmlElement('w:proofErr');start.set(qn('w:type'),'spellStart');r._r.addprevious(start)
@@ -25,10 +27,12 @@ def run(directory):
     edited=Document(p/'ordinary-word-edited.docx')
     assert edited.paragraphs[2].text=='已编辑文档 的正文及样式。'
     assert edited.paragraphs[2].runs[0].bold and edited.paragraphs[2].runs[0].font.size==Pt(12)
+    assert edited.paragraphs[2].runs[0].font.strike is True
+    assert edited.paragraphs[2].runs[0]._r.rPr.find(qn('w:shd')).get(qn('w:fill'))=='EFF0F1'
     with ZipFile(p/'ordinary-word.docx') as before,ZipFile(p/'ordinary-word-edited.docx') as after:
         for n in before.namelist():
             if n!='word/document.xml':assert before.read(n)==after.read(n),n
-    print('Independent Chinese DOCX theme/proofing/paragraph metadata edit and preserved parts passed')
+    print('Independent Chinese DOCX theme/proofing/strike/solid shading edit and preserved parts passed')
 if len(sys.argv)>1:run(sys.argv[1])
 else:
     with TemporaryDirectory() as p:run(p)
