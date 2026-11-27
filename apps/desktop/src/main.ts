@@ -7,7 +7,7 @@ import { resolve, join, basename, extname, isAbsolute } from 'node:path';
 import { asFailure, OfficeError, type Result } from '@office-ex/contracts';
 import type { TabState, MenuAction, OpenFileResult, WindowInitial } from '@office-ex/ui';
 import { FileAuthority, MAX_FILE_BYTES } from './file-service.js';
-import { TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId as id, parseDroppedPath, parseTabStates, parseDraftSave, parseDocxSave, parsePreservedCopy, parseRelease, parseSettingsPatch, parseRecoveryId, parseCheckpoint, parsePrintRequest, commandLineFiles, DOCUMENT_EXTENSIONS, isDocumentPath, parseNewWindow } from './ipc-policy.js';
+import { TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId as id, parseDroppedPath, parseTabStates, parseDraftSave, parseDocxSave, parseCompatibilitySave, parsePreservedCopy, parseRelease, parseSettingsPatch, parseRecoveryId, parseCheckpoint, parsePrintRequest, commandLineFiles, DOCUMENT_EXTENSIONS, isDocumentPath, parseNewWindow } from './ipc-policy.js';
 import { RecoveryStore } from './recovery.js';
 import { SettingsStore } from './settings.js';
 import { createDocxVerifier, type DocxVerifier } from './docx-verifier.js';
@@ -206,7 +206,7 @@ function installMenu():void {
 /** Shared atomic commit path. DOCX output is created by a host-owned sandbox,
  * not trusted from the ordinary renderer. The existing OEX flow is unchanged.
  */
-async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls'|'pptx'|'ppt',candidate:unknown,owner:BrowserWindow){
+async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls'|'pptx'|'ppt',candidate:unknown,owner:BrowserWindow,compatibility=false){
   const request=format!=='oex'?parseDocxSave(candidate):parseDraftSave(candidate);
   const tab=context(owner).tabs.get(request.documentId);
   if(!tab)throw new OfficeError('invalid','Unknown document session');
@@ -237,7 +237,8 @@ async function saveEditable(format:'oex'|'docx'|'doc'|'xlsx'|'xls'|'pptx'|'ppt',
       const sourceIdentity=format==='pptx'||format==='xlsx'||format==='docx';
       const semanticSource=sourceIdentity?nativeImportBaselines.get(request.documentId):original;
       if(sourceIdentity&&semanticSource&&!original)throw new OfficeError('unsafe','Imported Office document requires its current source capability');
-      output=await verifyDocx({format,documentId:request.documentId,bytes:request.bytes,...(semanticSource?{sourceBytes:semanticSource}: {})});
+      if(compatibility&&(!token||!semanticSource))throw new OfficeError('unsafe','Compatibility editing requires an authorized native source');
+      output=await verifyDocx({format,compatibility,documentId:request.documentId,bytes:request.bytes,...(semanticSource?{sourceBytes:semanticSource}: {})});
       assertOwner();
     }
     if(!token||request.saveAs){
@@ -365,6 +366,7 @@ function installIpc():void {
   handle('office:save-xls',async(event,candidate)=>saveEditable('xls',candidate,trusted(event)));
   handle('office:save-pptx',async(event,candidate)=>saveEditable('pptx',candidate,trusted(event)));
   handle('office:save-ppt',async(event,candidate)=>saveEditable('ppt',candidate,trusted(event)));
+  handle('office:save-compatible',async(event,candidate)=>{const {format,request}=parseCompatibilitySave(candidate);return saveEditable(format,request,trusted(event),true);});
   handle('office:save-copy',async(event,candidate)=>{
     const owner=trusted(event),tabs=context(owner).tabs,request=parsePreservedCopy(candidate);
     if(!tabs.has(request.documentId))throw new OfficeError('unsafe','Unknown document session');

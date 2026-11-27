@@ -27,6 +27,7 @@ export interface DesktopBridge {
   saveXls(request:{documentId:string;sourceToken?:string;bytes:Uint8Array;revision:number;contentId:string;saveAs:boolean;title:string}):Promise<Result<{token:string;name:string;durability:string;warnings?:string[]}|null>>;
   savePptx(request:{documentId:string;sourceToken?:string;bytes:Uint8Array;revision:number;contentId:string;saveAs:boolean;title:string}):Promise<Result<{token:string;name:string;durability:string;warnings?:string[]}|null>>;
   savePpt(request:{documentId:string;sourceToken?:string;bytes:Uint8Array;revision:number;contentId:string;saveAs:boolean;title:string}):Promise<Result<{token:string;name:string;durability:string;warnings?:string[]}|null>>;
+  saveCompatible(request:{format:'docx'|'xlsx'|'pptx';documentId:string;sourceToken:string;bytes:Uint8Array;revision:number;contentId:string;saveAs:boolean;title:string}):Promise<Result<{token:string;name:string;durability:string;warnings?:string[]}|null>>;
   saveCopy(request:{documentId:string;sourceToken:string}):Promise<Result<{name:string;durability:string;warnings?:string[]}|null>>;
   updateTabs(states:TabState[]):Promise<Result<void>>;
   confirmClose(documentId:string):Promise<Result<'save'|'discard'|'close'|'cancel'>>;

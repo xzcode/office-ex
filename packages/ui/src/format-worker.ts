@@ -1,7 +1,7 @@
 import { makeImageResource, decodeImageBytes, validateImageResource, type OfficeDocument } from '@office-ex/core';
 import { OfficeError, asFailure } from '@office-ex/contracts';
-import { inspectFile, inspectForEditor, serializeDraft, parseDraft, prepareWriterDocxSave, prepareWriterDocSave, prepareSheetsSave, prepareSlidesSave } from '@office-ex/format-service';
-interface WorkerRequest {id:number;type:'inspect'|'serialize'|'recover'|'docx-save'|'doc-save'|'convert-doc'|'convert-docx'|'xls-save'|'xlsx-save'|'convert-xls'|'convert-xlsx'|'ppt-save'|'pptx-save'|'convert-ppt'|'convert-pptx'|'image';bytes?:Uint8Array;filename?:string;documentId?:string;sourceBytes?:Uint8Array;document?:unknown}
+import { inspectFile, inspectForEditor, serializeDraft, parseDraft, prepareCompatibleOfficeSave, prepareWriterDocxSave, prepareWriterDocSave, prepareSheetsSave, prepareSlidesSave } from '@office-ex/format-service';
+interface WorkerRequest {id:number;format?:'docx'|'xlsx'|'pptx';type:'compatible-save'|'inspect'|'serialize'|'recover'|'docx-save'|'doc-save'|'convert-doc'|'convert-docx'|'xls-save'|'xlsx-save'|'convert-xls'|'convert-xlsx'|'ppt-save'|'pptx-save'|'convert-ppt'|'convert-pptx'|'image';bytes?:Uint8Array;filename?:string;documentId?:string;sourceBytes?:Uint8Array;document?:unknown}
 async function verifyRaster(bytes:Uint8Array,mimeType:string,width:number,height:number):Promise<void>{
   try{
     const bitmap=await createImageBitmap(new Blob([bytes.slice().buffer],{type:mimeType}));
@@ -16,6 +16,7 @@ self.onmessage = async (event:MessageEvent<WorkerRequest>):Promise<void> => {
   try {
     if (!request || !Number.isSafeInteger(request.id)) throw new Error('Invalid worker request');
     let value = request.type === 'inspect' ? (request.documentId ? await inspectForEditor(request.bytes!,request.filename??'',request.documentId) : await inspectFile(request.bytes!,request.filename))
+      : request.type === 'compatible-save' ? (()=>{if(request.format!=='docx'&&request.format!=='xlsx'&&request.format!=='pptx')throw new OfficeError('invalid','Invalid compatibility format');return prepareCompatibleOfficeSave(request.format,request.bytes!,request.documentId!,request.sourceBytes);})()
       : request.type === 'serialize' ? serializeDraft(request.document)
       : request.type === 'recover' ? parseDraft(request.bytes!)
        : request.type === 'docx-save' ? prepareWriterDocxSave(request.bytes!,request.documentId!,request.sourceBytes)
@@ -30,6 +31,7 @@ self.onmessage = async (event:MessageEvent<WorkerRequest>):Promise<void> => {
     if(request.type==='image'){const r=value as ReturnType<typeof makeImageResource>;await verifyRaster(request.bytes!,r.mimeType,r.pixelWidth,r.pixelHeight);}
     else if(request.type==='inspect'&&request.documentId){
       const inspection=value as Awaited<ReturnType<typeof inspectForEditor>>;
+      if(inspection.compatibilityWriter)try{for(const r of Object.values(inspection.compatibilityWriter.resources)){validateImageResource(r);await verifyRaster(decodeImageBytes(r.dataBase64),r.mimeType,r.pixelWidth,r.pixelHeight);}}catch{delete inspection.compatibilityWriter;}
       try{await verifyResources(inspection.editableWriter??inspection.editableSlides??inspection.draft);}catch{
         if(inspection.editableWriter||inspection.editableSlides)value=await inspectFile(request.bytes!,request.filename);
         else throw new OfficeError('invalid','Draft image decode failed');

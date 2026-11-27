@@ -13,3 +13,5 @@ export * from "./slides-pptx.js";
 export * from './sheets-xlsx-preview.js';
 
 export * from './office-text-preview.js';
+export * from './writer-docx-compat.js';
+export * from './office-compatible-values.js';

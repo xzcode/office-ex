@@ -25,6 +25,7 @@ const api: DesktopBridge = {
   saveXls: request => ipcRenderer.invoke('office:save-xls',request),
   savePptx: request => ipcRenderer.invoke('office:save-pptx',request),
   savePpt: request => ipcRenderer.invoke('office:save-ppt',request),
+  saveCompatible: request=>ipcRenderer.invoke('office:save-compatible',request),
   saveCopy: request => ipcRenderer.invoke('office:save-copy',request),
   updateTabs: states => ipcRenderer.invoke('office:tabs',states),
   confirmClose: id => ipcRenderer.invoke('office:confirm-close',id),

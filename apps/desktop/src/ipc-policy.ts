@@ -16,7 +16,7 @@ const CONTENT_ID = /^[A-Za-z0-9_.:-]{1,256}$/;
 const RECOVERY_ID = /^[A-Za-z0-9_-]{1,128}\.[0-9]+\.[a-f0-9-]{36}\.oex-recovery$/;
 const ARITY: Readonly<Record<string, number>> = Object.freeze({
   'office:initialize': 0, 'office:ready':0, 'office:open': 0, 'office:new-window':1, 'office:restore-window':1, 'office:show-home':0, 'office:recent': 1, 'office:drop': 1,
-  'office:tabs': 1, 'office:save-draft': 1, 'office:save-docx': 1, 'office:save-doc': 1, 'office:save-xlsx': 1, 'office:save-xls': 1, 'office:save-pptx': 1, 'office:save-ppt': 1, 'office:save-copy': 1,
+  'office:tabs': 1, 'office:save-draft': 1, 'office:save-docx': 1, 'office:save-doc': 1, 'office:save-xlsx': 1, 'office:save-xls': 1, 'office:save-pptx': 1, 'office:save-ppt': 1, 'office:save-copy': 1, 'office:save-compatible':1,
   'office:confirm-close': 1, 'office:release': 2, 'office:finish-close': 0, 'office:cancel-window-close': 0,
   'office:settings': 1, 'office:recover': 1, 'office:discard-recovery': 1,
   'office:checkpoint': 1, 'office:export-pdf': 1, 'office:print': 1,
@@ -99,6 +99,13 @@ export function parseDocxSave(value:unknown):DraftSaveRequest {
   const request=parseDraftSave(value);
   if(!request.contentId.startsWith(request.documentId+':content:')||!/^\d+$/.test(request.contentId.slice(request.documentId.length+9)))invalid('DOCX snapshot identity does not match the document');
   return request;
+}
+export function parseCompatibilitySave(value:unknown):{format:'docx'|'xlsx'|'pptx';request:DraftSaveRequest}{
+ const v=fields(value,['format','documentId','sourceToken','bytes','revision','contentId','saveAs','title']);
+ const {format,...rest}=v;
+ if(format!=='docx'&&format!=='xlsx'&&format!=='pptx')invalid('Invalid compatibility save format');
+ const request=parseDocxSave(rest);if(!request.sourceToken)invalid('Compatibility save requires original source capability');
+ return {format,request};
 }
 export type PrintRequest = {kind:'document';documentId:string;revision:number;contentId:string;bytes:Uint8Array;sourceToken?:string} | {kind:'pdf';documentId:string;revision:number;sourceToken:string};
 /** PDF input is fetched from the main-owned source token. Document print input

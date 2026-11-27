@@ -2,6 +2,13 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "compatibilityEditTitle": "Source-preserving editing",
+    "compatibilityEditStart": "Edit supported values",
+    "compatibilityEditNotice": "Limited editing view, not the original layout. Only the listed text or existing values may change. Other source parts remain preserved. Formula recalculation and automatic crash recovery are not available in this mode.",
+    "compatibilityEditCount": "Editable values: {count}",
+    "compatibilityEditSegment": "Text segment {count}",
+    "compatibilityLockedObject": "Preserved object (not editable)",
+    "compatibilityLockedCount": "Protected entries: {count}",
     "documentWindowMode": "Open documents in",
     "documentSeparateWindows": "Separate windows",
     "documentTabbedWindows": "Tabs in one window",
@@ -243,6 +250,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "compatibilityEditTitle": "保真兼容编辑",
+    "compatibilityEditStart": "编辑受支持的内容",
+    "compatibilityEditNotice": "受限编辑视图，不代表原始版式。仅可修改列出的文字或现有单元格值，其他原生结构保留。此模式不支持公式重算或自动崩溃恢复。",
+    "compatibilityEditCount": "可编辑内容：{count} 项",
+    "compatibilityEditSegment": "文字片段 {count}",
+    "compatibilityLockedObject": "原样保留的对象（不可编辑）",
+    "compatibilityLockedCount": "受保护内容：{count} 项",
     "documentWindowMode": "文档打开方式",
     "documentSeparateWindows": "独立窗口",
     "documentTabbedWindows": "同一窗口标签页",
@@ -484,6 +498,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "compatibilityEditTitle": "保真相容編輯",
+    "compatibilityEditStart": "編輯支援的內容",
+    "compatibilityEditNotice": "受限編輯檢視，不代表原始版面。僅可修改列出的文字或現有數值，其他原生結構保留。不支援公式重算或自動當機復原。",
+    "compatibilityEditCount": "可編輯內容：{count} 項",
+    "compatibilityEditSegment": "文字片段 {count}",
+    "compatibilityLockedObject": "原樣保留的物件（不可編輯）",
+    "compatibilityLockedCount": "受保護內容：{count} 項",
     "documentWindowMode": "文件開啟方式",
     "documentSeparateWindows": "獨立視窗",
     "documentTabbedWindows": "同一視窗分頁",
@@ -725,6 +746,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "compatibilityEditTitle": "原本保持編集",
+    "compatibilityEditStart": "対応する内容を編集",
+    "compatibilityEditNotice": "制限付き編集で、元のレイアウトではありません。表示されたテキストや既存の値だけを変更し、他の部分を保持します。数式再計算と自動クラッシュ復旧は非対応です。",
+    "compatibilityEditCount": "編集可能な値：{count}",
+    "compatibilityEditSegment": "テキスト {count}",
+    "compatibilityLockedObject": "保持されたオブジェクト（編集不可）",
+    "compatibilityLockedCount": "保護された項目：{count}",
     "documentWindowMode": "文書の開き方",
     "documentSeparateWindows": "別ウィンドウ",
     "documentTabbedWindows": "同じウィンドウのタブ",
@@ -966,6 +994,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "compatibilityEditTitle": "원본 보존 편집",
+    "compatibilityEditStart": "지원되는 내용 편집",
+    "compatibilityEditNotice": "제한된 편집 화면이며 원래 레이아웃이 아닙니다. 표시된 텍스트나 기존 값만 변경하며 다른 부분은 보존합니다. 수식 재계산과 자동 충돌 복구는 지원하지 않습니다.",
+    "compatibilityEditCount": "편집 가능한 값: {count}",
+    "compatibilityEditSegment": "텍스트 {count}",
+    "compatibilityLockedObject": "보존된 개체(편집 불가)",
+    "compatibilityLockedCount": "보호된 항목: {count}",
     "documentWindowMode": "문서 열기 방식",
     "documentSeparateWindows": "별도 창",
     "documentTabbedWindows": "한 창의 탭",
@@ -1207,6 +1242,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "compatibilityEditTitle": "Édition préservant la source",
+    "compatibilityEditStart": "Modifier les valeurs prises en charge",
+    "compatibilityEditNotice": "Vue limitée, sans mise en page originale. Seuls les textes ou valeurs existantes affichés sont modifiables. Les autres éléments sont préservés. Pas de recalcul ni de récupération automatique.",
+    "compatibilityEditCount": "Valeurs modifiables : {count}",
+    "compatibilityEditSegment": "Segment {count}",
+    "compatibilityLockedObject": "Objet préservé (non modifiable)",
+    "compatibilityLockedCount": "Éléments protégés : {count}",
     "documentWindowMode": "Ouvrir les documents dans",
     "documentSeparateWindows": "Fenêtres séparées",
     "documentTabbedWindows": "Onglets dans une fenêtre",
@@ -1448,6 +1490,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "compatibilityEditTitle": "Quellerhaltende Bearbeitung",
+    "compatibilityEditStart": "Unterstützte Werte bearbeiten",
+    "compatibilityEditNotice": "Eingeschränkte Ansicht, nicht das Originallayout. Nur angezeigte Texte oder vorhandene Werte sind änderbar. Andere Teile bleiben erhalten. Keine Formelneuberechnung oder automatische Wiederherstellung.",
+    "compatibilityEditCount": "Bearbeitbare Werte: {count}",
+    "compatibilityEditSegment": "Textabschnitt {count}",
+    "compatibilityLockedObject": "Erhaltenes Objekt (nicht bearbeitbar)",
+    "compatibilityLockedCount": "Geschützte Einträge: {count}",
     "documentWindowMode": "Dokumente öffnen in",
     "documentSeparateWindows": "Separate Fenster",
     "documentTabbedWindows": "Registerkarten in einem Fenster",
@@ -1689,6 +1738,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "compatibilityEditTitle": "Edición con conservación del origen",
+    "compatibilityEditStart": "Editar valores compatibles",
+    "compatibilityEditNotice": "Vista limitada, no el diseño original. Solo se modifican los textos o valores existentes mostrados. Se conservan las demás partes. Sin recálculo ni recuperación automática.",
+    "compatibilityEditCount": "Valores editables: {count}",
+    "compatibilityEditSegment": "Segmento {count}",
+    "compatibilityLockedObject": "Objeto conservado (no editable)",
+    "compatibilityLockedCount": "Entradas protegidas: {count}",
     "documentWindowMode": "Abrir documentos en",
     "documentSeparateWindows": "Ventanas independientes",
     "documentTabbedWindows": "Pestañas en una ventana",
@@ -1930,6 +1986,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "compatibilityEditTitle": "Edição com preservação da origem",
+    "compatibilityEditStart": "Editar valores compatíveis",
+    "compatibilityEditNotice": "Visão limitada, não o layout original. Somente textos ou valores existentes exibidos podem mudar. As outras partes são preservadas. Sem recálculo ou recuperação automática.",
+    "compatibilityEditCount": "Valores editáveis: {count}",
+    "compatibilityEditSegment": "Segmento {count}",
+    "compatibilityLockedObject": "Objeto preservado (não editável)",
+    "compatibilityLockedCount": "Entradas protegidas: {count}",
     "documentWindowMode": "Abrir documentos em",
     "documentSeparateWindows": "Janelas separadas",
     "documentTabbedWindows": "Abas em uma janela",
@@ -2171,6 +2234,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "compatibilityEditTitle": "Modifica con conservazione dell’origine",
+    "compatibilityEditStart": "Modifica valori supportati",
+    "compatibilityEditNotice": "Vista limitata, non il layout originale. Sono modificabili solo testi o valori esistenti mostrati. Le altre parti sono conservate. Nessun ricalcolo o recupero automatico.",
+    "compatibilityEditCount": "Valori modificabili: {count}",
+    "compatibilityEditSegment": "Segmento {count}",
+    "compatibilityLockedObject": "Oggetto conservato (non modificabile)",
+    "compatibilityLockedCount": "Elementi protetti: {count}",
     "documentWindowMode": "Apri documenti in",
     "documentSeparateWindows": "Finestre separate",
     "documentTabbedWindows": "Schede in una finestra",
@@ -2412,6 +2482,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "compatibilityEditTitle": "Редактирование с сохранением источника",
+    "compatibilityEditStart": "Редактировать поддерживаемые значения",
+    "compatibilityEditNotice": "Ограниченный режим, не исходная разметка. Изменяются только показанный текст и существующие значения. Остальные части сохраняются. Пересчёт и автовосстановление недоступны.",
+    "compatibilityEditCount": "Редактируемые значения: {count}",
+    "compatibilityEditSegment": "Фрагмент {count}",
+    "compatibilityLockedObject": "Сохранённый объект (без редактирования)",
+    "compatibilityLockedCount": "Защищённые элементы: {count}",
     "documentWindowMode": "Открывать документы в",
     "documentSeparateWindows": "Отдельных окнах",
     "documentTabbedWindows": "Вкладках одного окна",
@@ -2653,6 +2730,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "compatibilityEditTitle": "تحرير مع حفظ المصدر",
+    "compatibilityEditStart": "تحرير القيم المدعومة",
+    "compatibilityEditNotice": "عرض تحرير محدود وليس التخطيط الأصلي. يمكن تغيير النصوص أو القيم الحالية المعروضة فقط مع حفظ الأجزاء الأخرى. لا تتوفر إعادة حساب الصيغ أو الاستعادة التلقائية.",
+    "compatibilityEditCount": "القيم القابلة للتحرير: {count}",
+    "compatibilityEditSegment": "مقطع النص {count}",
+    "compatibilityLockedObject": "كائن محفوظ (غير قابل للتحرير)",
+    "compatibilityLockedCount": "العناصر المحمية: {count}",
     "documentWindowMode": "فتح المستندات في",
     "documentSeparateWindows": "نوافذ منفصلة",
     "documentTabbedWindows": "علامات تبويب في نافذة واحدة",
@@ -2894,6 +2978,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "compatibilityEditTitle": "עריכה תוך שימור המקור",
+    "compatibilityEditStart": "עריכת ערכים נתמכים",
+    "compatibilityEditNotice": "תצוגה מוגבלת, לא הפריסה המקורית. ניתן לשנות רק את הטקסט או הערכים הקיימים המוצגים. שאר החלקים נשמרים. אין חישוב נוסחאות מחדש או שחזור אוטומטי.",
+    "compatibilityEditCount": "ערכים ניתנים לעריכה: {count}",
+    "compatibilityEditSegment": "קטע טקסט {count}",
+    "compatibilityLockedObject": "אובייקט שמור (לא ניתן לעריכה)",
+    "compatibilityLockedCount": "פריטים מוגנים: {count}",
     "documentWindowMode": "פתיחת מסמכים ב",
     "documentSeparateWindows": "חלונות נפרדים",
     "documentTabbedWindows": "לשוניות בחלון אחד",
@@ -3135,6 +3226,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "compatibilityEditTitle": "मूल स्रोत सुरक्षित रखकर संपादन",
+    "compatibilityEditStart": "समर्थित मान संपादित करें",
+    "compatibilityEditNotice": "सीमित दृश्य, मूल लेआउट नहीं। केवल दिखाए गए पाठ या मौजूदा मान बदल सकते हैं। अन्य भाग सुरक्षित रहते हैं। सूत्र पुनर्गणना और स्वतः पुनर्प्राप्ति उपलब्ध नहीं हैं।",
+    "compatibilityEditCount": "संपादन योग्य मान: {count}",
+    "compatibilityEditSegment": "पाठ खंड {count}",
+    "compatibilityLockedObject": "सुरक्षित ऑब्जेक्ट (संपादन नहीं)",
+    "compatibilityLockedCount": "संरक्षित प्रविष्टियाँ: {count}",
     "documentWindowMode": "दस्तावेज़ खोलें",
     "documentSeparateWindows": "अलग विंडो",
     "documentTabbedWindows": "एक विंडो में टैब",
@@ -3376,6 +3474,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "compatibilityEditTitle": "แก้ไขโดยคงต้นฉบับ",
+    "compatibilityEditStart": "แก้ไขค่าที่รองรับ",
+    "compatibilityEditNotice": "มุมมองจำกัด ไม่ใช่เค้าโครงเดิม แก้ไขได้เฉพาะข้อความหรือค่าเดิมที่แสดง ส่วนอื่นคงอยู่ ไม่รองรับการคำนวณสูตรใหม่หรือกู้คืนอัตโนมัติ",
+    "compatibilityEditCount": "ค่าที่แก้ไขได้: {count}",
+    "compatibilityEditSegment": "ข้อความ {count}",
+    "compatibilityLockedObject": "วัตถุที่เก็บไว้ (แก้ไขไม่ได้)",
+    "compatibilityLockedCount": "รายการที่ป้องกัน: {count}",
     "documentWindowMode": "เปิดเอกสารใน",
     "documentSeparateWindows": "หน้าต่างแยก",
     "documentTabbedWindows": "แท็บในหน้าต่างเดียว",
@@ -3617,6 +3722,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "compatibilityEditTitle": "Chỉnh sửa bảo toàn nguồn",
+    "compatibilityEditStart": "Sửa giá trị được hỗ trợ",
+    "compatibilityEditNotice": "Chế độ giới hạn, không phải bố cục gốc. Chỉ sửa văn bản hoặc giá trị hiện có được hiển thị, giữ nguyên các phần khác. Không tính lại công thức hoặc khôi phục tự động.",
+    "compatibilityEditCount": "Giá trị có thể sửa: {count}",
+    "compatibilityEditSegment": "Đoạn văn bản {count}",
+    "compatibilityLockedObject": "Đối tượng được giữ nguyên (không sửa)",
+    "compatibilityLockedCount": "Mục được bảo vệ: {count}",
     "documentWindowMode": "Mở tài liệu trong",
     "documentSeparateWindows": "Cửa sổ riêng",
     "documentTabbedWindows": "Tab trong một cửa sổ",
@@ -3858,6 +3970,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "compatibilityEditTitle": "Edit dengan sumber dipertahankan",
+    "compatibilityEditStart": "Edit nilai yang didukung",
+    "compatibilityEditNotice": "Tampilan terbatas, bukan tata letak asli. Hanya teks atau nilai yang ditampilkan dapat diubah. Bagian lain dipertahankan. Tanpa hitung ulang rumus atau pemulihan otomatis.",
+    "compatibilityEditCount": "Nilai yang dapat diedit: {count}",
+    "compatibilityEditSegment": "Segmen teks {count}",
+    "compatibilityLockedObject": "Objek dipertahankan (tidak dapat diedit)",
+    "compatibilityLockedCount": "Entri terlindungi: {count}",
     "documentWindowMode": "Buka dokumen di",
     "documentSeparateWindows": "Jendela terpisah",
     "documentTabbedWindows": "Tab dalam satu jendela",
@@ -4099,6 +4218,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "compatibilityEditTitle": "Sunting dengan sumber dikekalkan",
+    "compatibilityEditStart": "Sunting nilai yang disokong",
+    "compatibilityEditNotice": "Paparan terhad, bukan reka letak asal. Hanya teks atau nilai sedia ada yang ditunjukkan boleh diubah. Bahagian lain dikekalkan. Tiada pengiraan semula formula atau pemulihan automatik.",
+    "compatibilityEditCount": "Nilai boleh disunting: {count}",
+    "compatibilityEditSegment": "Segmen teks {count}",
+    "compatibilityLockedObject": "Objek dikekalkan (tidak boleh disunting)",
+    "compatibilityLockedCount": "Entri dilindungi: {count}",
     "documentWindowMode": "Buka dokumen dalam",
     "documentSeparateWindows": "Tetingkap berasingan",
     "documentTabbedWindows": "Tab dalam satu tetingkap",
@@ -4340,6 +4466,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "compatibilityEditTitle": "Kaynağı koruyan düzenleme",
+    "compatibilityEditStart": "Desteklenen değerleri düzenle",
+    "compatibilityEditNotice": "Sınırlı görünüm, özgün düzen değil. Yalnızca gösterilen metin ve mevcut değerler değiştirilebilir. Diğer parçalar korunur. Formül hesaplama ve otomatik kurtarma yoktur.",
+    "compatibilityEditCount": "Düzenlenebilir değerler: {count}",
+    "compatibilityEditSegment": "Metin parçası {count}",
+    "compatibilityLockedObject": "Korunan nesne (düzenlenemez)",
+    "compatibilityLockedCount": "Korunan girdiler: {count}",
     "documentWindowMode": "Belgeleri aç",
     "documentSeparateWindows": "Ayrı pencereler",
     "documentTabbedWindows": "Tek pencerede sekmeler",
@@ -4581,6 +4714,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "compatibilityEditTitle": "Bronbehoudende bewerking",
+    "compatibilityEditStart": "Ondersteunde waarden bewerken",
+    "compatibilityEditNotice": "Beperkte weergave, niet de oorspronkelijke indeling. Alleen getoonde tekst of bestaande waarden zijn wijzigbaar. Andere onderdelen blijven behouden. Geen herberekening of automatisch herstel.",
+    "compatibilityEditCount": "Bewerkbare waarden: {count}",
+    "compatibilityEditSegment": "Tekstsegment {count}",
+    "compatibilityLockedObject": "Behouden object (niet bewerkbaar)",
+    "compatibilityLockedCount": "Beschermde items: {count}",
     "documentWindowMode": "Documenten openen in",
     "documentSeparateWindows": "Afzonderlijke vensters",
     "documentTabbedWindows": "Tabbladen in één venster",
@@ -4822,6 +4962,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "compatibilityEditTitle": "Edycja z zachowaniem źródła",
+    "compatibilityEditStart": "Edytuj obsługiwane wartości",
+    "compatibilityEditNotice": "Ograniczony widok, nie oryginalny układ. Można zmieniać tylko pokazany tekst lub istniejące wartości. Inne części są zachowane. Brak przeliczania formuł i automatycznego odzyskiwania.",
+    "compatibilityEditCount": "Edytowalne wartości: {count}",
+    "compatibilityEditSegment": "Fragment tekstu {count}",
+    "compatibilityLockedObject": "Zachowany obiekt (bez edycji)",
+    "compatibilityLockedCount": "Chronione wpisy: {count}",
     "documentWindowMode": "Otwieraj dokumenty w",
     "documentSeparateWindows": "Oddzielnych oknach",
     "documentTabbedWindows": "Kartach jednego okna",
@@ -5063,6 +5210,13 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "compatibilityEditTitle": "Редагування зі збереженням джерела",
+    "compatibilityEditStart": "Редагувати підтримувані значення",
+    "compatibilityEditNotice": "Обмежений вигляд, не оригінальний макет. Змінюються лише показаний текст або наявні значення. Інші частини зберігаються. Без перерахунку формул та автовідновлення.",
+    "compatibilityEditCount": "Редаговані значення: {count}",
+    "compatibilityEditSegment": "Фрагмент тексту {count}",
+    "compatibilityLockedObject": "Збережений об’єкт (без редагування)",
+    "compatibilityLockedCount": "Захищені записи: {count}",
     "documentWindowMode": "Відкривати документи у",
     "documentSeparateWindows": "Окремих вікнах",
     "documentTabbedWindows": "Вкладках одного вікна",

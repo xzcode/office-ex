@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /** Trusted fixed renderer for one bounded verification job. No normal desktop API. */
-interface Job {format?:'doc'|'docx'|'xls'|'xlsx'|'ppt'|'pptx';id:string;documentId:string;bytes:Uint8Array;sourceBytes?:Uint8Array}
+interface Job {format?:'doc'|'docx'|'xls'|'xlsx'|'ppt'|'pptx';id:string;documentId:string;bytes:Uint8Array;sourceBytes?:Uint8Array;compatibility?:boolean}
 declare global {interface Window {docxVerification:{onJob(callback:(job:unknown)=>void):void;finish(result:unknown):void}}}
 window.docxVerification.onJob(value=>{
   const job=value as Job;
@@ -15,6 +15,6 @@ window.docxVerification.onJob(value=>{
   };
   worker.onerror=()=>done({id:job.id,ok:false});
   worker.onmessageerror=()=>done({id:job.id,ok:false});
-  try{worker.postMessage({id:1,type:job.format==='ppt'?'ppt-save':job.format==='pptx'?'pptx-save':job.format==='xls'?'xls-save':job.format==='xlsx'?'xlsx-save':job.format==='doc'?'doc-save':'docx-save',documentId:job.documentId,bytes:job.bytes,sourceBytes:job.sourceBytes});}catch{done({id:job.id,ok:false});}
+  try{worker.postMessage({id:1,format:job.format,type:job.compatibility?'compatible-save':job.format==='ppt'?'ppt-save':job.format==='pptx'?'pptx-save':job.format==='xls'?'xls-save':job.format==='xlsx'?'xlsx-save':job.format==='doc'?'doc-save':'docx-save',documentId:job.documentId,bytes:job.bytes,sourceBytes:job.sourceBytes});}catch{done({id:job.id,ok:false});}
 });
 export {};

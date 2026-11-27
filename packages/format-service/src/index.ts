@@ -2,7 +2,7 @@
 import { OfficeError } from '@office-ex/contracts';
 import { validateDocument, type OfficeDocument, type WriterDocument, type SheetsDocument, type SlidesDocument } from '@office-ex/core';
 import { BoundedReader, sniffContainer, sortedDiagnostics, type Detection, type FormatId, type FormatDiagnostic, type CompatibilityReport } from '@office-ex/format-common';
-import { inspectOpc,prepareOpcInspection,type OpcInspectionSummary,type ContainerOptions,openWriterDocx, writeWriterDocx, saveWriterDocx, openSheetsXlsx, previewSheetsXlsx, type XlsxValuePreview, previewOfficeText, type OfficeTextPreview, writeSheetsXlsx, saveSheetsXlsx, openSlidesPptx, writeSlidesPptx, saveSlidesPptx } from '@office-ex/ooxml';
+import { inspectOpc,prepareOpcInspection,type OpcInspectionSummary,type ContainerOptions,openWriterDocxCompatibility,saveWriterDocxCompatibility,type CompatDocxView,openCompatibleOfficeValues,saveCompatibleOfficeValues,type CompatibleOfficeView,openWriterDocx, writeWriterDocx, saveWriterDocx, openSheetsXlsx, previewSheetsXlsx, type XlsxValuePreview, previewOfficeText, type OfficeTextPreview, writeSheetsXlsx, saveSheetsXlsx, openSlidesPptx, writeSlidesPptx, saveSlidesPptx } from '@office-ex/ooxml';
 import type { CalculatedValue } from '@office-ex/sheets';
 import { openLegacyXls, writeLegacyXls, saveLegacyXls } from './legacy-xls.js';
 export { openLegacyXls, writeLegacyXls, saveLegacyXls } from './legacy-xls.js';
@@ -12,8 +12,9 @@ import { readCfb } from '@office-ex/cfb';
 import { inspectLegacyDocText, openLegacyDoc, writeLegacyDoc, saveLegacyDoc, type LegacyDocText } from './legacy-doc.js';
 export { inspectLegacyDocText, openLegacyDoc, writeLegacyDoc, saveLegacyDoc } from './legacy-doc.js';
 
+export type {CompatDocxView,CompatParagraph,CompatibleOfficeView,CompatibleValueKind} from '@office-ex/ooxml';
 export interface ContainerEntry { name: string; size: number; sha256: string }
-export interface Inspection { semanticFailure?:{code:string;detail:string};xlsxValuePreview?:XlsxValuePreview;officeTextPreview?:OfficeTextPreview; detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument; editableWriterFormat?: 'doc'|'docx'; legacyDocText?: LegacyDocText; editableSheets?: SheetsDocument; editableSheetsFormat?: 'xls'|'xlsx'; sheetsTemplateConversionBlocked?:boolean; sheetsCachedValues?: [string,CalculatedValue][]; editableSlides?: SlidesDocument; editableSlidesFormat?: 'ppt'|'pptx'; slidesTemplateConversionBlocked?: boolean }
+export interface Inspection { compatibilityWriter?:CompatDocxView; compatibilityOffice?:CompatibleOfficeView; semanticFailure?:{code:string;detail:string};xlsxValuePreview?:XlsxValuePreview;officeTextPreview?:OfficeTextPreview; detection: Detection; report: CompatibilityReport; entries: ContainerEntry[]; sha256: string; draft?: OfficeDocument; editableWriter?: WriterDocument; editableWriterFormat?: 'doc'|'docx'; legacyDocText?: LegacyDocText; editableSheets?: SheetsDocument; editableSheetsFormat?: 'xls'|'xlsx'; sheetsTemplateConversionBlocked?:boolean; sheetsCachedValues?: [string,CalculatedValue][]; editableSlides?: SlidesDocument; editableSlidesFormat?: 'ppt'|'pptx'; slidesTemplateConversionBlocked?: boolean }
 /** Keep actionable diagnostics in the local inspection DTO, not server logs. */
 function semanticFailure(inspection:Inspection,error:OfficeError):Inspection{
  return {...inspection,semanticFailure:{code:error.code,detail:error.message.slice(0,512)}};
@@ -194,7 +195,7 @@ export async function inspectForEditor(bytes:Uint8Array,filename:string,document
       const editableSlides=(format==='pptx'?source.document:validateDocument(source.document)) as SlidesDocument,featureId=format==='ppt'?'LEG-04':'SLD-03';
       const diagnostics=sortedDiagnostics([...inspection.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),{code:format==='ppt'?'PPT_PROFILE_ACTIVE':'PPTX_PROFILE_ACTIVE',featureId,messageKey:format==='ppt'?'format.pptProfile':'format.pptxProfile',severity:'info',safeAction:'none'}]);
       return {...inspection,editableSlides,editableSlidesFormat:format,...('native' in source&&(source.native.layoutPaths.length>1||source.native.auxiliaryPaths.some(path=>path!==source.native.presPropsPath)||Boolean(source.document.theme?.majorFontDetails||source.document.theme?.minorFontDetails))?{slidesTemplateConversionBlocked:true}:{}),detection:{...inspection.detection,diagnostics},report:{...inspection.report,readOnly:false,diagnostics,features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]}};
-    }catch(error){if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code)){const result=semanticFailure(inspection,error);if(format==='pptx')addOfficeTextPreview(result,bytes,options);return result;}throw error;}
+    }catch(error){if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code)){const result=semanticFailure(inspection,error);if(format==='pptx'){addOfficeTextPreview(result,bytes,options);if(error.code==='unsupported')addCompatibleValues(result,bytes,'pptx',options);}return result;}throw error;}
   }
   if((format==='xls'||format==='xlsx')&&filename.toLowerCase().endsWith('.'+format)&&bytes.byteLength<=MAX_DRAFT&&!inspection.detection.encrypted){
     try{
@@ -206,7 +207,7 @@ export async function inspectForEditor(bytes:Uint8Array,filename:string,document
     }catch(error){
       if(!(error instanceof OfficeError)||!['unsupported','invalid','limit'].includes(error.code))throw error;
       const result=semanticFailure(inspection,error);
-      if(format==='xlsx')addXlsxPreview(result,bytes,options);
+      if(format==='xlsx'){addXlsxPreview(result,bytes,options);if(error.code==='unsupported')addCompatibleValues(result,bytes,'xlsx',options);}
       return result;
     }
   }
@@ -232,7 +233,14 @@ export async function inspectForEditor(bytes:Uint8Array,filename:string,document
       features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]
     }};
   }catch(error){
-    if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code)){const result=semanticFailure(inspection,error);if(format==='docx')addOfficeTextPreview(result,bytes,options);return result;}
+    if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code)){
+      const result=semanticFailure(inspection,error);
+      if(format==='docx'){
+        addOfficeTextPreview(result,bytes,options);
+        if(error.code==='unsupported')try{result.compatibilityWriter=openWriterDocxCompatibility(bytes,options);}catch(e){if(!(e instanceof OfficeError)||!['unsupported','invalid','unsafe','limit'].includes(e.code))throw e;}
+      }
+      return result;
+    }
     throw error;
   }
   }finally{scope?.release();}
@@ -251,6 +259,28 @@ export function prepareWriterDocxSave(snapshotBytes:Uint8Array,documentId:string
   return output;
 }
 
+
+function addCompatibleValues(result:Inspection,bytes:Uint8Array,format:'xlsx'|'pptx',options:ContainerOptions):void{
+ try{result.compatibilityOffice=openCompatibleOfficeValues(bytes,format,options);}
+ catch(e){if(!(e instanceof OfficeError)||!['unsupported','invalid','unsafe','limit'].includes(e.code))throw e;}
+}
+/** Shared verifier entry point for the three bounded source edit adapters. */
+export function prepareCompatibleOfficeSave(format:'docx'|'xlsx'|'pptx',snapshotBytes:Uint8Array,documentId:string,sourceBytes?:Uint8Array):Uint8Array{
+ if(format==='docx')return prepareWriterDocxCompatibilitySave(snapshotBytes,documentId,sourceBytes);
+ if(!sourceBytes?.byteLength||snapshotBytes.byteLength>MAX_DRAFT)throw new OfficeError('limit','Compatibility source or edit budget unavailable');
+ let changes:unknown;try{changes=JSON.parse(decoder.decode(snapshotBytes));}catch{throw new OfficeError('invalid','Invalid compatibility edit envelope');}
+ const output=saveCompatibleOfficeValues(sourceBytes,format,documentId,changes);
+ if(output.byteLength>MAX_DRAFT)throw new OfficeError('limit','Compatibility output budget exceeded');
+ return output;
+}
+/** Independent verifier accepts only an edit envelope, never caller XML. */
+export function prepareWriterDocxCompatibilitySave(snapshotBytes:Uint8Array,documentId:string,sourceBytes?:Uint8Array):Uint8Array{
+ if(!sourceBytes?.byteLength||snapshotBytes.byteLength>MAX_DRAFT)throw new OfficeError('limit','Compatibility source or edit budget unavailable');
+ let changes:unknown;try{changes=JSON.parse(decoder.decode(snapshotBytes));}catch{throw new OfficeError('invalid','Invalid compatibility edit envelope');}
+ const output=saveWriterDocxCompatibility(sourceBytes,documentId,changes);
+ if(output.byteLength>MAX_DRAFT)throw new OfficeError('limit','Compatibility output budget exceeded');
+ return output;
+}
 
 /** Closed Word 97 semantic profile, verified independently from file commits. */
 export function prepareWriterDocSave(snapshotBytes:Uint8Array,documentId:string,sourceBytes?:Uint8Array):Uint8Array{

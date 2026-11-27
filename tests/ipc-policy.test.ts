@@ -104,3 +104,11 @@ test('M7.5 native open arguments and new-window IPC are bounded and format-speci
  assert.throws(()=>parseSettingsPatch({openInTabs:'true'}),fails('invalid'));
  assert.doesNotThrow(()=>assertIpcArity('office:new-window',[{kind:'sheets',format:'xlsx'}]));
 });
+
+test('M7.6 compatible saves are source-bound and restricted to modern native formats',async()=>{
+ const {parseCompatibilitySave}=await import('../apps/desktop/src/ipc-policy.js');
+ const req={documentId:'tab-1',sourceToken:'source-1',bytes:new Uint8Array([1,2]),revision:2,contentId:'tab-1:content:2',saveAs:false,title:'Report',format:'xlsx'};
+ assert.equal(parseCompatibilitySave(req).format,'xlsx');
+ for(const invalid of [{...req,sourceToken:undefined},{...req,format:'xls'},{...req,path:'/tmp/file'},{...req,contentId:'other:content:2'}])assert.throws(()=>parseCompatibilitySave(invalid),fails('invalid'));
+ assert.doesNotThrow(()=>assertIpcArity('office:save-compatible',[req]));
+});

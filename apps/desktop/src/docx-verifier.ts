@@ -14,7 +14,7 @@ const ORIGIN='office-ex://app';
 const MAX_BYTES=32*1024*1024;
 const RESPONSE='office:docx-verify-result';
 const CSP="default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; frame-ancestors 'none'";
-export interface VerifyDocxJob{format?:'doc'|'docx'|'xls'|'xlsx'|'ppt'|'pptx';documentId:string;bytes:Uint8Array;sourceBytes?:Uint8Array}
+export interface VerifyDocxJob{format?:'doc'|'docx'|'xls'|'xlsx'|'ppt'|'pptx';documentId:string;bytes:Uint8Array;sourceBytes?:Uint8Array;compatibility?:boolean}
 export type DocxVerifier=(job:VerifyDocxJob)=>Promise<Uint8Array>;
 
 export async function createDocxVerifier(bundle:string,preload:string):Promise<DocxVerifier>{

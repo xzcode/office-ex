@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "sandbox": true,
+  "checks": [
+    "DOCX native compatibility edit, undo/redo, two saves, exact unrelated parts and reopen",
+    "XLSX native compatibility edit, undo/redo, two saves, exact unrelated parts and reopen",
+    "PPTX native compatibility edit, undo/redo, two saves, exact unrelated parts and reopen"
+  ],
+  "status": "passed"
+}
