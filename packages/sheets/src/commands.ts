@@ -34,8 +34,24 @@ function sheetIndex(snapshot:DocumentSnapshot, id:string):number {
 function edit(snapshot:DocumentSnapshot, operations:PatchOperation[]):DocumentCommand {
   return patchCommand(snapshot, "SHT-02", operations);
 }
+/** Keep small/medium edits granular, even when their selection is part
+ * of a very large sheet. Large operations retain the bounded whole-map
+ * fallback; the session coalesces consecutive cell patches into one copy. */
+function cellMapOperations(snapshot:DocumentSnapshot,index:number,cells:Record<string,Cell>):PatchOperation[]{
+  const prior=book(snapshot).sheets[index]!.cells,operations:PatchOperation[]=[],limit=4096;
+  const full=():PatchOperation[]=>[{op:'set',path:['sheets',index,'cells'],value:cells}];
+  for(const key of Object.keys(prior)){
+    if(!Object.hasOwn(cells,key))operations.push({op:'delete',path:['sheets',index,'cells',key]});
+    if(operations.length>limit)return full();
+  }
+  for(const [key,cell]of Object.entries(cells)){
+    if(prior[key]!==cell)operations.push({op:'set',path:['sheets',index,'cells',key],value:cell});
+    if(operations.length>limit)return full();
+  }
+  return operations;
+}
 function cellsCommand(snapshot:DocumentSnapshot, index:number, cells:Record<string,Cell>):DocumentCommand {
-  return edit(snapshot, [{ op: "set", path: ["sheets", index, "cells"], value: cells }]);
+  return edit(snapshot,cellMapOperations(snapshot,index,cells));
 }
 function assertEditableCoordinate(sheet:SheetSnapshot, row:number, column:number):void {
   const merged = sheet.merges.find((m) => inside(m, row, column));
@@ -44,7 +60,7 @@ function assertEditableCoordinate(sheet:SheetSnapshot, row:number, column:number
 export function setCells(snapshot:DocumentSnapshot, sheetId:string, edits:readonly CellEdit[]):DocumentCommand {
   assert(edits.length <= 1e5, "limit", "Cell edit budget exceeded");
   const index = sheetIndex(snapshot, sheetId), sheet = book(snapshot).sheets[index], keys = /* @__PURE__ */ new Set();
-  if (edits.length <= 16) return edit(snapshot, edits.map((e) => {
+  if (edits.length <= 4096) return edit(snapshot, edits.map((e) => {
     const key = cellKey(e.row, e.column);
     assert(!keys.has(key), "invalid", "Duplicate cell in edit batch");
     keys.add(key);
@@ -272,7 +288,7 @@ export function copyCells(snapshot:DocumentSnapshot, sourceSheetId:string, range
     cells[cellKey(r + row - range.row, c + column - range.column)] = cell.value.kind === "formula" ? { ...cell, value: { kind: "formula", source: shiftFormula(cell.value.source, row - range.row, column - range.column) } } : cell;
   }
   const merges = [...target.merges.filter((m) => !overlap(m, destination)), ...source.merges.filter((m) => contains(range, m)).map((m) => ({ ...m, row: m.row + row - range.row, column: m.column + column - range.column }))];
-  return edit(snapshot, [{ op: "set", path: ["sheets", targetIndex, "cells"], value: cells }, { op: "set", path: ["sheets", targetIndex, "merges"], value: merges }]);
+  return edit(snapshot, [...cellMapOperations(snapshot,targetIndex,cells), { op: "set", path: ["sheets", targetIndex, "merges"], value: merges }]);
 }
 export function clearCells(snapshot:DocumentSnapshot, sheetId:string, range:CellRange):DocumentCommand {
   assertCellRange(range);
@@ -289,13 +305,13 @@ export function clearCells(snapshot:DocumentSnapshot, sheetId:string, range:Cell
 export function formatCells(snapshot:DocumentSnapshot, sheetId:string, range:CellRange, format:{style?:CellStyle;numberFormat?:string}):DocumentCommand {
   assertCellRange(range, 1e5);
   const index = sheetIndex(snapshot, sheetId), sheet = book(snapshot).sheets[index], cells = { ...sheet.cells };
+  const font=Object.fromEntries(Object.entries(format.style??{}).filter(([key])=>['fontFamily','fontSize','bold','italic','underline','color'].includes(key))),hasFont=Object.keys(font).length>0;
   for (let r = range.row; r < range.row + range.rowCount; r++) for (let c = range.column; c < range.column + range.columnCount; c++) {
     const key = cellKey(r, c), before = cells[key] ?? { value: { kind: "blank" } };
     const style=format.style!==undefined?{...before.style,...format.style}:undefined;
     if(style&&format.style?.border!==undefined)delete style.borderEdges;
     if(style&&format.style?.borderEdges!==undefined)delete style.border;
-    const font=Object.fromEntries(Object.entries(format.style??{}).filter(([key])=>['fontFamily','fontSize','bold','italic','underline','color'].includes(key)));
-    const richText=before.richText&&Object.keys(font).length?before.richText.map(r=>({...r,style:{...r.style,...font}})):before.richText;
+    const richText=before.richText&&hasFont?before.richText.map(r=>({...r,style:{...r.style,...font}})):before.richText;
     cells[key] = { ...before, ...(style?{style}:{}), ...(richText?{richText}:{}), ...format.numberFormat !== void 0 ? { numberFormat: format.numberFormat } : {} };
   }
   return cellsCommand(snapshot, index, cells);

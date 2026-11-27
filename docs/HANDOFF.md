@@ -237,3 +237,7 @@ Continue on m5-distribution-20261125; [M7 stability](M7-STABILITY.md). M7.1 sour
 ## 2026-11-27 — M7.3 A
 
 M7.2 source cb6fcca verified CI 45843953763. Native PPTX rectangular merges/split, row/column insert/delete with anchor preservation, direct cell format, shared scene and single-transaction desktop grid draft. Final local 303/303 core, 49/49 focused slides, independent python-pptx and full Office corpus, Linux sandboxed native 4/4, build/licenses passed. New interop added to CI. See [M7 stability](M7-STABILITY.md) and [native report](verification/m7/native-m7-ppt-tables.json). Exact new-source CI required. Complex mixed cell text, covered-cell paint, individual-edge/margin UI and reference fidelity remain open. Public dev.3 unchanged. Continue M7.4 stability/performance.
+
+## 2026-11-27 — M7.4 A
+
+M7.3 source f8f3be7 passed CI 45918606132. Compact cell-map history, column-oriented sparse index, revision-bound value-only calculation worker deltas, Word body pagination reuse on story-only edits and bounded keyed slide previews implemented. Final local 308/308 core, 42/42 targeted, independent M7 Excel/Word/PPT readback, sandboxed Linux native 3/3 and build/licenses passed. Benchmark before/after and native measurements under docs/verification/m7; see [M7 stability](M7-STABILITY.md). Exact new-source CI required. Public dev.3 unchanged. Remaining stability/performance and release gates are open.

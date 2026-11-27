@@ -416,11 +416,63 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     const snapshot=snap(),m=presentation(snapshot);if(!m.slides.length)throw new OfficeError('invalid','Presentation has no slides');if(!m.slides.some(s=>s.id===state.slideId))state.slideId=m.slides[0]!.id;
     activeGroup();scene=buildSlideScene(snapshot,state.slideId!);sceneElement=createSlideSceneElement(scene);sceneElement.id='slide-canvas';scaled.replaceChildren(sceneElement,overlay);resize();paintGeometry();requestAnimationFrame(checkOverflow);void document.fonts.ready.then(()=>{if(!disposed)checkOverflow();});
   }
+  // Stable thumbnail shells retain scroll/focus/order; only visible
+  // preview content is retained. A local shape edit must not rebuild
+  // every thumbnail or accumulate a whole presentation's DOM.
+  type ThumbSource=ReturnType<typeof presentation>['slides'][number];
+  type ThumbEntry={button:HTMLButtonElement;image:HTMLDivElement;label:HTMLSpanElement;visible:boolean;source?:ThumbSource;globalVersion?:number};
+  const thumbnails=new Map<string,ThumbEntry>();
+  let thumbnailSnapshot:DocumentSnapshot|undefined,thumbnailGlobals:unknown[]|undefined,thumbnailVersion=0,thumbnailRenderCount=0;
+  function renderThumbnail(entry:ThumbEntry){
+    if(disposed||!thumbnailSnapshot||!entry.visible)return;
+    const snapshot=thumbnailSnapshot,m=presentation(snapshot),slideId=entry.button.dataset.slideId!,source=m.slides.find(s=>s.id===slideId);
+    if(!source)return;
+    if(entry.source===source&&entry.globalVersion===thumbnailVersion&&entry.image.firstElementChild){
+      // The projection is identical, but expose the current revision
+      // for accessibility/debugging and existing revision checks.
+      const node=entry.image.firstElementChild as HTMLElement;
+      node.dataset.revision=String(snapshot.revision);node.dataset.contentId=snapshot.contentId;
+      return;
+    }
+    const preview=buildSlideScene(snapshot,slideId),node=createSlideSceneElement(preview),ratio=128/(preview.width/EMU_PER_CSS_PIXEL);
+    node.style.transform='scale('+ratio+')';node.style.transformOrigin='top left';entry.image.replaceChildren(node);
+    entry.source=source;entry.globalVersion=thumbnailVersion;thumbnailRenderCount++;
+    rail.dataset.thumbnailRenders=String(thumbnailRenderCount);
+  }
   function refreshThumbnails():void {
-    thumbObserver?.disconnect();rail.replaceChildren();const snapshot=snap(),m=presentation(snapshot),seen=new Set<string>();
-    const renderThumb=(thumb:HTMLElement)=>{const slideId=thumb.dataset.slideId!;if(seen.has(slideId)||disposed)return;seen.add(slideId);const thumbnailScene=buildSlideScene(snapshot,slideId),thumbScene=createSlideSceneElement(thumbnailScene),ratio=128/(thumbnailScene.width/EMU_PER_CSS_PIXEL);thumbScene.style.transform=`scale(${ratio})`;thumbScene.style.transformOrigin='top left';thumb.firstElementChild!.append(thumbScene);};
-    if(typeof IntersectionObserver!=='undefined')thumbObserver=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){renderThumb(entry.target as HTMLElement);thumbObserver?.unobserve(entry.target);}},{root:rail,rootMargin:'200px'});
-    for(const [index,slide] of m.slides.entries()){const thumb=element('button','','slides-thumbnail');thumb.type='button';thumb.dataset.slideId=slide.id;thumb.setAttribute('aria-label',t('slidePageNumber',{current:host.number(index+1),total:host.number(m.slides.length)}));thumb.setAttribute('aria-current',String(slide.id===state.slideId));thumb.classList.toggle('is-current',slide.id===state.slideId);const image=element('div','','slides-thumbnail-image');image.style.width='128px';image.style.height=128*m.size.height/m.size.width+'px';image.setAttribute('aria-hidden','true');thumb.append(image,element('span',host.number(index+1)));thumb.onclick=()=>safe(()=>changeSlide(slide.id));thumb.draggable=!host.readOnly;thumb.ondragstart=event=>{if(!flush()){event.preventDefault();return;}event.dataTransfer?.setData('application/x-office-ex-slide',slide.id);if(event.dataTransfer)event.dataTransfer.effectAllowed='move';};thumb.ondragover=event=>{if(!host.readOnly&&event.dataTransfer?.types.includes('application/x-office-ex-slide'))event.preventDefault();};thumb.ondrop=event=>{event.preventDefault();const source=event.dataTransfer?.getData('application/x-office-ex-slide');if(source&&doc().slides.some(s=>s.id===source))safe(()=>{if(flush())apply(moveSlide(snap(),source,index));});};rail.append(thumb);if(thumbObserver)thumbObserver.observe(thumb);else renderThumb(thumb);}
+    const snapshot=snap(),m=presentation(snapshot);thumbnailSnapshot=snapshot;
+    const globals=[m.size,m.theme,m.defaultTextStyle,m.styles,m.resources];
+    if(!thumbnailGlobals||globals.some((v,i)=>v!==thumbnailGlobals![i])){thumbnailGlobals=globals;thumbnailVersion++;}
+    if(!thumbObserver&&typeof IntersectionObserver!=='undefined')thumbObserver=new IntersectionObserver(entries=>{
+      if(disposed)return;
+      for(const observation of entries){
+        const button=observation.target as HTMLButtonElement,entry=thumbnails.get(button.dataset.slideId!);
+        if(!entry||entry.button!==button)continue;
+        entry.visible=observation.isIntersecting;
+        if(entry.visible)renderThumbnail(entry);
+        else{entry.image.replaceChildren();entry.source=undefined;entry.globalVersion=undefined;}
+      }
+    },{root:rail,rootMargin:'200px'});
+    const wanted=new Set(m.slides.map(s=>s.id));
+    for(const [id,entry]of thumbnails)if(!wanted.has(id)){thumbObserver?.unobserve(entry.button);entry.button.remove();thumbnails.delete(id);}
+    for(const [index,slide]of m.slides.entries()){
+      const slideId=slide.id;let entry=thumbnails.get(slideId);
+      if(!entry){
+        const thumb=element('button','','slides-thumbnail');thumb.type='button';thumb.dataset.slideId=slideId;
+        const image=element('div','','slides-thumbnail-image'),label=element('span');image.setAttribute('aria-hidden','true');
+        thumb.append(image,label);
+        thumb.onclick=()=>safe(()=>changeSlide(slideId));
+        thumb.ondragstart=event=>{if(!flush()){event.preventDefault();return;}event.dataTransfer?.setData('application/x-office-ex-slide',slideId);if(event.dataTransfer)event.dataTransfer.effectAllowed='move';};
+        thumb.ondragover=event=>{if(!host.readOnly&&event.dataTransfer?.types.includes('application/x-office-ex-slide'))event.preventDefault();};
+        thumb.ondrop=event=>{event.preventDefault();const source=event.dataTransfer?.getData('application/x-office-ex-slide'),target=doc().slides.findIndex(s=>s.id===slideId);if(source&&target>=0&&doc().slides.some(s=>s.id===source))safe(()=>{if(flush())apply(moveSlide(snap(),source,target));});};
+        entry={button:thumb,image,label,visible:!thumbObserver};thumbnails.set(slideId,entry);rail.append(thumb);thumbObserver?.observe(thumb);
+      }
+      const {button:thumb,image,label}=entry;
+      thumb.draggable=!host.readOnly;thumb.setAttribute('aria-label',t('slidePageNumber',{current:host.number(index+1),total:host.number(m.slides.length)}));thumb.setAttribute('aria-current',String(slideId===state.slideId));thumb.classList.toggle('is-current',slideId===state.slideId);
+      image.style.width='128px';image.style.height=128*m.size.height/m.size.width+'px';label.textContent=host.number(index+1);
+      if(rail.children[index]!==thumb)rail.insertBefore(thumb,rail.children[index]??null);
+      renderThumbnail(entry);
+    }
   }
   function refresh():void {if(disposed)return;refreshScene();refreshThumbnails();syncInspector();}
   function resize():void {
@@ -488,7 +540,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
     const paint=()=>{const node=createSlideSceneElement(buildSlideScene(snapshot,m.slides[page]!.id));node.style.transformOrigin='center center';screen.replaceChildren(node);caption.textContent=t('slidePageNumber',{current:host.number(page+1),total:host.number(m.slides.length)});previous.disabled=page===0;next.disabled=page===m.slides.length-1;resizePresentation();};
     const close=()=>{closePresentation=undefined;if(document.fullscreenElement===dialog)void document.exitFullscreen().catch(()=>{});dialog.close();dialog.remove();presentationDialog=undefined;window.removeEventListener('resize',resizePresentation);stage.focus();};closePresentation=close;previous.onclick=()=>{page=Math.max(0,page-1);paint();};next.onclick=()=>{page=Math.min(m.slides.length-1,page+1);paint();};exit.onclick=close;dialog.oncancel=event=>{event.preventDefault();close();};dialog.onkeydown=event=>{if(['ArrowRight','ArrowDown','PageDown',' '].includes(event.key)){event.preventDefault();page=Math.min(m.slides.length-1,page+1);paint();}else if(['ArrowLeft','ArrowUp','PageUp'].includes(event.key)){event.preventDefault();page=Math.max(0,page-1);paint();}else if(event.key==='Home'){event.preventDefault();page=0;paint();}else if(event.key==='End'){event.preventDefault();page=m.slides.length-1;paint();}else if(event.key==='Escape'){event.preventDefault();close();}};dialog.showModal();dialog.focus();paint();window.addEventListener('resize',resizePresentation);if(dialog.requestFullscreen)void dialog.requestFullscreen().then(()=>{resizePresentation();if(dialog.isConnected)dialog.focus();}).catch(()=>{});
   }
-  state.dispose=()=>{if(disposed)return;cancelGesture();disposed=true;if(textTimer!==undefined)clearTimeout(textTimer);observer?.disconnect();thumbObserver?.disconnect();closePresentation?.();presentationDialog?.close();presentationDialog?.remove();};
+  state.dispose=()=>{if(disposed)return;cancelGesture();disposed=true;if(textTimer!==undefined)clearTimeout(textTimer);observer?.disconnect();thumbObserver?.disconnect();thumbnails.clear();thumbnailSnapshot=undefined;thumbnailGlobals=undefined;closePresentation?.();presentationDialog?.close();presentationDialog?.remove();};
   const pick=(...ids:string[])=>ribbonNodes(root,...ids);
   installRibbon(root,state,t,[
     {id:'home',label:'ribbonHome',groups:[

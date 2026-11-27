@@ -20,11 +20,18 @@ interface Entry {
   blocks:number;
 }
 export interface PaginationStats {sectionsComputed:number;sectionsReused:number;pagesReused:number}
+const paragraphCosts=new WeakMap<object,number>();
+function paragraphCost(p:DeepReadonly<import('@office-ex/core').Paragraph>):number{
+ const old=paragraphCosts.get(p);if(old!==undefined)return old;
+ const n=paragraphBoundaries(p).length-1;
+ if(Object.isFrozen(p)&&Object.isFrozen(p.runs)&&p.runs.every(Object.isFrozen))paragraphCosts.set(p,n);
+ return n;
+}
 function cost(section:DeepReadonly<WriterSection>):{clusters:number;blocks:number}{
   let clusters=0,blocks=0;
   for(const b of section.blocks){
-    if(b.type==='paragraph'){clusters+=paragraphBoundaries(b).length-1;blocks++;}
-    else if(b.type==='table')for(const row of b.rows){blocks++;for(const cell of row.cells)for(const p of cell.blocks){assert(p.type==='paragraph','unsupported','Nested table layout not supported');blocks++;clusters+=paragraphBoundaries(p).length-1;}}
+    if(b.type==='paragraph'){clusters+=paragraphCost(b);blocks++;}
+    else if(b.type==='table')for(const row of b.rows){blocks++;for(const cell of row.cells)for(const p of cell.blocks){assert(p.type==='paragraph','unsupported','Nested table layout not supported');blocks++;clusters+=paragraphCost(p);}}
     else blocks++;
   }
   return {clusters,blocks};
@@ -40,14 +47,26 @@ export class WriterPaginationEngine {
     assert(Number.isSafeInteger(maxPages)&&maxPages>0&&maxPages<=500&&Number.isSafeInteger(maxClusters)&&maxClusters>0&&maxClusters<=100000,'invalid','Invalid layout budget');
     const signature=JSON.stringify([provider.environmentId,options.paragraphShaper?.environmentId,maxPages,maxClusters,snapshot.document.documentId,model.defaultParagraphStyleId]);
     if(signature!==this.signature){this.entries.clear();this.signature=signature;}
-    const numberingMarkers=buildWriterNumberingMarkers(model),markerSignature=JSON.stringify([...numberingMarkers].map(([id,marker])=>[id,marker.text]));
+    const numberingMarkers=buildWriterNumberingMarkers(model);
+    // Keep numbering traversal global (lists may cross sections), but
+    // invalidate only sections whose own resolved markers changed.
+    const markerSignatures=new Map<string,string>();
+    if(numberingMarkers.size)for(const section of model.sections){
+      const own:[string,string][]=[];
+      const append=(id:string)=>{const marker=numberingMarkers.get(id);if(marker)own.push([id,marker.text]);};
+      for(const block of section.blocks){
+        if(block.type==='paragraph')append(block.id);
+        else if(block.type==='table')for(const row of block.rows)for(const cell of row.cells)for(const p of cell.blocks)if(p.type==='paragraph')append(p.id);
+      }
+      markerSignatures.set(section.id,JSON.stringify(own));
+    }
     const next=new Map<string,Entry>(),pages:DeepReadonly<WriterPage>[]=[];const warnings=new Set<string>();
     let clusters=0,blocks=0;this.stats={sectionsComputed:0,sectionsReused:0,pagesReused:0};
     for(const section of model.sections){
       options.cancellation?.throwIfCancelled();
-      const old=this.entries.get(section.id);
+      const old=this.entries.get(section.id),markerSignature=markerSignatures.get(section.id)??'[]';
       let entry:Entry;
-      if(old&&old.source===section&&old.defaults===model.defaultTextStyle&&old.styles===model.styles&&old.resources===model.resources&&old.numbering===model.numbering&&old.markerSignature===markerSignature){
+      if(old&&old.source.blocks===section.blocks&&JSON.stringify(old.source.page)===JSON.stringify(section.page)&&JSON.stringify(old.source.pageExtras)===JSON.stringify(section.pageExtras)&&old.defaults===model.defaultTextStyle&&old.styles===model.styles&&old.resources===model.resources&&old.numbering===model.numbering&&old.markerSignature===markerSignature){
         entry=old;this.stats.sectionsReused++;this.stats.pagesReused+=old.layout.pages.length;
       }else{
         const counts=cost(section);assert(clusters+counts.clusters<=maxClusters&&blocks+counts.blocks<=10000,'limit','Writer layout budget exceeded');

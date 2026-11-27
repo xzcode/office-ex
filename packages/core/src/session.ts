@@ -94,11 +94,40 @@ function applyPatch(root: OfficeDocument, patch: PatchOperation): { document: Of
 function applyBatch(document: OfficeDocument, operations: readonly PatchOperation[]): { document: OfficeDocument; forward: PatchOperation[]; inverse: PatchOperation[] } {
   let next = document;
   const forward: PatchOperation[] = []; const inverse: PatchOperation[] = [];
-  for (const operation of operations) {
-    assertOperation(operation);
-    const result = applyPatch(next, operation);
-    if (result.inverse) { forward.push(cloneData(operation)); inverse.unshift(result.inverse); next = result.document; }
+  // Coalesce consecutive direct edits to one sheet's cell map. Clone the
+  // map once, preserve unaffected immutable cells and keep the history
+  // at individual-cell granularity. Every patch is still checked and the
+  // complete candidate is validated before committing.
+  const directCell=(operation:PatchOperation)=>operation.op!=='splice'&&operation.path.length===4&&operation.path[0]==='sheets'&&typeof operation.path[1]==='number'&&operation.path[2]==='cells'&&typeof operation.path[3]==='string';
+  for(let i=0;i<operations.length;){
+    const operation=operations[i]!;assertOperation(operation);
+    if(next.kind==='sheets'&&directCell(operation)){
+      const parentPath=operation.path.slice(0,3),parent=atPath(next,parentPath);
+      assert(isRecord(parent),'invalid','Invalid cell patch parent');
+      const copy={...parent};let changed=false,j=i;
+      for(;j<operations.length;j++){
+        const patch=operations[j]!;assertOperation(patch);
+        if(!directCell(patch)||patch.path[1]!==operation.path[1])break;
+        const key=patch.path[3] as string,exists=Object.hasOwn(copy,key),before=copy[key];
+        if(patch.op==='delete'){
+          if(!exists)continue;
+          delete copy[key];inverse.push({op:'set',path:patch.path,value:before});
+        }else if(patch.op==='set'){
+          if(exists&&sameData(before,patch.value))continue;
+          copy[key]=cloneData(patch.value);
+          inverse.push(exists?{op:'set',path:patch.path,value:before}:{op:'delete',path:patch.path});
+        }else throw new Error('Unexpected cell splice');
+        forward.push(cloneData(patch));changed=true;
+      }
+      if(changed)next=replaceAt(next,parentPath,copy) as OfficeDocument;
+      i=j;
+    }else{
+      const result=applyPatch(next,operation);
+      if(result.inverse){forward.push(cloneData(operation));inverse.push(result.inverse);next=result.document;}
+      i++;
+    }
   }
+  inverse.reverse();
   if (sameData(document, next)) return { document, forward: [], inverse: [] };
   // Candidate state is detached by structural sharing. Validation cannot alter live state.
   validateDocument(next);

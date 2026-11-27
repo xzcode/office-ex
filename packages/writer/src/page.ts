@@ -70,18 +70,22 @@ export function setWriterPageStory(snapshot:DocumentSnapshot,sectionId:string,ki
     stories[id]={kind,...first!,...(rest.length?{additionalParagraphs:rest}:{})};
   }else stories[id]={...story,...(existing?.additionalParagraphs?{additionalParagraphs:existing.additionalParagraphs}:{})};
   refs[slot]=id;
-  const updated=cloneData(section) as MutableSection;updated.storyRefs=refs;
-  if(value.differentFirstPage!==undefined){if(value.differentFirstPage)updated.differentFirstPage=true;else delete updated.differentFirstPage;}
+  // Page stories are independent of the body. Keep the existing body
+  // block array and its paragraph identities on every story-only edit.
+  const operations:PatchOperation[]=[{op:'set',path:['pageStories'],value:stories},{op:'set',path:['sections',index,'storyRefs'],value:refs}];
+  if(value.differentFirstPage!==undefined){
+    if(value.differentFirstPage)operations.push({op:'set',path:['sections',index,'differentFirstPage'],value:true});
+    else operations.push({op:'delete',path:['sections',index,'differentFirstPage']});
+  }
   const key=kind==='header'?'headerDistance':'footerDistance',margin=section.page.margins[kind==='header'?'top':'bottom'];
   if(value.distance!==undefined){
     assert(Number.isSafeInteger(value.distance)&&value.distance>=0&&value.distance%EMU_PER_TWIP===0&&value.distance<=margin,'invalid','Invalid running story distance');
-    updated.pageExtras={...updated.pageExtras,[key]:value.distance};
-  }else if(!effective&&updated.pageExtras?.[key]===undefined)updated.pageExtras={...updated.pageExtras,[key]:Math.min(457200,Math.floor(margin/2/EMU_PER_TWIP)*EMU_PER_TWIP)};
+    operations.push({op:'set',path:['sections',index,'pageExtras'],value:{...section.pageExtras,[key]:value.distance}});
+  }else if(!effective&&section.pageExtras?.[key]===undefined)operations.push({op:'set',path:['sections',index,'pageExtras'],value:{...section.pageExtras,[key]:Math.min(457200,Math.floor(margin/2/EMU_PER_TWIP)*EMU_PER_TWIP)}});
   if(value.pageNumberStart!==undefined){
     assert(value.pageNumberStart===null||Number.isSafeInteger(value.pageNumberStart)&&value.pageNumberStart>=1&&value.pageNumberStart<=32767,'invalid','Invalid page number start');
-    if(value.pageNumberStart===null)delete updated.pageNumberStart;else updated.pageNumberStart=value.pageNumberStart;
+    operations.push(value.pageNumberStart===null?{op:'delete',path:['sections',index,'pageNumberStart']}:{op:'set',path:['sections',index,'pageNumberStart'],value:value.pageNumberStart});
   }
-  const operations:PatchOperation[]=[{op:'set',path:['pageStories'],value:stories},{op:'set',path:['sections',index],value:updated}];
   if(value.differentEvenOddPages!==undefined){if(value.differentEvenOddPages)operations.push({op:'set',path:['differentEvenOddPages'],value:true});else if(doc.differentEvenOddPages)operations.push({op:'delete',path:['differentEvenOddPages']});}
   return patchCommand(snapshot,'WRT-03',operations);
 }
@@ -90,7 +94,5 @@ export function setWriterPageNumberStart(snapshot:DocumentSnapshot,sectionId:str
   assert(snapshot.document.kind==='writer','invalid','Expected Writer document');
   const index=snapshot.document.sections.findIndex(s=>s.id===sectionId);assert(index>=0,'invalid','Section not found');
   assert(start===undefined||Number.isSafeInteger(start)&&start>=1&&start<=32767,'invalid','Invalid page number start');
-  const s=cloneData(snapshot.document.sections[index]!) as MutableSection;
-  if(start===undefined)delete s.pageNumberStart;else s.pageNumberStart=start;
-  return patchCommand(snapshot,'WRT-03',[{op:'set',path:['sections',index],value:s}]);
+  return patchCommand(snapshot,'WRT-03',[start===undefined?{op:'delete',path:['sections',index,'pageNumberStart']}:{op:'set',path:['sections',index,'pageNumberStart'],value:start}]);
 }

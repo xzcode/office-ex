@@ -2,7 +2,7 @@ import {installRibbon,ribbonNodes,type RibbonState,decorateOfficeButton} from '.
 /** Recovered M3 virtualized worksheet workspace. */
 import { OfficeError, EMU_PER_CSS_PIXEL } from '@office-ex/contracts';
 import { patchCommand, type DocumentSnapshot, type DocumentCommand, type Color, type CellStyle, type SheetView,type ConditionalOperator,type SheetChart,type DeepReadonly } from '@office-ex/core';
-import { addSheet, renameSheet, deleteSheet, moveSheet, insertRows, deleteRows, insertColumns, deleteColumns, mergeCells, unmergeCells, clearCells, copyCells, formatCells, applyNamedCellStyle, addConditionalRule, removeConditionalRule, conditionalCellStyle, addSheetChart, removeSheetChart, setDimensions, fillCells, pasteTsv, exportTsv, setCells, cellFromInput, formatCell, formatCellValue, calculationKey, localizeFormula, formulaSeparators, type CellRange, type WorkbookSnapshot, type CalculationCell, type CalculatedValue, type CellInputOptions } from '@office-ex/sheets';
+import { addSheet, renameSheet, deleteSheet, moveSheet, insertRows, deleteRows, insertColumns, deleteColumns, mergeCells, unmergeCells, clearCells, copyCells, formatCells, applyNamedCellStyle, addConditionalRule, removeConditionalRule, conditionalCellStyle, addSheetChart, removeSheetChart, setDimensions, fillCells, pasteTsv, exportTsv, setCells, cellFromInput, formatCell, formatCellValue, calculationKey, createCalculationUpdate, type CalculationVersion, localizeFormula, formulaSeparators, type CellRange, type WorkbookSnapshot, type CalculationCell, type CalculatedValue, type CellInputOptions } from '@office-ex/sheets';
 import type { MessageKey } from '@office-ex/i18n';
 import { GridAxis, columnLabel, cellLabel } from './sheets-geometry.js';
 
@@ -12,6 +12,7 @@ export interface SheetsViewState extends RibbonState {
   scrollLeft:number; scrollTop:number; inputMode:'canonical'|'regional';
   calculation?:Map<string,CalculationCell>; calculatedRevision?:number;
   calculating?:boolean; calculationError?:boolean; onCalculation?:()=>void;
+  calculationTransport?:{kind:'full'|'delta';changedCells:number};
   cachedValues?:[string,CalculatedValue][]; cachedSources?:[string,string][];
   unsupportedFormulas?:string[]; flush?:()=>boolean;
   navigate?: (row:number, column:number, endRow:number, endColumn:number, focusGrid:boolean)=>void;
@@ -24,7 +25,7 @@ export interface SheetsHost {
   t(key:MessageKey,args?:Readonly<Record<string,string|number>>):string;
   locale():string; isCurrent():boolean; readOnly?:boolean; format?:'xls'|'xlsx'|'oex';
 }
-interface RunningCalculation { worker:Worker;documentId:string;request:number;revision:number;busy:boolean;state:SheetsViewState;timer?:ReturnType<typeof setTimeout> }
+interface RunningCalculation { worker:Worker;documentId:string;request:number;revision:number;busy:boolean;state:SheetsViewState;timer?:ReturnType<typeof setTimeout>;previous?:CalculationVersion;sentValues?:SheetsViewState['cachedValues'];sentSources?:SheetsViewState['cachedSources'] }
 interface RenderedCell {
   node:HTMLDivElement;text:Text;row?:number;column?:number;result?:CalculationCell;revision?:number;
   styleId?:string;directStyle?:CellSnapshot['style'];styleApplied?:boolean;conditionalSignature?:string;
@@ -57,7 +58,8 @@ function recalculate(host:SheetsHost, state2:SheetsViewState, force = false):voi
     const worker = new Worker(new URL("./sheets-recalc-worker.js", import.meta.url), { type: "module" });
     running = { worker, documentId: snapshot.document.documentId, request: 0, revision: -1, busy: false, state: state2 };
   }
-  const current = running, id = ++requestId;
+  const current = running, id = ++requestId,document=snapshot.document;
+  const update=createCalculationUpdate(current.previous,document,snapshot.revision);
   current.request = id;
   current.revision = snapshot.revision;
   current.busy = true;
@@ -68,6 +70,8 @@ function recalculate(host:SheetsHost, state2:SheetsViewState, force = false):voi
     if (running !== current || event.data.id !== id || event.data.revision !== snapshot.revision) return;
     clearTimeout(current.timer);
     current.busy = false;
+    if(event.data.ok){current.previous={document,revision:snapshot.revision};current.sentValues=sentValues;current.sentSources=sentSources;}
+    else {current.previous=undefined;current.sentValues=undefined;current.sentSources=undefined;}
     state2.calculating = false;
     if (host.isCurrent() && host.snapshot().revision === snapshot.revision) {
       state2.calculationError = !event.data.ok;
@@ -88,7 +92,12 @@ function recalculate(host:SheetsHost, state2:SheetsViewState, force = false):voi
     state2.calculationError = true;
     state2.onCalculation?.();
   }, 12e3);
-  current.worker.postMessage({ id, revision: snapshot.revision, document: snapshot.document, cachedValues: state2.cachedValues, cachedSources: state2.cachedSources });
+  const sentValues=state2.cachedValues,sentSources=state2.cachedSources;
+  current.worker.postMessage({id,revision:snapshot.revision,update,
+    ...(update.kind==='full'||current.sentValues!==sentValues?{cachedValues:sentValues??[]}:{}),
+    ...(update.kind==='full'||current.sentSources!==sentSources?{cachedSources:sentSources??[]}:{})});
+  // Testable diagnostics report actual transport shape, never document data.
+  state2.calculationTransport={kind:update.kind,changedCells:update.kind==='delta'?update.sheets.reduce((n,s)=>n+s.changes.length,0):update.document.sheets.reduce((n,s)=>n+Object.keys(s.cells).length,0)};
 }
 const styleColor = (color:Color|undefined) => color?.kind === "rgba" ? `rgba(${color.red},${color.green},${color.blue},${color.alpha / 255})` : "var(--text)";
 const rgb = (value:string):Color => ({ kind: "rgba", red: parseInt(value.slice(1, 3), 16), green: parseInt(value.slice(3, 5), 16), blue: parseInt(value.slice(5, 7), 16), alpha: 255 });
@@ -858,6 +867,7 @@ export function sheetsWorkspace(host:SheetsHost, state2:SheetsViewState):HTMLEle
     const statusText=t(host.readOnly&&opaque.size?"sheetUnsupported":state2.calculating?"sheetCalculating":state2.calculationError?"sheetCalcError":"sheetCalculated");
     if(calcStatus.textContent!==statusText)calcStatus.textContent=statusText;
     const revision=String(state2.calculatedRevision??-1),calculating=String(Boolean(state2.calculating));
+    if(state2.calculationTransport){root2.dataset.calcTransport=state2.calculationTransport.kind;root2.dataset.calcChangedCells=String(state2.calculationTransport.changedCells);}
     if(root2.dataset.calculatedRevision!==revision)root2.dataset.calculatedRevision=revision;
     if(root2.dataset.calculating!==calculating)root2.dataset.calculating=calculating;
     if (editing) positionEditor();

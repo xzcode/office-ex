@@ -8,7 +8,15 @@ import type { CellValue, DocumentSnapshot } from '@office-ex/core';
 import { parseFormula, walkFormula, isSupportedFunction, type FormulaNode, type FormulaReference, type FormulaRange, type FormulaError } from './formula.js';
 
 export type WorkbookSnapshot = Extract<DocumentSnapshot['document'], {kind:'sheets'}>;
-type SheetSnapshot = WorkbookSnapshot['sheets'][number];
+/** Only scalar cells and workbook/sheet identity participate in calculation.
+ * Formatting, rich-text runs, charts, row geometry and resources do not
+ * need to cross the worker boundary. Full model snapshots remain accepted. */
+export interface CalculationWorkbook {
+ readonly kind:'sheets';
+ readonly documentId:string;
+ readonly sheets:readonly {readonly id:string;readonly name:string;readonly cells:Readonly<Record<string,{readonly value:CellValue}>>}[];
+}
+type SheetSnapshot = CalculationWorkbook['sheets'][number];
 export type CalculatedValue = Exclude<CellValue, {kind:'formula'}>;
 type ErrorValue = Extract<CalculatedValue, {kind:'error'}>;
 type BooleanValue = Extract<CalculatedValue, {kind:'boolean'}>;
@@ -53,20 +61,33 @@ export function calculationKey(sheetId: string, row: number, column: number): st
 class SparseSheetIndex {
   readonly rows: number[];
   #byRow = new Map<number, IndexedCell[]>();
+  #byColumn = new Map<number, IndexedCell[]>();
   constructor(sheet: SheetSnapshot, tick: () => void = () => {}) {
     for (const key of Object.keys(sheet.cells)) {
       tick();
       const [row, column] = key.split(":").map(Number);
       const entries = this.#byRow.get(row) ?? [];
-      entries.push({ key, row, column });
+      const cell={key,row,column};entries.push(cell);
       this.#byRow.set(row, entries);
+      const columnEntries=this.#byColumn.get(column)??[];columnEntries.push(cell);this.#byColumn.set(column,columnEntries);
     }
     this.rows = [...this.#byRow.keys()].sort((a, b) => a - b);
     for (const entries of this.#byRow.values()) entries.sort((a, b) => a.column - b.column);
+    for (const entries of this.#byColumn.values()) entries.sort((a,b)=>a.row-b.row);
   }
-  *range(firstRow: number, firstColumn: number, lastRow: number, lastColumn: number): IterableIterator<IndexedCell> {
+  *range(firstRow: number, firstColumn: number, lastRow: number, lastColumn: number,tick?:()=>void): IterableIterator<IndexedCell> {
+    // The common whole-column and vertical lookup case must never walk
+    // every populated row in unrelated columns. Single-column traversal
+    // is still in native row-major order.
+    if(firstColumn===lastColumn){
+      const entries=this.#byColumn.get(firstColumn);if(!entries)return;
+      let lo=0,hi=entries.length;
+      while(lo<hi){const mid=lo+hi>>>1;if(entries[mid]!.row<firstRow)lo=mid+1;else hi=mid;}
+      for(let i=lo;i<entries.length&&entries[i]!.row<=lastRow;i++)yield entries[i]!;
+      return;
+    }
     for (let r = lowerBound(this.rows, firstRow); r < this.rows.length && this.rows[r] <= lastRow; r++) {
-      const entries = this.#byRow.get(this.rows[r])!;
+      tick?.();const entries = this.#byRow.get(this.rows[r])!;
       let lo = 0, hi = entries.length;
       while (lo < hi) {
         const mid = lo + hi >>> 1;
@@ -245,14 +266,14 @@ function sameValue(a: CellValue | undefined, b: CellValue | undefined): boolean 
   return a.kind === "blank" || (a.kind === "formula" && b.kind === "formula" ? a.source === b.source : "value" in a && "value" in b && a.value === b.value);
 }
 export class WorkbookCalculator {
-  #previous: WorkbookSnapshot | undefined;
+  #previous: CalculationWorkbook | undefined;
   #results = new Map<string, CalculationCell>();
   #parsed = new Map<string, ParsedCell>();
   #index = new RangeDependencyIndex([]);
   #sheetIndexes = new Map<string, SheetIndexState>();
   #dependencies: Dependencies = new Map();
   #reverse: Dependencies = new Map();
-  calculate(document: WorkbookSnapshot, options: CalculationOptions = {}): CalculationResult {
+  calculate(document: CalculationWorkbook, options: CalculationOptions = {}): CalculationResult {
     assert(document.kind === "sheets", "invalid", "Expected workbook");
     let steps = 0, computedCells = 0;
     const maximum = options.maxSteps ?? 1e6, maxDepth = options.maxDepth ?? 256;
@@ -346,7 +367,7 @@ export class WorkbookCalculator {
         const range = rectangle(node, entry.sheetId, key);
         if (!range) return;
         ranges.push(range);
-        for (const item of formulaIndexes.get(range.sheetId)!.range(range.row1, range.column1, range.row2, range.column2)) {
+        for (const item of formulaIndexes.get(range.sheetId)!.range(range.row1,range.column1,range.row2,range.column2,tick)) {
           tick();
           const dependency = `${range.sheetId}!${item.key}`;
           dependencies.add(dependency);
@@ -493,7 +514,7 @@ export class WorkbookCalculator {
         // ranges. Missing cells share the same criterion result, so whole
         // columns and rows don't need dense iteration.
         for(const r of [...checks.map(c=>c.range),...(!countOnly?[output]:[])]){
-          for(const item of indexes.get(r.sheetId)!.range(r.row1,r.column1,r.row2,r.column2)){
+          for(const item of indexes.get(r.sheetId)!.range(r.row1,r.column1,r.row2,r.column2,tick)){
             tick();positions.add((item.row-r.row1)*width+item.column-r.column1);
           }
         }
@@ -556,7 +577,7 @@ export class WorkbookCalculator {
         if(target.kind==='blank')return pending('unsupported-syntax','unsupported');
         const exact=target.kind==='string'?wildcardMatcher(target.value,tick):undefined;
         let best=-1,previous:number|undefined,seen=0;
-        for(const entry of indexes.get(r.sheetId)!.range(keyRange.row1,keyRange.column1,keyRange.row2,keyRange.column2)){
+        for(const entry of indexes.get(r.sheetId)!.range(keyRange.row1,keyRange.column1,keyRange.row2,keyRange.column2,tick)){
           tick();const position=across?entry.column-r.column1:entry.row-r.row1;
           const v=getCell(r.sheetId,entry.row,entry.column,depth+1);
           if(v.kind==='pending')return v;
@@ -588,7 +609,7 @@ export class WorkbookCalculator {
         let count=(r.row2-r.row1+1)*(r.column2-r.column1+1);
         // Count implicit empty cells arithmetically; even an entire worksheet
         // is sparse and never expanded into millions of blank allocations.
-        for(const entry of indexes.get(r.sheetId)!.range(r.row1,r.column1,r.row2,r.column2)){
+        for(const entry of indexes.get(r.sheetId)!.range(r.row1,r.column1,r.row2,r.column2,tick)){
           tick();const v=getCell(r.sheetId,entry.row,entry.column,depth+1);
           if(v.kind==='pending')return v;
           if(v.kind!=='blank'&&!(v.kind==='string'&&v.value===''))count--;
@@ -689,7 +710,7 @@ export class WorkbookCalculator {
         const result = evaluate(argument, sheetId, owner, depth + 1);
         if (result.kind === "range-value") {
           const r = result.range;
-          for (const entry of indexes.get(r.sheetId)!.range(r.row1, r.column1, r.row2, r.column2)) {
+          for (const entry of indexes.get(r.sheetId)!.range(r.row1,r.column1,r.row2,r.column2,tick)) {
             const failure = accept(getCell(r.sheetId, entry.row, entry.column, depth + 1), true);
             if (failure) return failure;
           }
