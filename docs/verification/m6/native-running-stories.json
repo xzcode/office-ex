@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "source": "Independent python-docx section/complex PAGE fixture",
+  "checks": [
+    "Actual page rendering ignores stale cached PAGE result and follows linked section",
+    "Native header dialog detaches inherited story and restarts section page numbering",
+    "Native DOCX save and reopen retain original stories, new section part and PAGE field"
+  ],
+  "sandbox": true,
+  "status": "passed"
+}

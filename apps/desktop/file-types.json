@@ -1,0 +1,10 @@
+[
+  {"extension":"doc","name":"Word document","mime":"application/msword","uti":"com.microsoft.word.doc","role":"Editor"},
+  {"extension":"docx","name":"Word Open XML document","mime":"application/vnd.openxmlformats-officedocument.wordprocessingml.document","uti":"org.openxmlformats.wordprocessingml.document","role":"Editor"},
+  {"extension":"xls","name":"Excel workbook","mime":"application/vnd.ms-excel","uti":"com.microsoft.excel.xls","role":"Editor"},
+  {"extension":"xlsx","name":"Excel Open XML workbook","mime":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","uti":"org.openxmlformats.spreadsheetml.sheet","role":"Editor"},
+  {"extension":"ppt","name":"PowerPoint presentation","mime":"application/vnd.ms-powerpoint","uti":"com.microsoft.powerpoint.ppt","role":"Editor"},
+  {"extension":"pptx","name":"PowerPoint Open XML presentation","mime":"application/vnd.openxmlformats-officedocument.presentationml.presentation","uti":"org.openxmlformats.presentationml.presentation","role":"Editor"},
+  {"extension":"pdf","name":"PDF document","mime":"application/pdf","uti":"com.adobe.pdf","role":"Viewer"},
+  {"extension":"oex","name":"Office EX draft","mime":"application/x-office-ex","uti":"com.officex.preview.draft","role":"Editor"}
+]

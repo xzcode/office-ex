@@ -2,18 +2,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { availableLocales, TARGET_LOCALES, resolveLocale, resolveRegion, localeDirection, message, validateCatalogs, formatNumber, formatDate, isLanguagePreference, diagnosticKey, errorKey, formatTemplate, formatPlural, formatSelect, pseudoLocalize, localeLabel } from '@office-ex/i18n';
-test('I18N registry has 22 distinct target locales, eleven complete current catalogs, matching keys and placeholders',()=>{
+test('I18N registry has 22 distinct target locales, 22 candidate catalogs, matching keys and placeholders',()=>{
   assert.equal(new Set(TARGET_LOCALES.map(x=>x[0])).size,22);
-  assert.deepEqual(availableLocales(),['zh-CN','zh-TW','en-US','ja-JP','ko-KR','fr-FR','de-DE','es-ES','pt-BR','ru-RU','it-IT']);
+  assert.deepEqual(availableLocales(),TARGET_LOCALES.map(x=>x[0]));
   validateCatalogs();
-  assert.equal(isLanguagePreference('ar'),false);
+  assert.equal(isLanguagePreference('ar'),true);
   assert.equal(isLanguagePreference(['en-US']),false);
   assert.equal(localeDirection('ar'),'rtl');assert.equal(localeDirection('he-IL'),'rtl');assert.equal(localeDirection('ja-JP'),'ltr');
 });
 test('I18N exact locale, script-aware Chinese, preferred-list fallback and explicit selection',()=>{
   for(const [requested,expected] of [['zh-Hant-HK','zh-TW'],['zh-Hans-TW','zh-CN'],['zh-SG','zh-CN'],['en-GB','en-US'],['ja','ja-JP'],['xx-YY','en-US'],['garbage locale','en-US']] as const)assert.equal(resolveLocale('system',[requested]),expected);
   assert.equal(resolveLocale('system',['ko-KR','ja-JP']),'ko-KR');
-  assert.equal(resolveLocale('system',['ar','ja-JP']),'ja-JP');
+  assert.equal(resolveLocale('system',['ar','ja-JP']),'ar');
   assert.equal(resolveLocale('system',['de-AT']),'de-DE');
   assert.equal(resolveLocale('system',['pt-PT']),'pt-BR');
   assert.equal(resolveLocale('system',['es-MX']),'es-ES');

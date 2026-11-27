@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "checks": [
+    "Cold OS document argument opens a separate sandboxed window; duplicate opens reuse it",
+    "Second-instance command-line file is delivered to another independent window",
+    "UI labels cannot be selected; titlebar spacer is draggable; input text and real editing still work",
+    "Pointer resize changes both panels and the next document inherits their widths",
+    "New documents use independent windows; cancelling close keeps dirty content; closing one window leaves the others intact",
+    "Explicit tabbed preference remains available"
+  ],
+  "measurements": {
+    "titlebarDragWidth": 271.78125,
+    "panels": {
+      "leftBefore": 158,
+      "leftAfter": 208,
+      "rightBefore": 270,
+      "rightAfter": 330
+    }
+  },
+  "status": "passed"
+}

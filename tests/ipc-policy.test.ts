@@ -5,12 +5,22 @@ import { resolve } from 'node:path';
 import { OfficeError } from '@office-ex/contracts';
 import {
   TRUSTED_APP_ORIGIN, isLocalAppUrl, assertTrustedSender, assertIpcArity, ipcId,
-  parseDroppedPath, parseTabStates, parseDraftSave, parsePreservedCopy, parseCheckpoint,
-  parseRelease, parseSettingsPatch, parseRecoveryId, commandLineFiles,
+  parseDroppedPath, parseTabStates, parseDraftSave, parseDocxSave, parsePreservedCopy, parseCheckpoint,
+  parseRelease, parseSettingsPatch, parseRecoveryId, commandLineFiles, parsePrintRequest,
 } from '../apps/desktop/src/ipc-policy.js';
 const fails = (code: string) => (error: unknown): boolean => error instanceof OfficeError && error.code === code;
 const snapshot = { documentId: 'tab-1', contentId: 'document-1:content:42', revision: 42, bytes: new Uint8Array([1,2]) };
 const save = { ...snapshot, saveAs: false, title: '中文草稿 😀' };
+test('M4 print IPC keeps original PDF capabilities separate from serialized model input',()=>{
+  const pdf={kind:'pdf',documentId:'tab-1',revision:0,sourceToken:'source-1'};
+  assert.deepEqual(parsePrintRequest(pdf),pdf);
+  for(const bad of [{...pdf,bytes:new Uint8Array([1])},{...pdf,sourceToken:undefined},{...pdf,contentId:'tab-1:content:0'},{...pdf,path:'/tmp/private.pdf'},{...pdf,kind:'html'}])assert.throws(()=>parsePrintRequest(bad),fails('invalid'));
+  const model={kind:'document',documentId:'tab-1',revision:2,contentId:'tab-1:content:2',bytes:new Uint8Array([1,2])};
+  assert.deepEqual(parsePrintRequest(model),model);
+  assert.throws(()=>parsePrintRequest({...model,contentId:'other:content:2'}),fails('invalid'));
+  assert.throws(()=>parsePrintRequest({...model,bytes:new Uint8Array(new SharedArrayBuffer(2))}),fails('unsafe'));
+  for(const channel of ['office:save-ppt','office:save-pptx','office:export-pdf','office:print']){assert.doesNotThrow(()=>assertIpcArity(channel,[model]));assert.throws(()=>assertIpcArity(channel,[model,'extra']),fails('invalid'));}
+});
 test('SEC-01/FS-01: only the live main frame of the expected WebContents may invoke IPC', () => {
   const evidence = { windowAlive: true, expectedWebContents: true, mainFrame: true, frameOrigin: TRUSTED_APP_ORIGIN };
   assert.doesNotThrow(() => assertTrustedSender(evidence));
@@ -23,6 +33,8 @@ test('SEC-01: custom-scheme allowlist inspects scheme, hostname, port and creden
 });
 test('IPC argument counts reject unknown channels and ignored trailing payloads', () => {
   assert.doesNotThrow(() => assertIpcArity('office:release', ['tab-1', false]));
+  assert.doesNotThrow(() => assertIpcArity('office:cancel-window-close', []));
+  assert.throws(() => assertIpcArity('office:cancel-window-close', [true]), fails('invalid'));
   for (const [channel, args] of [['office:initialize', [1]], ['office:save-draft', []], ['office:save-draft', [save, 'unexpected']], ['office:arbitrary-fs', ['/tmp/x']]] as const) assert.throws(() => assertIpcArity(channel, args), fails('invalid'));
 });
 test('IPC identifiers and native path strings cannot inject paths or shell arguments', () => {
@@ -55,7 +67,8 @@ test('IPC preserves separate save-copy, close and recovery capability shapes', (
 test('IPC settings validation is atomic and rejects arrays masquerading as enum strings', () => {
   const original={theme:'dark',language:'en-US',clearRecent:true};
   assert.deepEqual(parseSettingsPatch(original), original);
-  for (const value of [{theme:['dark']},{language:['en']},{theme:'dark',language:'invalid'},{clearRecent:'true'},{path:'/tmp/settings'},{theme:null},{region:['de-DE']},{documentLanguage:'bad'},{language:'ar'}]) assert.throws(() => parseSettingsPatch(value), fails('invalid'));
+  assert.deepEqual(parseSettingsPatch({language:'ar'}),{language:'ar'});
+  for (const value of [{theme:['dark']},{language:['en']},{theme:'dark',language:'invalid'},{clearRecent:'true'},{path:'/tmp/settings'},{theme:null},{region:['de-DE']},{documentLanguage:'bad'}]) assert.throws(() => parseSettingsPatch(value), fails('invalid'));
   assert.deepEqual(original,{theme:'dark',language:'en-US',clearRecent:true});
 });
 test('OS-open argument selection ignores executable/app/switch/URL arguments and bounds queue size', () => {
@@ -63,4 +76,39 @@ test('OS-open argument selection ignores executable/app/switch/URL arguments and
   assert.deepEqual(commandLineFiles(['electron','/app/path','--inspect=9222','hello.docx','https://evil.example/a.docx','note.txt','hello.docx'],true,cwd), [resolve(cwd,'hello.docx')]);
   assert.deepEqual(commandLineFiles(['OfficeEX','deck.ppt'],false,cwd), [resolve(cwd,'deck.ppt')]);
   assert.equal(commandLineFiles(['OfficeEX',...Array.from({length:40},(_,i)=>`${i}.xls`)],false,cwd).length,32);
+});
+
+test('DOCX save IPC accepts only bounded snapshot requests bound to the registered document identity',()=>{
+  const request={...save,contentId:'tab-1:content:42',sourceToken:'source-1'};
+  assert.deepEqual(parseDocxSave(request),request);
+  assert.doesNotThrow(()=>assertIpcArity('office:save-docx',[request]));
+  assert.throws(()=>assertIpcArity('office:save-docx',[request,'extra']),fails('invalid'));
+  for(const invalid of [
+    {...request,contentId:'different:content:42'},
+    {...request,contentId:'tab-1:content:'},
+    {...request,contentId:'tab-1:content:1x'},
+    {...request,sourceBytes:new Uint8Array([1])},
+    {...request,targetPath:'/tmp/file.docx'}
+  ])assert.throws(()=>parseDocxSave(invalid),fails('invalid'));
+  assert.throws(()=>parseDocxSave({...request,bytes:new Uint8Array(new SharedArrayBuffer(4))}),fails('unsafe'));
+});
+
+test('M7.5 native open arguments and new-window IPC are bounded and format-specific',async()=>{
+ const {DOCUMENT_EXTENSIONS,parseNewWindow,isDocumentPath}=await import('../apps/desktop/src/ipc-policy.js');
+ const cwd=resolve('fixtures');
+ assert.deepEqual(commandLineFiles(['Office EX',...DOCUMENT_EXTENSIONS.map(ext=>'中文 path.'+ext.toUpperCase()),'docx','bad.txt','https://bad.invalid/evil.docx','--no-sandbox'],false,cwd),DOCUMENT_EXTENSIONS.map(ext=>resolve(cwd,'中文 path.'+ext.toUpperCase())));
+ assert.equal(isDocumentPath('justdocx'),false);assert.equal(isDocumentPath('book.xlsx'),true);
+ assert.deepEqual(parseNewWindow({kind:'writer',format:'docx'}),{kind:'writer',format:'docx'});
+ for(const request of [{kind:'writer',format:'xlsx'},{kind:'pdf',format:'pdf'},{kind:'writer',format:'docx',path:'/private/a.docx'}])assert.throws(()=>parseNewWindow(request),fails('invalid'));
+ assert.deepEqual(parseSettingsPatch({openInTabs:true}),{openInTabs:true});
+ assert.throws(()=>parseSettingsPatch({openInTabs:'true'}),fails('invalid'));
+ assert.doesNotThrow(()=>assertIpcArity('office:new-window',[{kind:'sheets',format:'xlsx'}]));
+});
+
+test('M7.6 compatible saves are source-bound and restricted to modern native formats',async()=>{
+ const {parseCompatibilitySave}=await import('../apps/desktop/src/ipc-policy.js');
+ const req={documentId:'tab-1',sourceToken:'source-1',bytes:new Uint8Array([1,2]),revision:2,contentId:'tab-1:content:2',saveAs:false,title:'Report',format:'xlsx'};
+ assert.equal(parseCompatibilitySave(req).format,'xlsx');
+ for(const invalid of [{...req,sourceToken:undefined},{...req,format:'xls'},{...req,path:'/tmp/file'},{...req,contentId:'other:content:2'}])assert.throws(()=>parseCompatibilitySave(invalid),fails('invalid'));
+ assert.doesNotThrow(()=>assertIpcArity('office:save-compatible',[req]));
 });

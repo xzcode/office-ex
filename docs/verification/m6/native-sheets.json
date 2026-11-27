@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "sandbox": true,
+  "source": "Independent openpyxl report",
+  "checks": [
+    "Independent workbook opens editable with mixed border edges and default row/column geometry",
+    "Native double-click edit, recalculation of new functions, undo and redo",
+    "Native save and reopen preserve original style/theme metadata and recalculate cross-sheet caches"
+  ],
+  "geometry": {
+    "bottom": "double",
+    "left": "dashed",
+    "bottomColor": "rgb(17, 136, 68)",
+    "leftColor": "rgb(204, 34, 51)",
+    "width": 126,
+    "height": 34.65625
+  },
+  "status": "passed"
+}

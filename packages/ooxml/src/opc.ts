@@ -5,7 +5,7 @@
 import type { Element } from '@xmldom/xmldom';
 import { OfficeError } from '@office-ex/contracts';
 import { sha256 } from '@office-ex/core';
-import { checkCancelled, type ContainerOptions } from './limits.js';
+import { bytesEqual,checkCancelled,containerLimits,type ContainerOptions } from './limits.js';
 import { childElements, parseXml } from './xml.js';
 import { readZip, writeZip, type ZipWriteOptions } from './zip.js';
 
@@ -209,11 +209,44 @@ function structure(parts: Map<string, Uint8Array>, options: ContainerOptions): O
 }
 
 /** This opens the container graph only. It never claims semantic document edit support. */
-export function openOpc(bytes: Uint8Array, options: ContainerOptions = {}): OpcPackage {
-  const parts = readZip(bytes, options), result: OpcPackage = { ...structure(parts, options), originalBytes: bytes.slice() };
+function readOpcFresh(bytes:Uint8Array,options:ContainerOptions):OpcPackage{
+  const parts=readZip(bytes,options),result:OpcPackage={...structure(parts,options),originalBytes:Uint8Array.from(bytes)};
   const cancellation = { get cancelled() { return options.signal?.aborted ?? false; }, throwIfCancelled: () => checkCancelled(options) };
   originalParts.set(result, { partHashes: new Map([...parts].map(([path, value]) => [path, sha256(value, cancellation)])), originalHash: sha256(result.originalBytes, cancellation), hasMacros: result.hasMacros, hasSignatures: result.hasSignatures });
   return result;
+}
+export interface OpcInspectionSummary{
+ kind:OpcPackage['kind'];conformance:OpcPackage['conformance'];hasMacros:boolean;hasSignatures:boolean;externalRelationships:number;
+ entries:{name:string;size:number;sha256:string}[];sha256:string;
+}
+function summarizeOpc(pkg:OpcPackage):OpcInspectionSummary{
+ const hashes=originalParts.get(pkg)!;
+ return {kind:pkg.kind,conformance:pkg.conformance,hasMacros:pkg.hasMacros,hasSignatures:pkg.hasSignatures,externalRelationships:pkg.externalRelationships,
+  entries:[...pkg.parts].map(([name,bytes])=>({name,size:bytes.byteLength,sha256:hashes.partHashes.get(name)!})),sha256:hashes.originalHash};
+}
+/** Inspection needs metadata, not mutable package internals. Reuse the
+ * hashes that structural verification already calculated. */
+export function inspectOpc(bytes:Uint8Array,options:ContainerOptions={}):OpcInspectionSummary{
+ return summarizeOpc(readOpcFresh(bytes,options));
+}
+const inspectionScopes=new WeakMap<ContainerOptions,OpcPackage>();
+/** Single-use read capability owned by one inspection operation. The
+ * verified graph is private until the semantic parser claims it. No
+ * mutable part maps or caller-supplied graph can seed this capability.
+ * The immutable options pin all limits; a changed source is rejected.
+ * Once consumed, a later fallback must validate from scratch. */
+export function prepareOpcInspection(bytes:Uint8Array,options:ContainerOptions={}):{summary:OpcInspectionSummary;options:ContainerOptions;release():void}{
+ const pinned:ContainerOptions=Object.freeze({limits:Object.freeze(containerLimits(options)),signal:options.signal});
+ const pkg=readOpcFresh(bytes,pinned);
+ inspectionScopes.set(pinned,pkg);
+ return {summary:summarizeOpc(pkg),options:pinned,release:()=>{inspectionScopes.delete(pinned);}};
+}
+export function openOpc(bytes:Uint8Array,options:ContainerOptions={}):OpcPackage{
+ const pkg=inspectionScopes.get(options);
+ if(!pkg)return readOpcFresh(bytes,options);
+ inspectionScopes.delete(options);checkCancelled(options);
+ if(!bytesEqual(bytes,pkg.originalBytes))throw new OfficeError('conflict','Source changed during OPC inspection');
+ return pkg;
 }
 
 /** Replacements are whole parts supplied by a semantic adapter after its impact analysis. */

@@ -1,0 +1,167 @@
+# Office EX M6 — compatibility and editing experience
+
+Development baseline: public dev.2 source `e0a827fa61a9643aa2ba4fc0b62edbd2aedacd42`, documentation head `761e75573062617325c5f526dbc7842ea7eab529`. Continue on `m5-distribution-20261125`. Published tags and master are unchanged; all formal M5 release gates remain in force.
+
+## M6.1 batch A — ordinary DOCX table styles and native width semantics
+
+The independent python-docx default Table Grid fixture previously fell back to read-only because the adapter required fixed, explicit grid/padding and rejected all default table styles. The adapter now recognizes the actual verified definitions, not only the names, of the default TableNormal and its TableGrid child. It checks the complete supported style payload: zero indentation, explicit four-sided default cell margins, uniform automatic-color grid border, Grid paragraph spacing and exact ancestry. Unknown conditional style rules, changed/custom definitions and unsupported default styles remain protected.
+
+- Admit bounded rectangular ordinary tables with native auto width, autofit, and validated table-look flags. Retain these semantics and explicit native style references on save; no raw XML is accepted from renderer data. The editor projects the stored grid, not the Microsoft Word autofit algorithm.
+- Project inherited cell padding, uniform border and Table Grid paragraph spacing; named paragraph and direct formatting retain precedence. Use a weak per-immutable-model index for Grid paragraph scope; numbering traversal carries the scope explicitly.
+- Preserve explicit border and margin overrides even when they equal inherited values, and represent removal of an inherited Grid border with uniform explicit nil edges. Direct style/width constraints are validated on output. A no-edit save is byte exact; edited saves retain all ancillary package parts byte-for-byte and verify by reopening.
+- Existing row/cell editing, row insertion, border change and undo remain available. Arbitrary table styles, conditional formatting, merged/nested tables, varying preferred cell widths, complex table alignment, automatic content-driven column sizing, row splitting and full reference Word typography are not established. Unsupported structures remain on the protected path. New source-dependent table metadata requires its verified style definitions; conversion that cannot retain those semantics must fail rather than silently flatten them.
+
+### Local evidence
+
+- Final-source `npm run check`: TypeScript, architecture (14 workspaces, 95 source files), 263/263 tests, zero failures/skips. Focused Writer table/style subset 12/12 on the initial candidate. Final desktop build and dependency audit (79 locked npm packages, 29 installed notice files) passed.
+- `tests/office_external_compat.py` generates normal and TableGrid DOCX with python-docx plus merged-table negative fixture, runs source-backed edit, insertion, border override, byte-exact no-edit, all ancillary bytes, modified-style rejection and independent Python readback. Existing independent Excel/PowerPoint compatibility samples also pass.
+- Final native sandboxed Linux focused smoke 3/3: real cell editing and row insertion, original native style/auto width/auto layout and all non-main parts retained, reopen editable with no renderer exceptions. Raw [report](verification/m6/native-word-table.json). Reproduce with `python tests/office_external_compat.py .work/m6-external`, build, then `node --import tsx scripts/smoke-m6-word-table.mjs .work/m6-external`. A local runtime setup issue (Electron distribution absent after npm ci, libgbm/libasound missing from system loader path) was resolved using the existing pinned Electron distribution and existing local test libraries; sandbox remains enabled.
+- Exact new-source CI still required. No version bump or release in this batch. No production dependency additions.
+
+## Next priorities
+
+Continue M6.1 with merged cell model/geometry and more source styles, then M6.2 section-owned headers/footers and page numbering, M6.3 layout/pagination, M6.4–6 spreadsheet editing/formulas/charts, M6.7–8 presentation tables/groups/layout, M6.9 editor interaction consistency, M6.10 compatibility and a separately versioned preview. Do not call these later items complete or lower reference Office acceptance.
+
+
+## M6.1 batch B — merged Word table cells
+
+Baseline `85ee48862146267fdd256289d93f36a5aa261ac0` passed all four verification/native jobs in [CI 45774403536](https://github.com/xzcode/office-ex/actions/runs/45774403536) (Windows x64, macOS ARM64, Linux x64). This is evidence for batch A's exact source, not the new batch B source.
+
+### Implementation
+
+- The Writer model retains a rectangular grid of stable cell IDs. A merge anchor owns the original paragraphs and has bounded row/column spans; covered slots point to the anchor and contain no hidden content. Validation rejects out-of-bounds, overlapping, dangling or content-bearing covered slots.
+- DOCX imports/exports horizontal `gridSpan` and vertical `vMerge` restart/continuation chains, including mixed rectangular merges. Explicit cell widths must match the summed grid widths; continuation paragraphs must be empty and unformatted. Unknown properties, mismatched chains and content-bearing continuations remain protected. No-edit saves remain byte exact; edited saves reopen and preserve all non-main package parts. The existing TableNormal/TableGrid native style and autofit semantics remain intact.
+- Table layout produces one owning rectangle per merged cell, computes combined column width and satisfies multi-row height constraints. Connected vertical row groups paginate together, and hit testing resolves to owning paragraphs. Oversized merged groups fail explicitly; arbitrary row splitting and exact Word autofit remain unimplemented.
+- Real Writer text-view tables use rowspan/colspan and omit covered inputs. Page view and PDF projection use the shared cell geometry. The Insert ribbon exposes explicit row and column dimensions from the current anchor, merge and split commands, with candidate labels in all 22 locales. Merge keeps every paragraph and its stable ID in row-major order; split keeps existing content in the top-left cell and creates empty paragraphs in other cells. Undo/redo restore the transaction. Column-width/image checks use the actual spanned width. Insert/delete row or column is temporarily disabled while the table contains merges; splitting merged cells first restores those operations. Nested tables, arbitrary conditional styles, content-bearing continuation cells and unsupported geometry remain protected.
+
+### Evidence
+
+- Final local `npm run check`: TypeScript, architecture (14 workspaces / 95 source files), 267/267 tests, no failures or skips. Targeted Writer table/style regressions 16/16; new merge tests cover domain validation, content preservation and undo, pagination/hit testing, oversized groups and native DOCX chains.
+- Independent python-docx corpus now contains horizontal, vertical and rectangular merged tables and a negative continuation-content fixture. Source-backed editing, exact no-edit preservation, original span/style and ancillary bytes, and independent Python readback passed; existing Excel/PowerPoint samples passed. Desktop build and dependency audit passed (79 locked npm packages, 29 installed notices).
+- Linux native sandboxed desktop 4/4: external merged-table rendering, cell editing and exact DOCX span preservation, ribbon merge retaining every paragraph, split/undo/redo/save and no renderer exceptions. Raw report: [native merged table](verification/m6/native-word-merged-table.json). Reproduce with `python tests/office_external_compat.py .work/m6-merged-corpus`, build, then `node --import tsx scripts/smoke-m6-merged-table.mjs .work/m6-merged-corpus`. No production dependency additions.
+- New-source three-platform CI is still required. No new preview release, version bump, tag or master merge.
+
+Next: extend M6.2 with bounded source-owned section header/footer stories, page numbering and independent DOCX samples; continue complex table styles and structural operations as separate M6.1 follow-ups. Do not describe the current subset as full Word compatibility. All formal M5 gates remain open.
+
+
+## M6.2 batch A — default running headers, footers and PAGE fields
+
+Previous merged-cell source `59e89055aa38d65fc4f7dddc5b8ca86c10d4cc01` passed verify plus all three native package jobs in [CI 45775804320](https://github.com/xzcode/office-ex/actions/runs/45775804320).
+
+### Implementation
+
+- A bounded, independently validated running-story registry and per-section default header/footer relationship references. Section splits inherit preceding stories and continue numbering. Editing an inherited or multiply referenced story creates an independent part for the selected section; later linked sections inherit it. Separate undoable section page-number start supports decimal restart/continue.
+- DOCX imports source-owned default headers and footers, verified stock Header/Footer styles, one uniformly formatted tab-free paragraph, direct alignment and one optional PAGE field (simple or complex form). Cached PAGE values are not used for rendering; other field instructions, first/even-page variants, multi-paragraph/complex stories, external relationships and unsupported formatting remain protected.
+- Source relationships and unchanged ancillary parts remain byte exact. New stories receive explicit content types, relationship IDs and dedicated XML parts; source-backed edits rewrite only supported changed story parts and the necessary package graph. Reopening validates output. New DOCX also supports running stories. Legacy DOC remains explicitly unsupported for these semantics.
+- A dedicated Layout ribbon dialog edits section, header/footer text, optional automatic page number with suffix, alignment, distance from page edge and page-number start. Candidate translations in 22 locales. Running stories do not enter body text, selection or clipboard.
+- Shared layout derives actual decimal page numbers only after assembling the complete page sequence, including cached section bodies. Headers/footers occupy their own margin geometry, with native page projection and PDF projection integration. One-line fit and margin limits are explicit; overflowing or complex stories are not clipped into body content.
+
+### Verification
+
+- Final local typecheck, architecture (14 workspaces / 95 source files), 272/272 full core tests with no skips or failures, targeted running-story/section 8/8, desktop build and dependency audit passed.
+- Independent python-docx corpus: multi-section linked header/footer, complex PAGE with stale cached 999, first section start 5, subsequent detached header and restart at 20, preserved unchanged ancillary bytes, independent readback; unsupported DATE field and multi-paragraph header stay protected. Existing Excel/PowerPoint corpus also passed.
+- Actual Linux native sandboxed desktop 3/3: computed PAGE 5/6/7, dialog detachment and restart 20, original-source preservation and save/reopen without renderer errors. [Native evidence](verification/m6/native-running-stories.json). Reproduce with `python tests/office_external_compat.py .work/m6-running-corpus`, build, then `node --import tsx scripts/smoke-m6-running-stories.mjs .work/m6-running-corpus`.
+- PDF projection code is integrated and built; a new dedicated running-story PDF output/readback test has not yet been performed. Exact new-source three-platform CI still required. No dependency additions, new release or tag.
+
+Next: M6.2 further coverage (multiple paragraphs, first/even-page variants, other page-number formats and field types, complex header/footer content); M6.3 layout/pagination fidelity, including independent reference documents and dedicated PDF header/footer verification. Formal six-format compatibility, physical printing/IME and human translation review remain open.
+
+
+## M6.3 batch A — Word paragraph pagination and running-story PDF verification
+
+Previous source `587a44c447e0613cffe6a04964a20225bc49051f` passed verification and all three native package jobs in [CI 45778305240](https://github.com/xzcode/office-ex/actions/runs/45778305240).
+
+### Implementation
+
+- Paragraph layout is planned from measured line boxes before page placement. Keep-with-next reserves the next paragraph's required start and keeps a fitting chain together. Keep-lines retains a fitting paragraph on one page. Widow/orphan control avoids a single first or last line where feasible, and explicitly disabled control permits such splits. Oversized constraints relax safely and report limitations rather than looping or losing lines.
+- DOCX paragraph `pageBreakBefore` imports, edits, copies and saves as a bounded boolean, including explicit false overrides. Forced paragraph breaks take priority over keep-with-next; initial forced breaks and trailing paragraph spacing do not create unnecessary empty pages.
+- Keep-with-next also reserves the first measured row group of a following table, including connected merged rows. Table geometry is planned only once. Cross-page row splitting and exact Word typography remain out of scope.
+- Native and canvas layout share the paragraph placement policy; layout ribbon controls expose keep-with-next, keep-lines, widow/orphan control and page-break-before, including candidate labels in 22 locales. Unsupported table-cell paragraph break behavior remains limited; no new legacy DOC pagination compatibility claim.
+
+### Verification
+
+- Final local `npm run check`: 280/280 tests, zero failures/skips, including 33/33 focused Writer layout/table/story tests and eight new pagination tests. Build, TypeScript, architecture and dependency audit passed.
+- Actual sandboxed Linux native 3/3: three-page document with keep heading/body together, forced paragraph break, editable ribbon boolean and source-backed DOCX save/readback for explicit false/true; real PDF export independently read with pypdf 5.4.0 (test-only). All three PDF pages contain the expected header, page numbers 5/6/7 and correct body placement. Export does not modify the original DOCX or its clean state. [Native evidence](verification/m6/native-pagination.json).
+- Reproduce after building with `node --import tsx scripts/smoke-m6-pagination.mjs`, using a Python interpreter with pinned test-only pypdf 5.4.0 via `OFFICE_EX_PDF_PYTHON`. Exact new-source CI still required. No runtime dependency changes, new preview tag, release or master merge.
+
+Next: M6.4 spreadsheet external compatibility and editing fidelity, then M6.5 formulas and M6.6 charts. More Word pagination profiles, exact reference Office comparison, complex running stories and formal acceptance remain open.
+
+
+## M6.4 / M6.5 batch A — Excel source fidelity and common functions
+
+Baseline `a205f36de26f374d75e97d8292102fdb967cc87f` is the M6.3 pagination source. At this checkpoint [CI 45791133537](https://github.com/xzcode/office-ex/actions/runs/45791133537) verify, Windows x64 and macOS ARM64 passed; Linux packaging was still in progress. Do not treat it as complete evidence for the new source.
+
+### Implementation
+
+- Extend the bounded XLSX cell style profile with independent left/right/top/bottom edges and native SpreadsheetML line types: hair, thin, medium, thick, dotted, dashed, mediumDashed, double, dashDot, mediumDashDot, dashDotDot, mediumDashDotDot, slantDashDot. Mixed/partial borders retain their original color/style; the original uniform border model remains compatible. Applying the existing all-edge border command deliberately replaces mixed edges. Renderer maps each edge separately; CSS approximates dash-dot variants, not exact Excel drawing metrics. Unsupported diagonal/non-outline borders remain protected.
+- Admit explicit default row height and column width in `sheetFormatPr`, retain per-row/column overrides, project sparse grid geometry and inspector values, and preserve the source default geometry part when unchanged. Default column display uses the existing seven-pixel character-width approximation, not reference Excel font-dependent width metrics. Hidden default rows, nonstandard outlines and unsupported dimensions remain protected.
+- Source-backed saves still retain original native style indices, theme, metadata, unchanged parts and formula source; independently read back both new values and cross-sheet caches. Conversion to the old XLS profile explicitly rejects unsupported per-edge/default geometry rather than silently dropping it.
+- Formula engine expands from 12 to **38** registered functions (26 additions): IFERROR, ISNUMBER, ISTEXT, ISLOGICAL, ISBLANK, ISERROR, ISERR, ISNA, PRODUCT, INT, MOD, ROUNDUP, ROUNDDOWN, TRUNC, SIGN, SQRT, POWER, LEN, LEFT, RIGHT, MID, UPPER, LOWER, TRIM, CONCATENATE, COUNTBLANK. COUNTBLANK counts implicit blanks arithmetically over sparse ranges; IFERROR catches real calculated errors without disguising unsupported/stale dependencies or cycles. Text slicing operates on Unicode code points to avoid invalid surrogate halves; exact legacy Excel compatibility modes are not claimed. New functions are not thereby enabled in BIFF8 serialization. Existing dependency/cancellation/budget guards remain in effect.
+
+### Verification
+
+- Final local `npm run check`: 284/284, no failures/skips; targeted Excel formula/calculation/format tests 34/34; TypeScript, architecture, build and dependency audit passed (79 locked packages, 29 notices).
+- Independent openpyxl report with a double bottom border, medium dashed left border, distinct dash-dot right edge, default 26-point row height and 18-character column width, explicit overrides, IFERROR/PRODUCT/COUNTBLANK/LEFT/MOD and cross-sheet formulas. The entire existing independent Excel/Word/PPT corpus passed, including independent readback of changed XLSX caches, exact original style/theme/core/app metadata bytes, and protected diagonal/conditional samples.
+- Sandboxed Linux desktop 3/3: editable external workbook and CSS geometry (126 px column, 34.65625 px row), double-click edit/recalculation/undo/redo, source-backed save/reopen and cross-sheet caches. [Native evidence](verification/m6/native-sheets.json). Reproduce with `python tests/office_external_compat.py .work/m6-sheet-corpus`, build, then `node --import tsx scripts/smoke-m6-sheets.mjs .work/m6-sheet-corpus`.
+- New-source CI required. No runtime dependency additions, new release, tag or master merge.
+
+Next: continue M6.4 rich text/named style and other common XLSX profiles; M6.5 conditional aggregates and lookup functions; M6.6 charts/conditional formatting. These latter items remain unimplemented. Formal reference Excel fidelity and full legacy XLS acceptance remain open.
+
+
+## M6.5 batch B — conditional aggregates and lookup functions
+
+Baseline `9e4c53c7834ecdf47a29e572fc6dc57feefd58fa` passed local M6.4/M6.5 A evidence. At this checkpoint [CI 45792491019](https://github.com/xzcode/office-ex/actions/runs/45792491019) verify, Windows and macOS succeeded, Linux package job still in progress. The earlier M6.3 CI was cancelled before Linux completed; do not imply all three packages passed for that exact source.
+
+### Implementation
+
+- Formula registry expands from 38 to 48: COUNTIF, COUNTIFS, SUMIF, SUMIFS, AVERAGEIF, AVERAGEIFS, VLOOKUP, HLOOKUP, MATCH and scalar INDEX. Conditional operations pair relative positions across same-sized rectangular ranges on the current or another worksheet. Ordinary numeric/text criteria, comparisons, case-insensitive wildcards and tilde escaping are supported. Wildcard matching uses a bounded token matcher, not executable regular expressions. The sparse union of explicit cells plus arithmetic implicit blank counts avoids materializing whole-column ranges.
+- VLOOKUP/HLOOKUP and MATCH support ordinary exact typed matches (including text wildcards) and sorted contiguous numeric approximate matches; INDEX supports positive scalar coordinates. Approximate text/mixed/unsorted or gapped key vectors, blank lookup targets, error-bearing lookup vectors, INDEX array outputs and mismatched single-criterion output shapes fail closed rather than manufacturing caches. SUMIF/AVERAGEIF implicit output range expansion is deferred until the dependency index represents that effective range. Multi-criteria range shape mismatch returns VALUE error. Full reference Excel coercion/collation, named ranges, spill arrays, external links, XLOOKUP and BIFF8 serialization of these functions are not claimed.
+- Existing formula dependency tracking handles cross-sheet range edits, undo/redo, stale propagation, cancellation, and step limits. New native XLSX calculations participate in existing source-backed formula cache generation. Microsoft function help is the syntax reference; tests are Office EX and independent openpyxl readback, not Microsoft Excel runtime conformance.
+
+### Evidence
+
+- Final local check: 288/288, zero failures/skips; focused spreadsheet formula, calculation and format 38/38. TypeScript, architecture, build and dependency audit passed.
+- Independent openpyxl conditional/lookup workbook with eleven formulas. Editing Data!C1 from 10 to 20 updates report caches to 20, 2, 30, 20, 30, 500, 50, 1048572, 40, 30, 1, respectively. Formula source, styles, theme and core/app metadata preserved. Existing independent Excel, Word and PowerPoint corpus passed.
+- Sandboxed Linux native 3/3: workbook opens editable, actual worker results, cross-sheet cell edit/undo/redo, source-backed save/reopen with eleven independently checked caches. Evidence: [native lookups](verification/m6/native-lookups.json). Reproduce using `python tests/office_external_compat.py .work/m6-lookup-corpus`, build, and `node --import tsx scripts/smoke-m6-lookups.mjs .work/m6-lookup-corpus`.
+- No new production dependencies, version bump, release, tag or master merge. Exact new-source CI required.
+
+Next: M6.6 charts and conditional-formatting profiles. Continue rich text and named styles as M6.4 follow-ups and further formula features as M6.5 follow-ups. Reference Excel compatibility remains open.
+
+## M6.6 — native spreadsheet charts and conditional rules
+
+M6.5 B baseline `4c11eaa1a0adcc8ba38d8db102c1beb462efa435` passed exact-source CI [45793969267](https://github.com/xzcode/office-ex/actions/runs/45793969267).
+
+- Bounded numeric cell comparison rules, inclusive between/not-between, priority/stop-if-true, differential fills/font flags and colors. Editable add/delete controls; computed-cell projection and structural range shifts; source differential style indices are preserved and new entries append. Color scales, icon sets, data bars and arbitrary formula rules remain protected.
+- Native single-cell anchored clustered column, line and pie charts with bounded local column-based ranges, optional header references, standard axes/legend and live SVG grid projection. Create/delete controls; unchanged chart graph preserved byte-for-byte on data edits; supported chart changes and worksheet rename rebuild native references. Complex charts, cached references, custom layout/appearance, multi-cell anchors and unsupported drawing graphs remain protected. Preview is bounded to 200 data rows; row/column structural edits on chart sheets are guarded. Legacy XLS conversion rejects charts/rules rather than flattening.
+- Local full check **290/290**; independent complete Office corpus and openpyxl differential/three-chart readback passed, including graph preservation, creation and rename. Build, architecture, TypeScript and license audit passed. Actual Linux sandboxed native 3/3 [report](verification/m6/native-charts.json): real cell edit updates imported chart and rule, real controls add both, saved source reopens editable. Initial combined job exceeded execution timeout after successful build; native check independently rerun and passed. Exact new-source CI required. No release/tag changes.
+
+## M6.7–M6.9 — native presentation tables and interaction consolidation
+
+- Native DrawingML rectangular text tables with the verified built-in default GUID, explicit grid/row geometry and first-row/banded-row flags; read, create, edit, resize proportionally, duplicate, undo and reopen. Plain multi-paragraph cell text is retained. Grouped/rotated tables, merged cells, arbitrary styles and rich formatting remain protected; legacy PPT conversion refuses tables. Shared scene feeds editor, thumbnails, presentation and PDF projection (PDF-specific table verification not completed). Table paint and typography are bounded approximations rather than exact reference PowerPoint rendering.
+- Native horizontal/vertical equal-spacing arrangement for at least three unrotated, unattached objects, with one undoable geometry transaction. Existing nested shape groups remain supported. Table/group restrictions and rotation guards are explicit.
+- Common interaction: Ribbon insert/edit controls and localized labels in 22 locales, double-click and Enter open table editor, selection-only clicks no longer commit a no-op move, modal keyboard input is isolated from canvas shortcuts. No rotation handle for tables. Preserve unchanged PPTX relationship bytes when the relationship IDs, types and resolved targets match exactly.
+- Evidence: focused slide editor/format suite **46/46**, TypeScript and desktop build passed. Independent generated ordinary PPTX table edited and reread with python-pptx; full independent Excel/Word/PPT corpus/readback passed before final relationship-preservation adjustment. Actual Linux sandboxed native **3/3** [report](verification/m6/native-ppt-table.json): double-click edit and source part preservation, native insertion, saved tables reopen. The first native attempt identified a click/no-op refresh defect and the second identified needless relationship reserialization; both were corrected and final native check passed. Exact candidate CI is still required.
+
+## M6.10 — development preview candidate
+
+Prepare `0.1.0-dev.3` across root/14 workspace manifests and internal dependencies, npm lock and audited lock digest, preserving all third-party lock entries. Previous public dev.2 remains unchanged. This is a candidate, not a published release or declaration of formal compatibility. Required remaining acceptance: exact candidate full core and independent corpus, three native package/install/remove jobs, review source-correlated artifacts/checksums, matching explicit tag, release assembly, verified publication. Complex Office features outside the bounded profiles remain protected; reference Office layout, human locale review, performance, publisher trust, physical IME/printing, full legacy acceptance remain open. M6.9 interaction work is limited to the implemented controls; broader UX acceptance is open.
+
+## 2026-11-26 — exact candidate acceptance
+
+Exact source `bf1d87b1301c1a8c4c5d86a5428628f94c89f64e` (tree `c36fc4033324897326cb722444d5ee64b52bb697`) passed [CI 45803738626](https://github.com/xzcode/office-ex/actions/runs/45803738626). The verify job logs report 293/293 tests, zero failures/cancellations/skips, 14 workspaces and 96 source files, full independent interoperability suite, release-readiness check and dependency audit (79 locked packages, 29 notices). All three native package jobs passed six-format create/save/parse/reopen, sandboxed launch and installer lifecycle. These are bounded-profile development-preview checks, not a complete reference Office conformance claim.
+
+| Platform | Verified CI artifact ID | Artifact SHA-256 |
+|---|---:|---|
+| macOS ARM64 | 15108562576 | d193492c5d8662631a92143b8ddd04d37cc9b41d1b2ea2af962200d8e3abde6c |
+| Linux x64 | 15108458490 | 85abf817e88d7987689167adb02cf52c9020b0980d1ca28f389c488df6d7e480 |
+| Windows x64 | 15108139684 | 2724ffd30df27e24f6c7df439512b00a151368d7cc5507ce9290e0d938fc3bbb |
+
+Publication workflow [45804738034](https://github.com/xzcode/office-ex/actions/runs/45804738034) on isolated `release/office-ex-v0.1.0-dev.3` reuses these verified artifacts, checks their provenance and assembled asset hashes, creates the exact matching tag, and publishes only a fully verified prerelease. At this checkpoint publication is in progress; tag and public release have not yet been confirmed. Do not replace existing dev.1/dev.2 assets. The publication workflow commit is not the source tag target. The development branch's documentation-only follow-up does not change the verified source tree used for installers.
+
+
+## 2026-11-26 — dev.3 public preview released
+
+[v0.1.0-dev.3](https://github.com/xzcode/office-ex/releases/tag/v0.1.0-dev.3) is public (release ID 459280161, non-draft prerelease), published at 2026-11-26 10:51:53 UTC. Exact lightweight tag points to verified candidate bf1d87b1301c1a8c4c5d86a5428628f94c89f64e; tree c36fc4033324897326cb722444d5ee64b52bb697. [Candidate CI 45803738626](https://github.com/xzcode/office-ex/actions/runs/45803738626) and [publication CI 45804738034](https://github.com/xzcode/office-ex/actions/runs/45804738034) both completed successfully. Publication reuses the three exact verified artifacts without rebuilding. Public REST readback confirmed all 20 release assets uploaded, with SHA256 digests, exact source tag, non-draft prerelease and publication timestamp. The one-shot release branch commit a7b233077a9ce9846cc536ee6bd748193a7919c5 is not the source tag target.
+
+Primary installers: Windows x64 EXE 129268639 bytes (SHA256 89890c2eb8c10ffdeab71d9397d28d6b823b4ada258c27f56b5635a52a2b835b), macOS ARM64 DMG 152838016 bytes (721fda07ef1ea3a7900679f1b8dfed67f160fdb5db9a417a766a54b191c6429c), Linux x64 DEB 112895832 bytes (1397e6fdc16177dfbfc0613728e06f49f871e698f322eecdd27d4213ae54752a).
+
+M6 development-preview delivery and publication gate completed. This is not full M6 feature conformance, reference Office fidelity or a formal production release. Broader M6.9 interaction acceptance, complex format profiles, performance, physical IME/printing, human locale review, Windows signing and macOS notarization remain open. Preserve existing public tags; master remains unchanged. Continue development from m5-distribution-20261125, not the one-shot release branch. 

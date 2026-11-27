@@ -5,3 +5,6 @@
 # Preserve upstream license/NOTICE bytes exactly, including intentional CRLF.
 # Normalizing these files would invalidate their reviewed SHA-256 hashes.
 /notices/** -text
+
+# The font manifest hashes these original upstream license bytes.
+/assets/fonts/*-COPYRIGHT.txt -text

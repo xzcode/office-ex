@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "sandbox": true,
+  "checks": [
+    "Imported native chart and conditional fill respond to a real cell edit",
+    "Native controls add a rule and a real chart; saved worksheet contains the chart graph and differential rules",
+    "Saved chart and rule workbook reopens editable without renderer exceptions"
+  ],
+  "status": "passed"
+}

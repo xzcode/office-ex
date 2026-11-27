@@ -1,0 +1,57 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
+// SPDX-License-Identifier: MIT
+/** Native running-story layout and editing using independently generated DOCX. */
+import {revealControl} from './ribbon-test-controls.mjs';
+import {_electron as electron} from 'playwright-core';
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,copyFile,readFile,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+import {openWriterDocx,openOpc} from '@office-ex/ooxml';
+const fixtures=resolve(process.argv[2]??'.work/m6-running-corpus');
+const work=await mkdtemp(join(tmpdir(),'office-ex-running-')),profile=join(work,'profile');
+await prepareTabbedProfile(profile);
+const file=join(work,'running.docx');await copyFile(join(fixtures,'running-stories.docx'),file);
+const before=openOpc(await readFile(file)),checks=[];let app;
+const check=name=>{checks.push(name);console.log('PASS',name);};
+try{
+ app=await electron.launch({chromiumSandbox:true,args:[...(process.env.OFFICE_EX_HEADLESS==='1'?['--headless','--ozone-platform=headless']:[]),resolve('apps/desktop')],env:{...process.env,OFFICE_EX_PROFILE_DIR:profile},timeout:30000});
+ const page=await app.firstWindow();await page.waitForSelector('body[data-ready=true]');
+ const prefs=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences());
+ assert.equal(prefs.sandbox,true);assert.equal(prefs.contextIsolation,true);assert.equal(prefs.nodeIntegration,false);
+ const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+ await page.locator('#settings').click();await page.locator('#language').selectOption('zh-CN');await page.locator('#settings-dialog button[value=close]').click();
+ const open=async()=>{await app.evaluate(({dialog},path)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[path]});},file);await page.locator('#open').click();await page.waitForSelector('.writer-native-running-story[data-story=footer]');};
+ await open();
+ const footer=page.locator('.writer-native-running-story[data-story=footer]'),header=page.locator('.writer-native-running-story[data-story=header]');
+ assert.equal(await header.textContent(),'Independent running header');assert.equal(await footer.textContent(),'Page 5 / report');
+ await page.locator('[data-writer-page="1"]').click();assert.equal(await footer.textContent(),'Page 6 / report');
+ await page.locator('[data-writer-page="2"]').click();assert.equal(await footer.textContent(),'Page 7 / report');
+ check('Actual page rendering ignores stale cached PAGE result and follows linked section');
+ await (await revealControl(page,'#writer-running-stories')).click();
+ await page.waitForSelector('#writer-story-dialog[open]');
+ await page.locator('#writer-story-section').selectOption({index:1});
+ await page.locator('#writer-story-kind').selectOption('header');
+ assert.equal(await page.locator('#writer-story-text').inputValue(),'Independent running header');
+ await page.locator('#writer-story-text').fill('第二节页眉');
+ await page.locator('#writer-story-page-start').fill('20');
+ await page.locator('#writer-story-apply').click();
+ await page.waitForSelector('#writer-story-dialog[open]',{state:'detached'}).catch(()=>{});
+ await page.waitForFunction(()=>document.querySelectorAll('.writer-native-running-story').length>=2);
+ await page.locator('[data-writer-page="2"]').click();
+ assert.equal(await header.textContent(),'第二节页眉');assert.equal(await footer.textContent(),'Page 20 / report');
+ await page.locator('[data-writer-page="0"]').click();assert.equal(await header.textContent(),'Independent running header');assert.equal(await footer.textContent(),'Page 5 / report');
+ check('Native header dialog detaches inherited story and restarts section page numbering');
+ await page.locator('#save').click();
+ await page.waitForFunction(()=>document.querySelector('#document-status')?.textContent.includes('已保存'),null,{timeout:30000});
+ const bytes=await readFile(file),saved=openWriterDocx(bytes,'native-story','Running').document;
+ assert.equal(saved.sections[1].pageNumberStart,20);assert.notEqual(saved.sections[0].storyRefs.header,saved.sections[1].storyRefs.header);
+ assert.equal(saved.pageStories[saved.sections[1].storyRefs.header].text,'第二节页眉');
+ const after=openOpc(bytes);
+ for(const [name,data]of before.parts)if(![before.mainPart,'word/_rels/document.xml.rels','[Content_Types].xml'].includes(name))assert.deepEqual(after.parts.get(name),data,name);
+ await page.locator('.tab[aria-selected=true] .tab-close').click();await page.waitForFunction(()=>document.querySelectorAll('.tab').length===0);
+ await open();await page.locator('[data-writer-page="2"]').click();assert.equal(await header.textContent(),'第二节页眉');assert.equal(await footer.textContent(),'Page 20 / report');
+ assert.deepEqual(errors,[]);check('Native DOCX save and reopen retain original stories, new section part and PAGE field');
+ await app.close();app=undefined;
+ await mkdir('out/m6',{recursive:true});await writeFile('out/m6/native-running-stories.json',JSON.stringify({schema:1,platform:process.platform,arch:process.arch,source:'Independent python-docx section/complex PAGE fixture',checks,sandbox:true,status:'passed'},null,2)+'\n');
+}finally{if(app)await app.evaluate(({app})=>app.exit()).catch(()=>{});await rm(work,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

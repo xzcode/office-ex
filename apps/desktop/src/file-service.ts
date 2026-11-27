@@ -65,7 +65,7 @@ async function assertFilesystem(grant: FileGrant): Promise<void> {
     throw error;
   }
 }
-async function readCheckedFile(path: string, expectedLinkedInode?: FileIdentity): Promise<{ bytes: Uint8Array; identity: FileIdentity }> {
+async function scanCheckedFile(path:string,expectedLinkedInode:FileIdentity|undefined,retainBytes:boolean):Promise<{bytes?:Uint8Array;identity:FileIdentity}>{
   let handle: FileHandle | undefined;
   try {
     const before = await lstat(path, { bigint: true });
@@ -76,19 +76,30 @@ async function readCheckedFile(path: string, expectedLinkedInode?: FileIdentity)
     const first = await handle.stat({ bigint: true });
     if (!first.isFile() || first.ino !== before.ino || first.dev !== before.dev || first.nlink > allowedLinks) throw new OfficeError('conflict', 'File changed while opening');
     if (first.size < 0n || first.size > BigInt(MAX_FILE_BYTES)) throw new OfficeError('limit', 'File exceeds the 100 MiB budget');
-    const buffer = new Uint8Array(Number(first.size));
-    let offset = 0;
-    while (offset < buffer.length) {
-      const { bytesRead } = await handle.read(buffer, offset, Math.min(1024 * 1024, buffer.length - offset), offset);
-      if (bytesRead === 0) throw new OfficeError('conflict', 'File changed while reading');
-      offset += bytesRead;
+    const size=Number(first.size),chunkSize=1024*1024;
+    const buffer=new Uint8Array(retainBytes?size:Math.min(size,chunkSize));
+    const hash=createHash('sha256');
+    let offset=0;
+    while(offset<size){
+      const start=retainBytes?offset:0;
+      const {bytesRead}=await handle.read(buffer,start,Math.min(chunkSize,size-offset),offset);
+      if(bytesRead===0)throw new OfficeError('conflict','File changed while reading');
+      hash.update(buffer.subarray(start,start+bytesRead));offset+=bytesRead;
     }
     const last = await handle.stat({ bigint: true });
     if (last.size !== first.size || last.mtimeNs !== first.mtimeNs || last.ctimeNs !== first.ctimeNs || last.nlink > allowedLinks) throw new OfficeError('conflict', 'File changed while reading');
-    return { bytes: buffer, identity: { dev: String(last.dev), ino: String(last.ino), size: buffer.length, mtimeNs: String(last.mtimeNs), sha256: digest(buffer) } };
+    return {...(retainBytes?{bytes:buffer}:{}),identity:{dev:String(last.dev),ino:String(last.ino),size,mtimeNs:String(last.mtimeNs),sha256:hash.digest('hex')}};
   } catch (e) { return fsError(e); } finally { await handle?.close().catch(() => undefined); }
 }
-export async function readLocalFile(path: string): Promise<{ bytes: Uint8Array; identity: FileIdentity }> { return readCheckedFile(path); }
+async function readCheckedFile(path:string,expectedLinkedInode?:FileIdentity):Promise<{bytes:Uint8Array;identity:FileIdentity}>{
+ const result=await scanCheckedFile(path,expectedLinkedInode,true);return {bytes:result.bytes!,identity:result.identity};
+}
+/** Full-content identity verification without retaining a file-sized copy.
+ * The same handle, link, size, mtime/ctime and SHA-256 checks are applied. */
+async function readCheckedIdentity(path:string,expectedLinkedInode?:FileIdentity):Promise<FileIdentity>{
+ return (await scanCheckedFile(path,expectedLinkedInode,false)).identity;
+}
+export async function readLocalFile(path:string):Promise<{bytes:Uint8Array;identity:FileIdentity}>{return readCheckedFile(path);}
 
 export class FileAuthority {
   private readonly grants = new Map<string, FileGrant>();
@@ -109,6 +120,17 @@ export class FileAuthority {
       return { token, name: basename(target.path), ...read, documentId, duplicate: false };
     } catch (e) { return fsError(e); }
   }
+  /** Main-only lookup: a second window must focus the existing source
+   * capability, not create an independently writable copy of that file. */
+  async findOpenSource(path:string):Promise<FileGrant|undefined>{
+    const target=await canonicalTarget(path),stat=await lstat(target.path,{bigint:true});
+    const existing=[...this.grants.values()].find(g=>g.mode==='source'&&(g.path===target.path||g.identity?.dev===String(stat.dev)&&g.identity.ino===String(stat.ino)));
+    if(!existing)return undefined;
+    const identity=await readCheckedIdentity(target.path);
+    await assertParent(target);
+    if(!existing.identity||!sameIdentity(existing.identity,identity))throw new OfficeError('conflict','The already-open file changed outside Office EX');
+    return {...existing,identity:{...existing.identity}};
+  }
   async authorizeTarget(path: string, windowId: number, documentId: string, replaceConfirmed: boolean, sourceToken?: string): Promise<string> {
     try {
       assertSession(windowId, documentId);
@@ -117,7 +139,8 @@ export class FileAuthority {
       if (source && source.path === target.path) throw new OfficeError('conflict', 'Save As requires a different target');
       let exists = true;
       try { await lstat(target.path); } catch (error) { if (errno(error) === 'ENOENT') exists = false; else throw error; }
-      const identity = exists ? (await readLocalFile(target.path)).identity : null;
+      const identity=exists?await readCheckedIdentity(target.path):null;
+      if(identity&&[...this.grants.values()].some(g=>g.mode==='source'&&g.identity&&(g.windowId!==windowId||g.documentId!==documentId)&&sameFile(g.identity,identity)))throw new OfficeError('conflict','Target is open in another document session');
       if (identity && source?.identity && sameFile(source.identity, identity)) throw new OfficeError('conflict', 'Save As requires a different target');
       if (identity && !replaceConfirmed) throw new OfficeError('conflict', 'Existing target needs explicit overwrite confirmation');
       await assertParent(target);
@@ -138,6 +161,7 @@ export class FileAuthority {
   revokeDocument(windowId: number, documentId: string): void {
     for (const [token, grant] of this.grants) if (grant.windowId === windowId && grant.documentId === documentId) this.grants.delete(token);
   }
+  hasToken(token:string):boolean{return this.grants.has(token);}
   revokeWindow(windowId: number): void { for (const [token, grant] of this.grants) if (grant.windowId === windowId) this.grants.delete(token); }
   async commit(token: string, windowId: number, documentId: string, bytes: Uint8Array, options: CommitOptions): Promise<CommitResult> {
     this.get(token, windowId, documentId);
@@ -200,11 +224,11 @@ export class FileAuthority {
       abort(options.signal);
       this.get(token, windowId, documentId); // A closed/revoked tab cannot commit later.
       await assertParent(grant);
-      const lastTemp = await readLocalFile(temporary);
-      if (!sameIdentity(reread.identity, lastTemp.identity)) throw new OfficeError('conflict', 'Temporary save changed before commit');
+      const lastTemp=await readCheckedIdentity(temporary);
+      if (!sameIdentity(reread.identity,lastTemp)) throw new OfficeError('conflict', 'Temporary save changed before commit');
       if (grant.identity) {
-        const current = await readLocalFile(grant.path);
-        if (!sameIdentity(grant.identity, current.identity)) throw new OfficeError('conflict', 'File was modified outside Office EX');
+        const current=await readCheckedIdentity(grant.path);
+        if (!sameIdentity(grant.identity,current)) throw new OfficeError('conflict', 'File was modified outside Office EX');
         await rename(temporary, grant.path); // Same-directory atomic replace; never delete first.
         temporary = undefined;
       } else {
@@ -220,10 +244,10 @@ export class FileAuthority {
       try { directory = await open(grant.parent, constants.O_RDONLY); await directory.sync(); }
       catch { durability = 'file-synced'; }
       finally { await directory?.close().catch(() => undefined); }
-      const saved = await readCheckedFile(grant.path, cleanupPending ? reread.identity : undefined);
-      if (!sameFile(saved.identity, reread.identity) || saved.identity.sha256 !== reread.identity.sha256) throw new OfficeError('conflict', 'Saved file changed after commit; previous-version backup was retained');
-      if (this.grants.has(token)) this.grants.set(token, { ...grant, identity: saved.identity, mode: 'source' });
-      result = { identity: saved.identity, name: basename(grant.path), durability, cleanupPending, backupCreated };
+      const saved=await readCheckedIdentity(grant.path,cleanupPending?reread.identity:undefined);
+      if (!sameFile(saved,reread.identity)||saved.sha256!==reread.identity.sha256) throw new OfficeError('conflict', 'Saved file changed after commit; previous-version backup was retained');
+      if (this.grants.has(token)) this.grants.set(token, { ...grant, identity: saved, mode: 'source' });
+      result = { identity: saved, name: basename(grant.path), durability, cleanupPending, backupCreated };
       return result;
     } catch (e) { return fsError(e); }
     finally {

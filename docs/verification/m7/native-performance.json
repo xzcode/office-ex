@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "sandbox": true,
+  "checks": [
+    "Real worker sends only changed scalar cells; format-only edit sends no value changes; undo/redo recalculates",
+    "One slide edit redraws exactly one visible preview, retains unchanged thumbnail nodes and rail scroll",
+    "Scrolling evicts offscreen preview DOM; last slide renders on demand and is selectable"
+  ],
+  "measurements": {
+    "initialThumbnails": 4,
+    "redrawnAfterOneEdit": 1,
+    "tailThumbnails": 4
+  },
+  "status": "passed"
+}

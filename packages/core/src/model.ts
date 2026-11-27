@@ -1,41 +1,124 @@
+import type {DeepReadonly} from './session.js';
+import { validateImageResource } from './images.js';
 import { OfficeError, assert, assertCellAddress, assertId, assertUnicode, isRecord, type DocumentKind } from '@office-ex/contracts';
 
-export type Color = { kind: 'rgba'; red: number; green: number; blue: number; alpha: number } | { kind: 'theme'; name: string; tint?: number };
+export type Color = { kind: 'rgba'; red: number; green: number; blue: number; alpha: number } | { kind: 'theme'; name: string; tint?: number; tintSpace?: 'linear' };
+/** Presentation-only paragraph formatting. Values retain DrawingML units. */
+export type SlideBullet = {kind:'none'} | ({kind:'char';character:string}|{kind:'number';scheme:'arabicPeriod'|'arabicParenR'|'arabicParenBoth'|'arabicPlain';startAt?:number}) & {font?:string;color?:Color;sizePercent?:number;sizeEmu?:number};
+export interface SlideParagraphFormat {level?:number;marginLeft?:number;marginRight?:number;firstLineIndent?:number;beforePercent?:number;afterPercent?:number;bullet?:SlideBullet}
+/** Writer paragraph bottom rule. Null explicitly suppresses an inherited rule. */
+export interface WriterParagraphRule {color:Color;width:number;space:number}
+/** Bounded WordprocessingML numbering. References are native positive numIds;
+ * zero explicitly cancels inherited numbering. Definitions are immutable per id. */
+export interface WriterListReference {numId:number;level:number}
+export interface WriterListLevel {format:'decimal'|'bullet';start:number;pattern:string;indent:number;hanging:number;alignment:'start'|'center'|'end';neverRestart?:boolean;symbolBullet?:boolean}
+export interface WriterNumbering {nextId:number;lists:Record<string,{levels:WriterListLevel[]}>}
 export interface TextStyle {
-  fontFamily?: string; fontSize?: number; bold?: boolean; italic?: boolean; underline?: boolean;
-  color?: Color; alignment?: 'start' | 'center' | 'end' | 'justify';
-  indent?: number; spaceBefore?: number; spaceAfter?: number; lineHeight?: number;
+  fontFamily?: string; fontAscii?:string; fontHighAnsi?:string; fontEastAsia?:string; fontComplex?:string; fontSize?: number; complexFontSize?:number; bold?: boolean; italic?: boolean; underline?: boolean;
+  color?: Color; language?:string; eastAsiaLanguage?:string; bidiLanguage?:string; runDirection?:'ltr'|'rtl'; paragraphDirection?:'ltr'|'rtl'; alignment?: 'start' | 'center' | 'end' | 'justify';
+  slideParagraph?:SlideParagraphFormat;
+  characterSpacing?:number; kerningThreshold?:number;
+  rightIndent?:number; firstLineIndent?:number; contextualSpacing?:boolean;
+  paragraphBottomBorder?:WriterParagraphRule|null;
+  writerList?:WriterListReference;
+  indent?: number; spaceBefore?: number; spaceAfter?: number; lineHeight?: number; lineMultiple?:number; minLineHeight?:number; keepNext?:boolean; keepLines?:boolean; pageBreakBefore?:boolean; outlineLevel?:number; widowControl?:boolean;
 }
-export interface NamedStyle { id: string; name: string; basedOn?: string; properties: TextStyle }
-export interface ResourceRef { id: string; sha256: string; mimeType: string; byteLength: number }
+export interface NamedStyle { id: string; name: string; basedOn?: string; kind?: 'paragraph' | 'character'; toggles?: readonly ('bold' | 'italic')[]; properties: TextStyle }
+export interface ResourceRef { id: string; sha256: string; mimeType: string; byteLength: number; dataBase64?:string; pixelWidth?:number; pixelHeight?:number }
 export interface DocumentBase {
   schemaVersion: 1; documentId: string; title: string;
   resources: Record<string, ResourceRef>; styles: Record<string, NamedStyle>; defaultTextStyle: TextStyle;
 }
 export interface TextRun { id: string; type: 'text'; text: string; styleId?: string; style?: TextStyle }
-export type Inline = TextRun | { id: string; type: 'tab' | 'line-break' } | { id: string; type: 'image'; resourceId: string; width: number; height: number };
+export type Inline = TextRun | { id: string; type: 'tab' | 'line-break' } | { id: string; type: 'image'; resourceId: string; width: number; height: number; drawingName?:string; pictureName?:string };
 export interface Paragraph { id: string; type: 'paragraph'; styleId?: string; style?: TextStyle; runs: Inline[] }
-export interface TableCell { id: string; blocks: WriterBlock[] }
-export interface Table { id: string; type: 'table'; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[] }
+/** Merged cells occupy a rectangular grid; only the top-left anchor owns
+ * content. Covered slots reference that anchor and never hold hidden blocks. */
+export interface TableCell { id: string; blocks: WriterBlock[]; merge?: {rows:number;columns:number}; coveredBy?:string }
+export interface Table { id: string; type: 'table'; nativeTable?: {styleId?:'TableNormal'|'TableGrid'; autoWidth?:true; autoLayout?:true; directPadding?:true; directBorder?:true; look?:number}; columnWidths: number[]; rows: { id: string; cells: TableCell[] }[]; cellPadding?: {top:number;right:number;bottom:number;left:number}; border?: {width:number;color:Color} }
 export type WriterBlock = Paragraph | Table | { id: string; type: 'page-break' };
-export interface WriterSection { id: string; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
-export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[] }
+/** A bounded single-paragraph running story. PAGE is a typed field, never
+ * source markup or a script. Text before/after it is plain Unicode. */
+export type WriterStoryKind='header'|'footer';
+export type WriterStoryVariant='default'|'first'|'even';
+export type WriterStoryRefKey='header'|'footer'|'firstHeader'|'firstFooter'|'evenHeader'|'evenFooter';
+export type WriterStoryRefs=Partial<Record<WriterStoryRefKey,string>>;
+export const WRITER_STORY_KEYS=['header','footer','firstHeader','firstFooter','evenHeader','evenFooter'] as const;
+export function writerStoryKey(kind:WriterStoryKind,variant:WriterStoryVariant='default'):WriterStoryRefKey{
+  return variant==='default'?kind:variant==='first'?(kind==='header'?'firstHeader':'firstFooter'):(kind==='header'?'evenHeader':'evenFooter');
+}
+export function writerStoryKind(key:WriterStoryRefKey):WriterStoryKind{return key.toLowerCase().endsWith('header')?'header':'footer';}
+export interface WriterStoryParagraph {text:string;pageNumber?:true;after?:string;styleId?:'Header'|'Footer';alignment?:'start'|'center'|'end';runStyle?:TextStyle}
+export interface WriterPageStory extends WriterStoryParagraph {kind:WriterStoryKind;additionalParagraphs?:WriterStoryParagraph[]}
+export interface WriterSection { id: string; storyRefs?:WriterStoryRefs; differentFirstPage?:true; pageNumberStart?:number; pageExtras?: {headerDistance?:number;footerDistance?:number;columnSpace?:number;docGridLinePitch?:number}; page: { width: number; height: number; margins: { top: number; right: number; bottom: number; left: number } }; blocks: WriterBlock[] }
+export interface WriterDocument extends DocumentBase { kind: 'writer'; sections: WriterSection[]; defaultParagraphStyleId?:string; numbering?:WriterNumbering; pageStories?:Record<string,WriterPageStory>; differentEvenOddPages?:true }
 
 export type CellValue = { kind: 'blank' } | { kind: 'string'; value: string } | { kind: 'number'; value: number } | { kind: 'boolean'; value: boolean } | { kind: 'error'; value: '#NULL!' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#NAME?' | '#NUM!' | '#N/A' } | { kind: 'formula'; source: string };
-export interface Cell { value: CellValue; styleId?: string; numberFormat?: string }
+export type CellBorderSide='left'|'right'|'top'|'bottom';
+export type CellBorderLine='hair'|'thin'|'medium'|'thick'|'dotted'|'dashed'|'mediumDashed'|'double'|'dashDot'|'mediumDashDot'|'dashDotDot'|'mediumDashDotDot'|'slantDashDot';
+export interface CellBorderEdge {line:CellBorderLine;color:Color}
+export interface CellStyle extends TextStyle { fill?: Color; border?: {color:Color;width:number}; borderEdges?:Partial<Record<CellBorderSide,CellBorderEdge>>; verticalAlignment?: 'top'|'center'|'bottom'; wrapText?: boolean }
+export interface SheetView { rightToLeft?:boolean; frozenRows?:number; frozenColumns?:number; showGridLines?:boolean }
+export type SheetRichFont=Pick<TextStyle,'fontFamily'|'fontSize'|'bold'|'italic'|'underline'|'color'>;
+export interface SheetRichRun {text:string;style?:SheetRichFont}
+export interface SheetNamedStyle {name:string;style?:CellStyle;numberFormat?:string}
+/** Cell values stay scalar for calculation; rich runs describe presentation.
+ * Named style association is independent of materialized effective cell style. */
+export interface Cell { value: CellValue; styleId?: string; numberFormat?: string; style?: CellStyle; richText?:readonly SheetRichRun[];namedStyle?:string }
+export interface SheetRange {row:number;column:number;rowCount:number;columnCount:number}
+export type ConditionalOperator='equal'|'notEqual'|'lessThan'|'lessThanOrEqual'|'greaterThan'|'greaterThanOrEqual'|'between'|'notBetween';
+export interface ConditionalCellStyle {fill?:Color;color?:Color;bold?:boolean;italic?:boolean;underline?:boolean}
+export interface SheetConditionalRule {ranges:SheetRange[];priority:number;operator:ConditionalOperator;values:number[];style:ConditionalCellStyle;stopIfTrue?:boolean}
+export interface SheetChartSeries {label?:{row:number;column:number};values:SheetRange}
+export interface SheetChart {kind:'column'|'line'|'pie';anchor:{row:number;column:number;offsetX:number;offsetY:number;width:number;height:number};categories:SheetRange;series:SheetChartSeries[]}
 export interface Sheet {
   id: string; name: string; cells: Record<string, Cell>;
   rows: Record<string, { height?: number; hidden?: boolean }>;
   columns: Record<string, { width?: number; hidden?: boolean }>;
   merges: { row: number; column: number; rowCount: number; columnCount: number }[];
+  view?: SheetView;
+  defaultGeometry?:{rowHeight:number;columnWidth?:number};
+  conditionalRules?:SheetConditionalRule[];
+  charts?:SheetChart[];
 }
-export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSystem: '1900' | '1904'; sheets: Sheet[] }
+export interface SheetsDocument extends DocumentBase { kind: 'sheets'; dateSystem: '1900' | '1904'; sheets: Sheet[]; namedCellStyles?:SheetNamedStyle[] }
 
 export interface Geometry { x: number; y: number; width: number; height: number; rotation: number }
-interface ShapeBase { id: string; geometry: Geometry; fill?: Color; stroke?: { color: Color; width: number } }
-export type Shape = (ShapeBase & { type: 'text'; runs: TextRun[] }) | (ShapeBase & { type: 'rect' | 'ellipse' | 'line' }) | (ShapeBase & { type: 'image'; resourceId: string });
+export type SlidePreset = 'rect'|'ellipse'|'line'|'roundRect'|'triangle'|'diamond'|'parallelogram';
+export type SlideDash = 'solid'|'dash'|'dot'|'dashDot'|'lgDash'|'lgDashDot'|'lgDashDotDot'|'sysDash'|'sysDot'|'sysDashDot'|'sysDashDotDot';
+export interface SlideArrow {type:'triangle'|'arrow';width?:'sm'|'med'|'lg';length?:'sm'|'med'|'lg'}
+export interface SlideStroke {color:Color;width:number;dash?:SlideDash;head?:SlideArrow;tail?:SlideArrow}
+export interface SlideCrop {left:number;top:number;right:number;bottom:number}
+export interface SlideChildSpace {x:number;y:number;width:number;height:number}
+/** DrawingML rectangle connection-site order: top, left, bottom, right. */
+export interface SlideConnection {shapeId:string;site:0|1|2|3}
+export interface SlideConnections {start:SlideConnection;end:SlideConnection}
+interface ShapeBase { id: string; geometry: Geometry; fill?: Color; stroke?: SlideStroke; flipH?:boolean; flipV?:boolean }
+export interface SlideTextFrame { autofit?:{mode:'none'}|{mode:'shape'}|{mode:'normal';fontScale:number;lineReduction:number}; wrap?: boolean; verticalAlignment?: 'top'|'center'|'bottom'; margins?: {top:number;right:number;bottom:number;left:number}; direction?: 'ltr'|'rtl'|'auto' }
+export interface SlideThemeFontDetails { eastAsia?:string; complex?:string; scripts?:Record<string,string> }
+export interface SlideTheme { name:string; colors:Record<string,Extract<Color,{kind:'rgba'}>>; majorFont?:string; minorFont?:string; majorFontDetails?:SlideThemeFontDetails; minorFontDetails?:SlideThemeFontDetails }
+export const DEFAULT_SLIDE_TABLE_STYLE='{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}';
+/** Coordinates in a native table are zero-based grid positions. */
+export interface SlideTableRange {row:number;column:number;rowCount:number;columnCount:number}
+export type SlideTableBorder=Pick<SlideStroke,'color'|'width'|'dash'>;
+export type SlideTableFont=Pick<TextStyle,'fontFamily'|'fontSize'|'bold'|'italic'|'underline'|'color'>;
+export interface SlideTableCellFormat {
+ fill?:Color|null;
+ borders?:Partial<Record<'left'|'right'|'top'|'bottom',SlideTableBorder|null>>;
+ textStyle?:SlideTableFont;
+ alignment?:'start'|'center'|'end';
+ verticalAlignment?:'top'|'center'|'bottom';
+ margins?:{top:number;right:number;bottom:number;left:number};
+}
+export interface SlideTableData {columnWidths:number[];rowHeights:number[];cells:string[][];styleId:typeof DEFAULT_SLIDE_TABLE_STYLE;firstRow?:boolean;bandRow?:boolean;merges?:SlideTableRange[];formats?:Record<string,SlideTableCellFormat>}
+export function slideTableCoverage(table:DeepReadonly<SlideTableData>):Map<string,DeepReadonly<SlideTableRange>>{
+ const covered=new Map<string,DeepReadonly<SlideTableRange>>();
+ for(const m of table.merges??[])for(let r=m.row;r<m.row+m.rowCount;r++)for(let c=m.column;c<m.column+m.columnCount;c++)covered.set(r+':'+c,m);
+ return covered;
+}
+export type Shape = (ShapeBase & {type:'table';table:SlideTableData}) | (ShapeBase & { type: 'text'; runs: TextRun[]; textStyle?: TextStyle; textFrame?: SlideTextFrame }) | (ShapeBase & { type: SlidePreset; connector?:true; connections?:SlideConnections }) | (ShapeBase & { type: 'image'; resourceId: string; crop?:SlideCrop }) | (ShapeBase & {type:'group';childSpace:SlideChildSpace;children:Shape[]});
 export interface Slide { id: string; background: Color; shapes: Shape[] }
-export interface SlidesDocument extends DocumentBase { kind: 'slides'; size: { width: number; height: number }; slides: Slide[] }
+export interface SlidesDocument extends DocumentBase { kind: 'slides'; size: { width: number; height: number }; slides: Slide[]; theme?: SlideTheme }
 export type OfficeDocument = WriterDocument | SheetsDocument | SlidesDocument;
 export type Document = OfficeDocument;
 
@@ -94,32 +177,123 @@ function bool(value: unknown): void { assert(typeof value === 'boolean', 'invali
 function optionalId(value: unknown, known: Record<string, unknown>): void { if (value !== undefined) { assertId(value); assert(Object.hasOwn(known, value), 'invalid', 'Missing model reference'); } }
 
 export function validateColor(value: unknown): asserts value is Color {
-  const item = object(value, ['kind', 'red', 'green', 'blue', 'alpha', 'name', 'tint']);
+  const item = object(value, ['kind', 'red', 'green', 'blue', 'alpha', 'name', 'tint', 'tintSpace']);
   if (item.kind === 'rgba') {
-    assert(!('name' in item) && !('tint' in item), 'invalid', 'Unexpected RGBA fields');
+    assert(!('name' in item) && !('tint' in item) && !('tintSpace' in item), 'invalid', 'Unexpected RGBA fields');
     for (const key of ['red', 'green', 'blue', 'alpha']) integer(item[key], 0, 255);
   } else {
     assert(item.kind === 'theme' && !['red', 'green', 'blue', 'alpha'].some((key) => key in item), 'invalid', 'Invalid theme color');
     text(item.name, 128, false);
     if (item.tint !== undefined) assert(typeof item.tint === 'number' && Number.isFinite(item.tint) && item.tint >= -1 && item.tint <= 1, 'invalid', 'Invalid color tint');
+    if(item.tintSpace!==undefined)assert(item.tintSpace==='linear'&&item.tint!==undefined,'invalid','Invalid tint color space');
   }
 }
 
+export function isDocumentLanguageTag(value:unknown):value is string{
+  if(typeof value!=='string'||!value.length||value.length>128)return false;
+  try{return Intl.getCanonicalLocales(value).length===1;}catch{return false;}
+}
+export function validateSlideParagraph(value:unknown):asserts value is SlideParagraphFormat{
+  const format=object(value,['level','marginLeft','marginRight','firstLineIndent','beforePercent','afterPercent','bullet']);
+  if(format.level!==undefined)integer(format.level,0,8);
+  for(const key of ['marginLeft','marginRight'])if(format[key]!==undefined)integer(format[key],0,51206400);
+  if(format.firstLineIndent!==undefined)integer(format.firstLineIndent,-51206400,51206400);
+  for(const key of ['beforePercent','afterPercent'])if(format[key]!==undefined)integer(format[key],0,1000000);
+  if(format.bullet!==undefined){
+    const bullet=object(format.bullet,['kind','character','scheme','startAt','font','color','sizePercent','sizeEmu']);
+    assert(['none','char','number'].includes(String(bullet.kind)),'invalid','Invalid slide bullet');
+    if(bullet.kind==='none'){assert(Object.keys(bullet).length===1,'invalid','Unexpected disabled bullet format');return;}
+    if(bullet.kind==='char'){assert(typeof bullet.character==='string'&&Array.from(bullet.character).length===1&&!/[\u0000-\u0020\u007f]/u.test(bullet.character),'invalid','Invalid bullet character');assert(bullet.scheme===undefined&&bullet.startAt===undefined,'invalid','Unexpected bullet numbering');}
+    else{assert(bullet.character===undefined&&['arabicPeriod','arabicParenR','arabicParenBoth','arabicPlain'].includes(String(bullet.scheme)),'invalid','Invalid slide numbering scheme');if(bullet.startAt!==undefined)integer(bullet.startAt,1,32767);}
+    if(bullet.font!==undefined)validateTextStyle({fontFamily:bullet.font});
+    if(bullet.color!==undefined)validateColor(bullet.color);
+    if(bullet.sizePercent!==undefined)integer(bullet.sizePercent,25000,400000);
+    if(bullet.sizeEmu!==undefined)integer(bullet.sizeEmu,12700,5080000);
+    assert(!(bullet.sizePercent!==undefined&&bullet.sizeEmu!==undefined),'invalid','Conflicting bullet sizes');
+  }
+}
 export function validateTextStyle(value: unknown): asserts value is TextStyle {
-  const style = object(value, ['fontFamily', 'fontSize', 'bold', 'italic', 'underline', 'color', 'alignment', 'indent', 'spaceBefore', 'spaceAfter', 'lineHeight']);
-  if (style.fontFamily !== undefined) { text(style.fontFamily, 512, false); assert(!/[\x00-\x1f\x7f]/.test(style.fontFamily), 'invalid', 'Invalid font family'); }
+  const style = object(value, ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','alignment','indent','spaceBefore','spaceAfter','lineHeight','lineMultiple','minLineHeight','keepNext','keepLines','pageBreakBefore','outlineLevel','widowControl','language','eastAsiaLanguage','bidiLanguage','runDirection','paragraphDirection','slideParagraph','characterSpacing','kerningThreshold','rightIndent','firstLineIndent','contextualSpacing','paragraphBottomBorder','writerList']);
+  for(const key of ['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex'])if(style[key]!==undefined){text(style[key],512,false);assert(!/[\x00-\x1f\x7f]/.test(style[key] as string),'invalid','Invalid font family');}
   if (style.fontSize !== undefined) integer(style.fontSize, 1, 12_700 * 1638);
+  if(style.complexFontSize!==undefined)integer(style.complexFontSize,1,12_700*1638);
+  if(style.lineMultiple!==undefined)integer(style.lineMultiple,1,31680);
+  if(style.minLineHeight!==undefined)integer(style.minLineHeight,0);
+  assert(['lineHeight','lineMultiple','minLineHeight'].filter(k=>style[k]!==undefined).length<=1,'invalid','Conflicting line spacing modes');
+  if(style.outlineLevel!==undefined)integer(style.outlineLevel,0,9);
+  for(const key of ['keepNext','keepLines','pageBreakBefore','widowControl'])if(style[key]!==undefined)bool(style[key]);
   for (const key of ['bold', 'italic', 'underline']) if (style[key] !== undefined) bool(style[key]);
   if (style.color !== undefined) validateColor(style.color);
+  for(const key of ['language','eastAsiaLanguage','bidiLanguage'])if(style[key]!==undefined)assert(isDocumentLanguageTag(style[key]),'invalid','Invalid document language tag');
+  for(const key of ['runDirection','paragraphDirection'])if(style[key]!==undefined)assert(style[key]==='ltr'||style[key]==='rtl','invalid','Invalid document direction');
   if (style.alignment !== undefined) assert(['start', 'center', 'end', 'justify'].includes(String(style.alignment)), 'invalid', 'Invalid text alignment');
   if (style.indent !== undefined) integer(style.indent);
+  if(style.characterSpacing!==undefined)integer(style.characterSpacing,-31680*635,31680*635);
+  if(style.kerningThreshold!==undefined)integer(style.kerningThreshold,0,3276*6350);
+  if(style.rightIndent!==undefined)integer(style.rightIndent,0,31680*635);
+  if(style.firstLineIndent!==undefined)integer(style.firstLineIndent,-31680*635,31680*635);
+  if(style.contextualSpacing!==undefined)bool(style.contextualSpacing);
+  if(style.writerList!==undefined){const ref=object(style.writerList,['numId','level']);integer(ref.numId,0,1000000000);integer(ref.level,0,8);assert(ref.numId!==0||ref.level===0,'invalid','Disabled numbering must use level zero');}
+  if(style.paragraphBottomBorder!==undefined&&style.paragraphBottomBorder!==null){
+    const border=object(style.paragraphBottomBorder,['color','width','space']);validateColor(border.color);integer(border.width,2*1587,96*1588);integer(border.space,0,31*12700);
+  }
+  if(style.slideParagraph!==undefined){validateSlideParagraph(style.slideParagraph);const p=style.slideParagraph as SlideParagraphFormat;assert(!(p.beforePercent!==undefined&&style.spaceBefore!==undefined)&&!(p.afterPercent!==undefined&&style.spaceAfter!==undefined),'invalid','Conflicting paragraph spacing');}
   for (const key of ['spaceBefore', 'spaceAfter', 'lineHeight']) if (style[key] !== undefined) integer(style[key], 0);
 }
 
+/** Positive crop fractions of the original source image, in 1/1000 %. */
+export function validateSlideCrop(value:unknown):asserts value is SlideCrop{
+  const crop=object(value,['left','top','right','bottom']);
+  for(const k of ['left','top','right','bottom'])integer(crop[k],0,99999);
+  assert(Number(crop.left)+Number(crop.right)<100000&&Number(crop.top)+Number(crop.bottom)<100000,'invalid','Image crop removes the entire image');
+}
 export function validateGeometry(value: unknown): asserts value is Geometry {
   const geometry = object(value, ['x', 'y', 'width', 'height', 'rotation']);
   integer(geometry.x); integer(geometry.y); integer(geometry.width, 0); integer(geometry.height, 0); integer(geometry.rotation);
   assert(Number.isSafeInteger(geometry.x + geometry.width) && Number.isSafeInteger(geometry.y + geometry.height), 'invalid', 'Geometry sum exceeds safe precision');
+}
+
+/** Shared validation for native table grid transactions and import. */
+export function validateSlideTableData(value:unknown,geometry?:Geometry|DeepReadonly<Geometry>):asserts value is SlideTableData{
+ const table=object(value,['columnWidths','rowHeights','cells','styleId','firstRow','bandRow','merges','formats']);
+ assert(table.styleId===DEFAULT_SLIDE_TABLE_STYLE,'unsupported','Unknown slide table style');
+ const cols=list(table.columnWidths,1),rows=list(table.rowHeights,1),cells=list(table.cells,1);
+ assert(cols.length<=64&&rows.length<=200&&rows.length*cols.length<=2000&&cells.length===rows.length,'limit','Slide table budget');
+ for(const v of [...cols,...rows])integer(v,1,2147483647);
+ const width=cols.reduce<number>((n,v)=>n+Number(v),0),height=rows.reduce<number>((n,v)=>n+Number(v),0);
+ assert(width<=2147483647&&height<=2147483647,'limit','Slide table extent budget');
+ if(geometry)assert(width===geometry.width&&height===geometry.height,'invalid','Slide table geometry mismatch');
+ for(const raw of cells){const row=list(raw);assert(row.length===cols.length,'invalid','Nonrectangular slide table');for(const v of row){text(v,4096);assertUnicode(v);assert(!/[\x00-\x09\x0b-\x1f\x7f]/.test(String(v)),'invalid','Unsupported slide table control character');}}
+ for(const key of ['firstRow','bandRow'])if(table[key]!==undefined)bool(table[key]);
+ const covered=new Set<string>(),hidden=new Set<string>();
+ if(table.merges!==undefined){
+  const merges=list(table.merges,1);assert(merges.length<=1000,'limit','Slide table merge budget');
+  for(const raw of merges){
+   const m=object(raw,['row','column','rowCount','columnCount']);integer(m.row,0,rows.length-1);integer(m.column,0,cols.length-1);integer(m.rowCount,1,rows.length-m.row);integer(m.columnCount,1,cols.length-m.column);
+   assert(m.rowCount*m.columnCount>1,'invalid','Trivial slide table merge');
+   for(let r:number=m.row;r<m.row+m.rowCount;r++)for(let c:number=m.column;c<m.column+m.columnCount;c++){
+    const key=r+':'+c;assert(!covered.has(key),'invalid','Overlapping slide table merges');covered.add(key);
+    if(r!==m.row||c!==m.column){assert((cells[r] as string[])[c]==='','invalid','Covered slide table cell contains text');hidden.add(key);}
+   }
+  }
+ }
+ if(table.formats!==undefined){
+  assert(isRecord(table.formats)&&Object.keys(table.formats).length>0&&Object.keys(table.formats).length<=2000,'invalid','Invalid slide table format map');
+  for(const [key,raw]of Object.entries(table.formats)){
+   const m=/^(0|[1-9]\d*):(0|[1-9]\d*)$/.exec(key);
+   assert(m&&Number(m[1])<rows.length&&Number(m[2])<cols.length&&!hidden.has(key),'invalid','Invalid or covered table format coordinate');
+   const f=object(raw,['fill','borders','textStyle','alignment','verticalAlignment','margins']);assert(Object.keys(f).length>0,'invalid','Empty cell format');
+   if(f.fill!==undefined&&f.fill!==null)validateColor(f.fill);
+   if(f.textStyle!==undefined){const font=object(f.textStyle,['fontFamily','fontSize','bold','italic','underline','color']);assert(Object.keys(font).length>0,'invalid','Empty cell font');validateTextStyle(font);if(font.fontSize!==undefined)assert(Number(font.fontSize)%127===0&&Number(font.fontSize)>=12700,'invalid','Invalid DrawingML cell font size');}
+   if(f.alignment!==undefined)assert(['start','center','end'].includes(String(f.alignment)),'invalid','Invalid cell alignment');
+   if(f.verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(f.verticalAlignment)),'invalid','Invalid cell vertical alignment');
+   if(f.margins!==undefined){const margins=object(f.margins,['top','right','bottom','left']);for(const k of ['top','right','bottom','left'])integer(margins[k],0,51206400);}
+   if(f.borders!==undefined){const borders=object(f.borders,['left','right','top','bottom']);assert(Object.keys(borders).length>0,'invalid','Empty cell border map');for(const raw of Object.values(borders))if(raw!==null){
+    const b=object(raw,['color','width','dash']);validateColor(b.color);integer(b.width,1,12700*100);
+    if(b.dash!==undefined)assert(['solid','dash','dot','dashDot','lgDash','lgDashDot','lgDashDotDot','sysDash','sysDot','sysDashDot','sysDashDotDot'].includes(String(b.dash)),'invalid','Invalid cell border dash');
+   }}
+  }
+ }
 }
 
 /** All model boundaries use this validator, including recovery and import adapters. */
@@ -128,20 +302,24 @@ export function validateDocument(value: unknown): OfficeDocument {
   assert(isRecord(value), 'invalid', 'Expected document');
   if (value.schemaVersion !== 1) throw new OfficeError('unsupported', 'Unsupported document schema version');
   const fields = ['schemaVersion', 'documentId', 'title', 'resources', 'styles', 'defaultTextStyle', 'kind'];
-  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections'] : value.kind === 'sheets' ? ['dateSystem', 'sheets'] : value.kind === 'slides' ? ['size', 'slides'] : [])]);
+  const model = object(value, [...fields, ...(value.kind === 'writer' ? ['sections','defaultParagraphStyleId','numbering','pageStories','differentEvenOddPages'] : value.kind === 'sheets' ? ['dateSystem', 'sheets','namedCellStyles'] : value.kind === 'slides' ? ['size', 'slides', 'theme'] : [])]);
   assertId(model.documentId); text(model.title, 1024, false);
   const ids = new Set<string>();
   const id = (candidate: unknown): void => { assertId(candidate); assert(!ids.has(candidate), 'invalid', 'Duplicate stable node identifier'); ids.add(candidate); };
   assert(isRecord(model.resources), 'invalid', 'Invalid resources');
-  let resourceBytes = 0;
+  let resourceBytes = 0, packagedImageBytes=0;
   for (const [key, item] of Object.entries(model.resources)) {
     assertId(key);
-    const resource = object(item, ['id', 'sha256', 'mimeType', 'byteLength']);
+    const resource = object(item, ['id', 'sha256', 'mimeType', 'byteLength', 'dataBase64', 'pixelWidth', 'pixelHeight']);
     assert(resource.id === key, 'invalid', 'Resource identifier mismatch');
     assert(typeof resource.sha256 === 'string' && /^[a-f0-9]{64}$/.test(resource.sha256), 'invalid', 'Invalid resource digest');
     text(resource.mimeType, 255, false);
     assert(/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(resource.mimeType), 'invalid', 'Invalid resource media type');
     integer(resource.byteLength, 0, 128 * 1024 * 1024);
+    if(resource.dataBase64!==undefined||resource.pixelWidth!==undefined||resource.pixelHeight!==undefined){
+      validateImageResource(resource);packagedImageBytes+=resource.byteLength;
+      assert(packagedImageBytes<=16*1024*1024,'limit','Packaged image budget exceeded');
+    }
     resourceBytes += resource.byteLength;
     assert(resourceBytes <= 128 * 1024 * 1024, 'limit', 'Document resource budget exceeded');
   }
@@ -149,9 +327,12 @@ export function validateDocument(value: unknown): OfficeDocument {
   const styles = model.styles;
   for (const [key, item] of Object.entries(styles)) {
     assertId(key);
-    const style = object(item, ['id', 'name', 'basedOn', 'properties']);
+    const style = object(item, ['id', 'name', 'basedOn', 'kind', 'toggles', 'properties']);
     assert(style.id === key, 'invalid', 'Style identifier mismatch'); text(style.name, 512, false);
     optionalId(style.basedOn, styles); validateTextStyle(style.properties);
+    if(style.kind!==undefined)assert(style.kind==='paragraph'||style.kind==='character','invalid','Invalid named style kind');
+    if(style.toggles!==undefined){assert(Array.isArray(style.toggles)&&style.toggles.length<=2&&new Set(style.toggles).size===style.toggles.length&&style.toggles.every(k=>(k==='bold'||k==='italic')&&!Object.hasOwn(style.properties as object,k)),'invalid','Invalid named style toggle');}
+    if(style.kind!==undefined&&style.basedOn!==undefined){const parent=styles[String(style.basedOn)];assert(isRecord(parent)&&parent.kind===style.kind,'invalid','Named style inheritance crosses style kinds');}
     const path = new Set<string>([key]);
     let parent = style.basedOn;
     while (parent !== undefined) {
@@ -161,40 +342,121 @@ export function validateDocument(value: unknown): OfficeDocument {
     }
   }
   validateTextStyle(model.defaultTextStyle);
+  const numbering=model.kind==='writer'&&model.numbering!==undefined?object(model.numbering,['nextId','lists']):undefined;
+  if(numbering){
+    integer(numbering.nextId,1,1000000001);assert(isRecord(numbering.lists),'invalid','Invalid numbering definitions');const entries=Object.entries(numbering.lists);assert(entries.length<=2048,'limit','Numbering definition budget exceeded');
+    for(const [key,item] of entries){
+      assert(/^[1-9]\d*$/.test(key)&&Number(key)<Number(numbering.nextId),'invalid','Invalid numbering identity');
+      const def=object(item,['levels']),levels=list(def.levels,1);assert(levels.length<=9,'invalid','Numbering level budget exceeded');
+      for(const [i,candidate]of levels.entries()){
+        const level=object(candidate,['format','start','pattern','indent','hanging','alignment','neverRestart','symbolBullet']);
+        assert(level.format==='decimal'||level.format==='bullet','unsupported','Unsupported list format');integer(level.start,1,32767);text(level.pattern,64,false);
+        const pattern=String(level.pattern);
+        assert(!/[\x00-\x1f\x7f]/.test(pattern),'invalid','List pattern controls');
+        if(level.format==='bullet')assert(Array.from(pattern).length===1&&!/[\s%]/u.test(pattern),'invalid','Invalid list bullet');
+        else assert(/^(?:[^%]|%[1-9])+$/.test(pattern)&&pattern.includes('%'+(i+1))&&[...pattern.matchAll(/%([1-9])/g)].every(m=>Number(m[1])<=i+1),'invalid','Invalid decimal list pattern');
+        if(level.format==='decimal')assert([...pattern.matchAll(/%([1-9])/g)].every(m=>(levels[Number(m[1])-1] as WriterListLevel).format==='decimal'),'unsupported','Mixed composite numbering unsupported');
+        integer(level.indent,635,31680*635);integer(level.hanging,635,Number(level.indent));assert(['start','center','end'].includes(String(level.alignment)),'invalid','Invalid list alignment');
+        if(level.neverRestart!==undefined)bool(level.neverRestart);
+        if(level.symbolBullet!==undefined)assert(level.format==='bullet'&&pattern==='•'&&level.symbolBullet===true,'invalid','Invalid Symbol bullet fallback');
+      }
+    }
+  }
+  function listReference(style:unknown,allowed:boolean):void{
+    const ref=(style as TextStyle|undefined)?.writerList;if(!ref)return;
+    assert(allowed,'invalid','Writer numbering is paragraph-only');
+    if(ref.numId){const def=(numbering?.lists as WriterNumbering['lists']|undefined)?.[String(ref.numId)];assert(def&&def.levels[ref.level],'unsupported','Missing or unsupported numbering definition');}
+  }
+  listReference(model.defaultTextStyle,model.kind==='writer');
+  for(const item of Object.values(styles)){const style=item as NamedStyle;listReference(style.properties,model.kind==='writer'&&style.kind==='paragraph');}
   const resources = model.resources;
   const run = (candidate: unknown, textOnly = false): void => {
-    const inline = object(candidate, ['id', 'type', 'text', 'styleId', 'style', 'resourceId', 'width', 'height']); id(inline.id);
+    const inline = object(candidate, ['id', 'type', 'text', 'styleId', 'style', 'resourceId', 'width', 'height', 'drawingName', 'pictureName']); id(inline.id);
     if (inline.type === 'text') {
-      assert(!['resourceId', 'width', 'height'].some((key) => key in inline), 'invalid', 'Unexpected text run fields');
-      text(inline.text); optionalId(inline.styleId, styles); if (inline.style !== undefined) validateTextStyle(inline.style);
+      assert(!['resourceId', 'width', 'height', 'drawingName', 'pictureName'].some((key) => key in inline), 'invalid', 'Unexpected text run fields');
+      text(inline.text); optionalId(inline.styleId, styles); if(inline.styleId!==undefined){const ref=styles[String(inline.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='character'),'invalid','Text run requires a character style');} if (inline.style !== undefined){validateTextStyle(inline.style);listReference(inline.style,false);}
     } else if (inline.type === 'image' && !textOnly) {
       assert(!['text', 'style', 'styleId'].some((key) => key in inline), 'invalid', 'Unexpected image fields');
       assert(inline.resourceId !== undefined, 'invalid', 'Missing image resource'); optionalId(inline.resourceId, resources);
-      integer(inline.width, 1); integer(inline.height, 1);
+      integer(inline.width, 1); integer(inline.height, 1);if(inline.drawingName!==undefined)text(inline.drawingName,512);if(inline.pictureName!==undefined)text(inline.pictureName,512);
     } else {
       assert(!textOnly && (inline.type === 'tab' || inline.type === 'line-break') && Object.keys(inline).length === 2, 'invalid', 'Unsupported inline model');
     }
   };
   const block = (candidate: unknown, depth = 0): void => {
     assert(depth <= 64, 'limit', 'Table nesting budget exceeded');
-    const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows']); id(value.id);
+    const value = object(candidate, ['id', 'type', 'styleId', 'style', 'runs', 'columnWidths', 'rows', 'cellPadding', 'border', 'nativeTable']); id(value.id);
     if (value.type === 'paragraph') {
-      assert(!('rows' in value) && !('columnWidths' in value), 'invalid', 'Unexpected paragraph fields');
-      optionalId(value.styleId, styles); if (value.style !== undefined) validateTextStyle(value.style);
+      assert(!['rows','columnWidths','cellPadding','border','nativeTable'].some(k=>k in value), 'invalid', 'Unexpected paragraph fields');
+      optionalId(value.styleId, styles); if(value.styleId!==undefined){const ref=styles[String(value.styleId)];assert(isRecord(ref)&&(ref.kind===undefined||ref.kind==='paragraph'),'invalid','Paragraph requires a paragraph style');} if (value.style !== undefined){validateTextStyle(value.style);listReference(value.style,true);}
       list(value.runs).forEach((item) => run(item));
     } else if (value.type === 'table') {
       assert(!['runs', 'style', 'styleId'].some((key) => key in value), 'invalid', 'Unexpected table fields');
+      if(value.nativeTable!==undefined){const n=object(value.nativeTable,['styleId','autoWidth','autoLayout','directPadding','directBorder','look']);assert(Object.keys(n).length>0,'invalid','Empty native table metadata');if(n.styleId!==undefined)assert(n.styleId==='TableNormal'||n.styleId==='TableGrid','invalid','Unsupported native table style');for(const key of ['autoWidth','autoLayout','directPadding','directBorder'])if(n[key]!==undefined)assert(n[key]===true,'invalid','Invalid native table flag');if(n.look!==undefined){integer(n.look,0,0x7e0);assert((Number(n.look)&~0x7e0)===0,'invalid','Invalid table look mask');}}
       const widths = list(value.columnWidths, 1); widths.forEach((width) => integer(width, 1));
-      list(value.rows, 1).forEach((candidate) => {
+      assert(widths.length<=64&&widths.reduce<number>((sum,w)=>sum+Number(w),0)<=Number.MAX_SAFE_INTEGER,'limit','Table width budget exceeded');
+      if(value.cellPadding!==undefined){const pad=object(value.cellPadding,['top','right','bottom','left']);for(const key of ['top','right','bottom','left'])integer(pad[key],0,12_700*144);}
+      if(value.border!==undefined){const border=object(value.border,['width','color']);integer(border.width,1,12_700*12);validateColor(border.color);}
+      const rows=list(value.rows,1);assert(rows.length<=500&&rows.length*widths.length<=10000,'limit','Table cell budget exceeded');
+      const coverage:(string|undefined)[][]=rows.map(()=>Array<string|undefined>(widths.length).fill(undefined));
+      rows.forEach((candidate,ri) => {
         const row = object(candidate, ['id', 'cells']); id(row.id);
         const cells = list(row.cells); assert(cells.length === widths.length, 'invalid', 'Non-rectangular table');
-        cells.forEach((candidate) => { const cell = object(candidate, ['id', 'blocks']); id(cell.id); list(cell.blocks, 1).forEach((item) => block(item, depth + 1)); });
+        cells.forEach((candidate,ci) => {
+          const cell = object(candidate, ['id', 'blocks','merge','coveredBy']); id(cell.id);
+          const expected=coverage[ri]![ci];
+          if(expected!==undefined){
+            assert(cell.coveredBy===expected&&cell.merge===undefined&&list(cell.blocks).length===0,'invalid','Invalid or content-bearing covered table slot');
+            return;
+          }
+          assert(cell.coveredBy===undefined,'invalid','Dangling covered table slot');
+          if(cell.merge!==undefined){
+            const m=object(cell.merge,['rows','columns']);integer(m.rows,1,rows.length-ri);integer(m.columns,1,widths.length-ci);
+            const h=Number(m.rows),w=Number(m.columns);assert(h*w>1,'invalid','Empty table merge');
+            for(let r=ri;r<ri+h;r++)for(let c=ci;c<ci+w;c++){
+              if(r===ri&&c===ci)continue;
+              assert(coverage[r]![c]===undefined,'invalid','Overlapping table merges');coverage[r]![c]=String(cell.id);
+            }
+          }
+          list(cell.blocks,1).forEach(item=>block(item,depth+1));
+        });
       });
     } else assert(value.type === 'page-break' && Object.keys(value).length === 2, 'invalid', 'Invalid writer block');
   };
   if (model.kind === 'writer') {
-    list(model.sections, 1).forEach((candidate) => {
-      const section = object(candidate, ['id', 'page', 'blocks']); id(section.id);
+    optionalId(model.defaultParagraphStyleId,styles);
+    if(model.defaultParagraphStyleId!==undefined){const ref=styles[String(model.defaultParagraphStyleId)];assert(isRecord(ref)&&ref.kind==='paragraph','invalid','Default paragraph style must be a paragraph style');}
+    if(model.differentEvenOddPages!==undefined)assert(model.differentEvenOddPages===true,'invalid','Invalid even/odd story option');
+    const stories=model.pageStories;
+    if(stories!==undefined){
+      assert(isRecord(stories)&&Object.keys(stories).length>0&&Object.keys(stories).length<=256,'limit','Running story budget exceeded');
+      for(const [key,item]of Object.entries(stories)){
+        assertId(key);assert(/^[A-Za-z_][A-Za-z0-9_.-]{0,127}$/.test(key)&&!['__proto__','constructor','prototype'].includes(key),'invalid','Invalid story relationship identity');
+        const story=object(item,['kind','text','pageNumber','after','styleId','alignment','runStyle','additionalParagraphs']);
+        assert(story.kind==='header'||story.kind==='footer','invalid','Invalid running story kind');
+        const {kind,additionalParagraphs,...first}=story;
+        const paragraphs=additionalParagraphs===undefined?[first]:[first,...list(additionalParagraphs,1)];
+        assert(paragraphs.length<=16,'limit','Running story paragraph budget exceeded');
+        for(const raw of paragraphs){
+        const s=object(raw,['text','pageNumber','after','styleId','alignment','runStyle']);
+        text(s.text,4096);assert(!/[\x00-\x1f\x7f]/.test(String(s.text)),'invalid','Running story must be single-line text');
+        if(s.pageNumber!==undefined)assert(s.pageNumber===true,'invalid','Invalid page field');
+        if(s.after!==undefined){assert(s.pageNumber===true,'invalid','Text after missing PAGE field');text(s.after,4096,false);assert(!/[\x00-\x1f\x7f]/.test(String(s.after)),'invalid','Running story must be single-line text');}
+        if(s.styleId!==undefined)assert(s.styleId===(kind==='header'?'Header':'Footer'),'invalid','Unexpected running story style');
+        if(s.alignment!==undefined)assert(['start','center','end'].includes(String(s.alignment)),'invalid','Invalid story alignment');
+        if(s.runStyle!==undefined){validateTextStyle(s.runStyle);assert(Object.keys(s.runStyle as object).every(k=>['fontFamily','fontAscii','fontHighAnsi','fontEastAsia','fontComplex','fontSize','complexFontSize','bold','italic','underline','color','language','eastAsiaLanguage','bidiLanguage','runDirection','characterSpacing','kerningThreshold'].includes(k)),'unsupported','Unsupported running story run format');}
+        }
+      }
+    }
+    const sections=list(model.sections,1);assert(sections.length<=128,'limit','Writer section budget exceeded');sections.forEach((candidate) => {
+      const section = object(candidate, ['id', 'page', 'blocks', 'pageExtras','storyRefs','pageNumberStart','differentFirstPage']); id(section.id);
+      if(section.differentFirstPage!==undefined)assert(section.differentFirstPage===true,'invalid','Invalid first-page story option');
+      if(section.pageNumberStart!==undefined)integer(section.pageNumberStart,1,32767);
+      if(section.storyRefs!==undefined){
+        const refs=object(section.storyRefs,WRITER_STORY_KEYS);assert(Object.keys(refs).length>0,'invalid','Empty running story references');
+        for(const slot of WRITER_STORY_KEYS)if(refs[slot]!==undefined){const key=refs[slot];assertId(key);assert(isRecord(stories)&&Object.hasOwn(stories,key)&&(stories[key] as WriterPageStory).kind===writerStoryKind(slot),'invalid','Missing or mismatched running story reference');}
+      }
+      if(section.pageExtras!==undefined){const extra=object(section.pageExtras,['headerDistance','footerDistance','columnSpace','docGridLinePitch']);for(const n of Object.values(extra))integer(n,0,31680*635);}
       const page = object(section.page, ['width', 'height', 'margins']); integer(page.width, 1); integer(page.height, 1);
       const margins = object(page.margins, ['top', 'right', 'bottom', 'left']);
       integer(margins.top, 0); integer(margins.right, 0); integer(margins.bottom, 0); integer(margins.left, 0);
@@ -203,15 +465,30 @@ export function validateDocument(value: unknown): OfficeDocument {
     });
   } else if (model.kind === 'sheets') {
     assert(model.dateSystem === '1900' || model.dateSystem === '1904', 'invalid', 'Invalid workbook date system');
+    const named=new Set<string>(),namedLower=new Set<string>(['normal']);
+    if(model.namedCellStyles!==undefined){
+      const definitions=list(model.namedCellStyles,1);assert(definitions.length<=128,'limit','Named cell style budget');
+      for(const raw of definitions){
+        const style=object(raw,['name','style','numberFormat']);text(style.name,255,false);
+        assert(!/[\x00-\x1f\x7f]/.test(style.name)&&!namedLower.has(style.name.toLowerCase()),'invalid','Invalid or duplicate named cell style');
+        named.add(style.name);namedLower.add(style.name.toLowerCase());
+        validateCell({value:{kind:'blank'},...(style.style!==undefined?{style:style.style}:{}),...(style.numberFormat!==undefined?{numberFormat:style.numberFormat}:{})});
+      }
+    }
+    let richRuns=0;
     const names = new Set<string>();
     list(model.sheets, 1).forEach((candidate) => {
-      const sheet = object(candidate, ['id', 'name', 'cells', 'rows', 'columns', 'merges']); id(sheet.id); text(sheet.name, 31, false);
+      const sheet = object(candidate, ['id', 'name', 'cells', 'rows', 'columns', 'merges', 'view','defaultGeometry','conditionalRules','charts']); id(sheet.id); text(sheet.name, 31, false);
+      if(sheet.view!==undefined){const view=object(sheet.view,['rightToLeft','frozenRows','frozenColumns','showGridLines']);for(const field of ['rightToLeft','showGridLines'])if(view[field]!==undefined)bool(view[field]);if(view.frozenRows!==undefined)integer(view.frozenRows,0,1048575);if(view.frozenColumns!==undefined)integer(view.frozenColumns,0,16383);}
+      if(sheet.defaultGeometry!==undefined){const g=object(sheet.defaultGeometry,['rowHeight','columnWidth']);integer(g.rowHeight,1,409*12700);if(g.columnWidth!==undefined)integer(g.columnWidth,1,255*9525*7);}
       assert(!/[\[\]:*?/\\\x00-\x1f]/.test(sheet.name) && !sheet.name.startsWith("'") && !sheet.name.endsWith("'"), 'invalid', 'Invalid sheet name');
       const name = sheet.name.toLowerCase(); assert(!names.has(name), 'invalid', 'Duplicate sheet name'); names.add(name);
       assert(isRecord(sheet.cells), 'invalid', 'Invalid sparse cell map');
       for (const [key, item] of Object.entries(sheet.cells)) {
         const match = /^([1-9]\d*):([1-9]\d*)$/.exec(key); assert(match, 'invalid', 'Invalid cell key'); assertCellAddress(Number(match[1]), Number(match[2]));
         validateCell(item, styles);
+        if(item.namedStyle!==undefined)assert(named.has(item.namedStyle),'invalid','Unknown named cell style association');
+        richRuns+=item.richText?.length??0;assert(richRuns<=200000,'limit','Workbook rich run budget exceeded');
       }
       for (const [key, max, size] of [['rows', 1_048_576, 'height'], ['columns', 16_384, 'width']] as const) {
         const dimensions = sheet[key]; assert(isRecord(dimensions), 'invalid', 'Invalid sheet dimensions');
@@ -220,6 +497,34 @@ export function validateDocument(value: unknown): OfficeDocument {
           const dimension = object(candidate, [size, 'hidden']);
           if (dimension[size] !== undefined) integer(dimension[size], 1);
           if (dimension.hidden !== undefined) bool(dimension.hidden);
+        }
+      }
+      if(sheet.charts!==undefined){
+        const charts=list(sheet.charts,1);assert(charts.length<=32,'limit','Chart count budget');
+        function chartRange(raw:unknown):SheetRange{
+          const r=object(raw,['row','column','rowCount','columnCount']);integer(r.row,1);integer(r.column,1);integer(r.rowCount,1,10000);integer(r.columnCount,1,1);assertCellAddress(r.row+r.rowCount-1,r.column);return r as unknown as SheetRange;
+        }
+        for(const raw of charts){
+          const c=object(raw,['kind','anchor','categories','series']);assert(['column','line','pie'].includes(String(c.kind)),'invalid','Unsupported chart type');
+          const a=object(c.anchor,['row','column','offsetX','offsetY','width','height']);integer(a.row,1,1048576);integer(a.column,1,16384);integer(a.offsetX,0,10000000);integer(a.offsetY,0,10000000);integer(a.width,1,50000000);integer(a.height,1,50000000);
+          const categories=chartRange(c.categories),series=list(c.series,1);assert(series.length<=(c.kind==='pie'?1:16),'limit','Chart series budget');
+          for(const raw of series){const s=object(raw,['label','values']),values=chartRange(s.values);assert(values.rowCount===categories.rowCount,'invalid','Chart range length mismatch');if(s.label!==undefined){const l=object(s.label,['row','column']);integer(l.row,1,1048576);integer(l.column,1,16384);}}
+        }
+      }
+      if(sheet.conditionalRules!==undefined){
+        const rules=list(sheet.conditionalRules,1);assert(rules.length<=256,'limit','Conditional rule budget exceeded');
+        const priorities=new Set<number>();let previous=0;
+        for(const raw of rules){
+          const rule=object(raw,['ranges','priority','operator','values','style','stopIfTrue']);integer(rule.priority,1,2147483647);
+          assert(!priorities.has(rule.priority)&&rule.priority>previous,'invalid','Duplicate or unordered conditional priority');priorities.add(rule.priority);previous=rule.priority;
+          assert(['equal','notEqual','lessThan','lessThanOrEqual','greaterThan','greaterThanOrEqual','between','notBetween'].includes(String(rule.operator)),'invalid','Invalid conditional operator');
+          const vals=list(rule.values);assert(vals.length===(rule.operator==='between'||rule.operator==='notBetween'?2:1)&&vals.every(v=>typeof v==='number'&&Number.isFinite(v)),'invalid','Invalid numeric conditional operands');
+          const ranges=list(rule.ranges,1);assert(ranges.length<=128,'limit','Conditional range budget exceeded');
+          for(const item of ranges){const r=object(item,['row','column','rowCount','columnCount']);integer(r.row,1);integer(r.column,1);integer(r.rowCount,1);integer(r.columnCount,1);assertCellAddress(r.row+r.rowCount-1,r.column+r.columnCount-1);}
+          const style=object(rule.style,['fill','color','bold','italic','underline']);assert(Object.keys(style).length>0,'invalid','Empty conditional style');
+          for(const key of ['fill','color'])if(style[key]!==undefined){validateColor(style[key]);assert(style[key].kind==='rgba'&&style[key].alpha===255,'unsupported','Conditional style requires opaque RGB');}
+          for(const key of ['bold','italic','underline'])if(style[key]!==undefined)bool(style[key]);
+          if(rule.stopIfTrue!==undefined)bool(rule.stopIfTrue);
         }
       }
       const merges = list(sheet.merges);
@@ -240,23 +545,95 @@ export function validateDocument(value: unknown): OfficeDocument {
     });
   } else if (model.kind === 'slides') {
     const size = object(model.size, ['width', 'height']); integer(size.width, 1); integer(size.height, 1);
+    if (model.theme !== undefined) {
+      const theme = object(model.theme, ['name','colors','majorFont','minorFont','majorFontDetails','minorFontDetails']); text(theme.name,256,false);
+      assert(isRecord(theme.colors) && Object.keys(theme.colors).length<=64,'invalid','Invalid slide theme colors');
+      for(const [name,color] of Object.entries(theme.colors)){assert(/^[A-Za-z0-9_-]{1,128}$/.test(name),'invalid','Invalid theme color name');validateColor(color);assert(color.kind==='rgba','invalid','Theme colors cannot reference a theme');}
+      for(const key of ['majorFont','minorFont'])if(theme[key]!==undefined)validateTextStyle({fontFamily:theme[key]});
+      for(const key of ['majorFontDetails','minorFontDetails'])if(theme[key]!==undefined){const details=object(theme[key],['eastAsia','complex','scripts']);for(const name of ['eastAsia','complex'])if(details[name]!==undefined)validateTextStyle({fontFamily:details[name]});if(details.scripts!==undefined){assert(isRecord(details.scripts)&&Object.keys(details.scripts).length<=128,'invalid','Invalid slide script font map');for(const [script,font]of Object.entries(details.scripts)){assert(/^[A-Z][a-z]{3}$/.test(script),'invalid','Invalid theme font script');validateTextStyle({fontFamily:font});}}}
+    }
+    let shapeCount=0;
     list(model.slides).forEach((candidate) => {
       const slide = object(candidate, ['id', 'background', 'shapes']); id(slide.id); validateColor(slide.background);
-      list(slide.shapes).forEach((candidate) => {
-        const shape = object(candidate, ['id', 'type', 'geometry', 'fill', 'stroke', 'runs', 'resourceId']); id(shape.id); validateGeometry(shape.geometry);
+      const validateShape=(candidate:unknown,depth:number):void=>{
+        const shape = object(candidate, ['id', 'type', 'geometry', 'fill', 'stroke', 'runs', 'resourceId', 'textStyle', 'textFrame','flipH','flipV','connector','connections','crop','childSpace','children','table']); id(shape.id); validateGeometry(shape.geometry);
+        assert(++shapeCount<=100000&&depth<=16,'limit','Presentation shape tree budget exceeded');
+        if(shape.flipH!==undefined)bool(shape.flipH);if(shape.flipV!==undefined)bool(shape.flipV);
+        if(shape.connector!==undefined)assert(shape.type==='line'&&shape.connector===true,'invalid','Invalid connector shape');
+        if(shape.connections!==undefined){
+          assert(depth===0&&shape.type==='line'&&shape.connector===true,'unsupported','Bound connectors must be top-level straight connectors');
+          const refs=object(shape.connections,['start','end']),start=object(refs.start,['shapeId','site']),end=object(refs.end,['shapeId','site']);
+          for(const ref of [start,end]){assertId(ref.shapeId);integer(ref.site,0,3);}
+          assert(start.shapeId!==end.shapeId&&start.shapeId!==shape.id&&end.shapeId!==shape.id,'invalid','Invalid connector endpoints');
+        }
+        if(shape.type!=='group')assert(!('childSpace' in shape)&&!('children' in shape),'invalid','Unexpected group fields');
+        if(shape.type!=='image')assert(!('crop' in shape),'invalid','Unexpected image crop');
+        if(shape.type!=='table')assert(!('table' in shape),'invalid','Unexpected slide table data');
+        if(shape.type==='text')assert(!shape.flipH&&!shape.flipV,'unsupported','Flipped text is outside presentation profile');
         if (shape.fill !== undefined) validateColor(shape.fill);
-        if (shape.stroke !== undefined) { const stroke = object(shape.stroke, ['color', 'width']); validateColor(stroke.color); integer(stroke.width, 0); }
-        if (shape.type === 'text') { assert(!('resourceId' in shape), 'invalid', 'Unexpected text shape fields'); list(shape.runs).forEach((item) => run(item, true)); }
-        else if (shape.type === 'image') { assert(!('runs' in shape) && shape.resourceId !== undefined, 'invalid', 'Invalid image shape'); optionalId(shape.resourceId, resources); }
-        else assert(['rect', 'ellipse', 'line'].includes(String(shape.type)) && !('runs' in shape) && !('resourceId' in shape), 'invalid', 'Invalid shape type');
-      });
+        if (shape.stroke !== undefined) {
+          const stroke=object(shape.stroke,['color','width','dash','head','tail']);validateColor(stroke.color);integer(stroke.width,0,12700*1000);
+          if(stroke.dash!==undefined)assert(['solid','dash','dot','dashDot','lgDash','lgDashDot','lgDashDotDot','sysDash','sysDot','sysDashDot','sysDashDotDot'].includes(String(stroke.dash)),'invalid','Invalid presentation dash');
+          for(const end of ['head','tail'])if(stroke[end]!==undefined){const arrow=object(stroke[end],['type','width','length']);assert(shape.type==='line'&&['triangle','arrow'].includes(String(arrow.type)),'invalid','Unsupported arrow shape');for(const key of ['width','length'])if(arrow[key]!==undefined)assert(['sm','med','lg'].includes(String(arrow[key])),'invalid','Invalid arrow size');}
+        }
+        if(shape.type==='table'){
+          assert(depth===0&&!shape.flipH&&!shape.flipV&&!('fill'in shape)&&!('stroke'in shape)&&!('runs'in shape)&&!('resourceId'in shape)&&!('textStyle'in shape)&&!('textFrame'in shape),'unsupported','Only top-level unrotated tables with native cell paint are supported');
+          const g=shape.geometry as Geometry;assert(g.rotation===0,'unsupported','Table rotation outside profile');
+          validateSlideTableData(shape.table,g);
+        }
+        else if (shape.type === 'text') {
+          assert(!('resourceId' in shape), 'invalid', 'Unexpected text shape fields'); list(shape.runs).forEach((item) => run(item, true));
+          if(shape.textStyle!==undefined)validateTextStyle(shape.textStyle);
+          if(shape.textFrame!==undefined){
+            const frame=object(shape.textFrame,['wrap','verticalAlignment','margins','direction','autofit']);
+            if(frame.autofit!==undefined){const fit=object(frame.autofit,['mode','fontScale','lineReduction']);if(fit.mode==='none'||fit.mode==='shape')assert(Object.keys(fit).length===1,'invalid','Unexpected text fit values');else{assert(fit.mode==='normal','invalid','Unsupported text fit mode');integer(fit.fontScale,1000,100000);integer(fit.lineReduction,0,99000);}}
+            if((frame.autofit as {mode?:string}|undefined)?.mode==='shape'){
+              const geometry=shape.geometry as Geometry;
+              assert(depth===0&&geometry.rotation===0&&(!frame.verticalAlignment||frame.verticalAlignment==='top'),'unsupported','Shape-growing textbox must be top-level, unrotated and top-anchored');
+            }
+            if(frame.wrap!==undefined)bool(frame.wrap);
+            if(frame.verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(frame.verticalAlignment)),'invalid','Invalid text frame alignment');
+            if(frame.direction!==undefined)assert(['ltr','rtl','auto'].includes(String(frame.direction)),'invalid','Invalid text frame direction');
+            if(frame.margins!==undefined){const margins=object(frame.margins,['top','right','bottom','left']);for(const key of ['top','right','bottom','left'])integer(margins[key],0);}
+          }
+        }
+        else if (shape.type === 'image') { assert(!('textStyle' in shape)&&!('textFrame' in shape)&&!('runs' in shape) && shape.resourceId !== undefined, 'invalid', 'Invalid image shape'); optionalId(shape.resourceId, resources);if(shape.crop!==undefined)validateSlideCrop(shape.crop); }
+        else if(shape.type==='group'){
+          assert(!('textStyle' in shape)&&!('textFrame' in shape)&&!('runs' in shape)&&!('resourceId' in shape)&&!('fill' in shape)&&!('stroke' in shape),'invalid','Invalid group fields');
+          const space=object(shape.childSpace,['x','y','width','height']);integer(space.x,-2147483648,2147483647);integer(space.y,-2147483648,2147483647);integer(space.width,1,2147483647);integer(space.height,1,2147483647);
+          const geometry=shape.geometry as Geometry;assert(geometry.width>0&&geometry.height>0&&geometry.width/Number(space.width)<=1000&&geometry.height/Number(space.height)<=1000&&geometry.width/Number(space.width)>=.001&&geometry.height/Number(space.height)>=.001,'invalid','Group scale outside profile');
+          const children=list(shape.children);assert(children.length>0&&children.length<=10000,'limit','Invalid group child count');children.forEach(child=>validateShape(child,depth+1));
+        }
+        else assert(['rect','ellipse','line','roundRect','triangle','diamond','parallelogram'].includes(String(shape.type)) && !('textStyle' in shape)&&!('textFrame' in shape)&& !('runs' in shape) && !('resourceId' in shape), 'invalid', 'Invalid shape type');
+      };
+      list(slide.shapes).forEach(candidate=>validateShape(candidate,0));
+      const siblings=new Map((slide.shapes as Shape[]).map(shape=>[shape.id,shape]));
+      for(const shape of slide.shapes as Shape[])if(shape.type==='line'&&shape.connections){
+        for(const ref of [shape.connections.start,shape.connections.end]){const target=siblings.get(ref.shapeId);assert(target&&(target.type==='rect'||target.type==='text')&&target.geometry.width>0&&target.geometry.height>0,'unsupported','Connector endpoint requires a top-level rectangle or textbox');}
+      }
     });
   } else throw new OfficeError('invalid', 'Invalid document kind');
   return value as unknown as OfficeDocument;
 }
 
 export function validateCell(value: unknown, styles: Record<string, unknown> = {}): asserts value is Cell {
-  const cell = object(value, ['value', 'styleId', 'numberFormat']); optionalId(cell.styleId, styles);
+  const cell = object(value, ['value', 'styleId', 'numberFormat', 'style','richText','namedStyle']); optionalId(cell.styleId, styles);
+  if(cell.style!==undefined){assert(isRecord(cell.style),'invalid','Invalid cell style');const {fill,border,borderEdges,verticalAlignment,wrapText,...font}=cell.style;validateTextStyle(font);if(fill!==undefined)validateColor(fill);if(border!==undefined){const edge=object(border,['color','width']);validateColor(edge.color);integer(edge.width,1,12700*12);}if(borderEdges!==undefined){
+      assert(border===undefined,'invalid','Conflicting uniform and per-edge cell borders');
+      const edges=object(borderEdges,['left','right','top','bottom']);assert(Object.keys(edges).length>0,'invalid','Empty cell edge set');
+      for(const item of Object.values(edges)){const edge=object(item,['line','color']);assert(['hair','thin','medium','thick','dotted','dashed','mediumDashed','double','dashDot','mediumDashDot','dashDotDot','mediumDashDotDot','slantDashDot'].includes(String(edge.line)),'invalid','Unsupported cell border line');validateColor(edge.color);}
+    }if(verticalAlignment!==undefined)assert(['top','center','bottom'].includes(String(verticalAlignment)),'invalid','Invalid vertical cell alignment');if(wrapText!==undefined)bool(wrapText);}
+  if(cell.namedStyle!==undefined)text(cell.namedStyle,255,false);
+  if(cell.richText!==undefined){
+    const scalar=cell.value as CellValue;assert(scalar?.kind==='string','invalid','Rich runs require string cell value');
+    const runs=list(cell.richText,1);assert(runs.length<=256,'limit','Rich cell run budget exceeded');
+    let combined='';
+    for(const raw of runs){const run=object(raw,['text','style']);text(run.text,32767,false);combined+=run.text;
+      assert(combined.length<=32767,'limit','Rich cell text budget exceeded');
+      if(run.style!==undefined){const font=object(run.style,['fontFamily','fontSize','bold','italic','underline','color']);validateTextStyle(font);if(font.color!==undefined)assert((font.color as Color).kind==='rgba'&&(font.color as Extract<Color,{kind:'rgba'}>).alpha===255,'unsupported','Rich font requires opaque RGB');}
+    }
+    assert(combined===scalar.value,'invalid','Rich runs do not match scalar cell text');
+  }
   if (cell.numberFormat !== undefined) text(cell.numberFormat, 1024);
   const item = object(cell.value, ['kind', 'value', 'source']);
   if (item.kind === 'blank') assert(Object.keys(item).length === 1, 'invalid', 'Blank cell has a payload');

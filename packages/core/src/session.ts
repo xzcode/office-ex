@@ -1,5 +1,6 @@
 import { CancellationToken, assert, assertId, isRecord, type Diagnostic } from '@office-ex/contracts';
 import { assertPlainData, cloneData, freezeData, validateDocument, type OfficeDocument } from './model.js';
+import { validateImageResource } from './images.js';
 
 export type DeepReadonly<T> = T extends readonly (infer U)[] ? readonly DeepReadonly<U>[] : T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> } : T;
 export type ModelPath = readonly (string | number)[];
@@ -18,7 +19,7 @@ export interface SessionCapabilities {
   readonly allowedFeatures: readonly string[];
   readonly diagnostics: readonly Diagnostic[];
 }
-export const EDITABLE_CAPABILITIES: SessionCapabilities = Object.freeze({ canEdit: true, allowedFeatures: Object.freeze(['MOD-01', 'MOD-03', 'WRT-03', 'SHT-02', 'SLD-02']), diagnostics: Object.freeze([]) });
+export const EDITABLE_CAPABILITIES: SessionCapabilities = Object.freeze({ canEdit: true, allowedFeatures: Object.freeze(['MOD-01', 'MOD-03', 'WRT-02', 'WRT-03', 'SHT-02', 'SLD-02']), diagnostics: Object.freeze([]) });
 export interface DocumentSnapshot { readonly document: DeepReadonly<OfficeDocument>; readonly revision: number; readonly contentId: string }
 export interface SaveTicket extends DocumentSnapshot { readonly id: string; readonly documentId: string }
 export interface TransactionResult {
@@ -93,15 +94,53 @@ function applyPatch(root: OfficeDocument, patch: PatchOperation): { document: Of
 function applyBatch(document: OfficeDocument, operations: readonly PatchOperation[]): { document: OfficeDocument; forward: PatchOperation[]; inverse: PatchOperation[] } {
   let next = document;
   const forward: PatchOperation[] = []; const inverse: PatchOperation[] = [];
-  for (const operation of operations) {
-    assertOperation(operation);
-    const result = applyPatch(next, operation);
-    if (result.inverse) { forward.push(cloneData(operation)); inverse.unshift(result.inverse); next = result.document; }
+  // Coalesce consecutive direct edits to one sheet's cell map. Clone the
+  // map once, preserve unaffected immutable cells and keep the history
+  // at individual-cell granularity. Every patch is still checked and the
+  // complete candidate is validated before committing.
+  const directCell=(operation:PatchOperation)=>operation.op!=='splice'&&operation.path.length===4&&operation.path[0]==='sheets'&&typeof operation.path[1]==='number'&&operation.path[2]==='cells'&&typeof operation.path[3]==='string';
+  for(let i=0;i<operations.length;){
+    const operation=operations[i]!;assertOperation(operation);
+    if(next.kind==='sheets'&&directCell(operation)){
+      const parentPath=operation.path.slice(0,3),parent=atPath(next,parentPath);
+      assert(isRecord(parent),'invalid','Invalid cell patch parent');
+      const copy={...parent};let changed=false,j=i;
+      for(;j<operations.length;j++){
+        const patch=operations[j]!;assertOperation(patch);
+        if(!directCell(patch)||patch.path[1]!==operation.path[1])break;
+        const key=patch.path[3] as string,exists=Object.hasOwn(copy,key),before=copy[key];
+        if(patch.op==='delete'){
+          if(!exists)continue;
+          delete copy[key];inverse.push({op:'set',path:patch.path,value:before});
+        }else if(patch.op==='set'){
+          if(exists&&sameData(before,patch.value))continue;
+          copy[key]=cloneData(patch.value);
+          inverse.push(exists?{op:'set',path:patch.path,value:before}:{op:'delete',path:patch.path});
+        }else throw new Error('Unexpected cell splice');
+        forward.push(cloneData(patch));changed=true;
+      }
+      if(changed)next=replaceAt(next,parentPath,copy) as OfficeDocument;
+      i=j;
+    }else{
+      const result=applyPatch(next,operation);
+      if(result.inverse){forward.push(cloneData(operation));inverse.push(result.inverse);next=result.document;}
+      i++;
+    }
   }
+  inverse.reverse();
   if (sameData(document, next)) return { document, forward: [], inverse: [] };
   // Candidate state is detached by structural sharing. Validation cannot alter live state.
   validateDocument(next);
   return { document: next, forward, inverse };
+}
+
+/** Preview a validated candidate for a synchronous layout-dependent command.
+ * This is not a mutation authority; final execution still checks capabilities. */
+export function previewModelPatch(snapshot:DocumentSnapshot,command:DocumentCommand):DocumentSnapshot{
+  assert(command.type==='model.patch'&&command.documentId===snapshot.document.documentId&&command.expectedRevision===snapshot.revision,'conflict','Invalid preview command');
+  assert(command.payload.operations.length<=10000,'limit','Preview operation budget exceeded');
+  const candidate=applyBatch(snapshot.document as OfficeDocument,command.payload.operations);
+  return {...snapshot,document:candidate.document};
 }
 
 /** A single document authority; history retains deltas, not whole-document snapshots. */
@@ -154,10 +193,31 @@ export class DocumentSession {
       assert(operations.length <= 10_000, 'limit', 'Command operation budget exceeded');
     }
     this.#assertEditable(featureId);
-    const permittedRoots: Record<string, readonly string[]> = { 'MOD-01': ['resources', 'styles', 'defaultTextStyle'], 'MOD-03': ['title'], 'WRT-03': ['sections'], 'SHT-02': ['sheets', 'dateSystem'], 'SLD-02': ['slides', 'size'] };
-    const requiredKind: Record<string, string> = { 'WRT-03': 'writer', 'SHT-02': 'sheets', 'SLD-02': 'slides' };
+    const permittedRoots: Record<string, readonly string[]> = { 'MOD-01': ['resources', 'styles', 'defaultTextStyle'], 'MOD-03': ['title'], 'WRT-02': ['sections'], 'WRT-03': ['sections', 'resources','numbering','pageStories','differentEvenOddPages'], 'SHT-02': ['sheets', 'dateSystem'], 'SLD-02': ['slides', 'size', 'theme', 'resources'] };
+    const requiredKind: Record<string, string> = { 'WRT-02': 'writer', 'WRT-03': 'writer', 'SHT-02': 'sheets', 'SLD-02': 'slides' };
     assert(!requiredKind[featureId] || requiredKind[featureId] === this.#document.kind, 'invalid', 'Command feature does not match document kind');
-    for (const operation of operations) { assertOperation(operation); assert(permittedRoots[featureId]?.includes(String(operation.path[0])), 'unsupported', 'Feature cannot modify that model region'); }
+    const newImages=new Set<string>();let numberingAdded=false;
+    for (const operation of operations) {
+      assertOperation(operation);
+      assert(permittedRoots[featureId]?.includes(String(operation.path[0])), 'unsupported', 'Feature cannot modify that model region');
+      if(featureId==='WRT-02')assert(operation.op==='set'&&operation.path.length===3&&operation.path[0]==='sections'&&typeof operation.path[1]==='number'&&operation.path[2]==='page','unsupported','Page command can only replace section page geometry');
+      if(featureId==='WRT-03'&&operation.path[0]==='numbering'){
+        assert(!numberingAdded&&operation.op==='set'&&operation.path.length===1&&this.#document.kind==='writer','unsupported','Numbering commands may append definitions only');
+        const old=this.#document.numbering,registry=operation.value as import('./model.js').WriterNumbering;
+        assert(registry&&typeof registry==='object'&&registry.lists&&typeof registry.lists==='object'&&Number.isSafeInteger(registry.nextId),'invalid','Invalid numbering registry');
+        const first=old?.nextId??1;assert(registry.nextId>=first&&registry.nextId-first<=2048,'limit','Invalid numbering allocation');
+        for(const [id,def]of Object.entries(old?.lists??{}))assert(JSON.stringify(registry.lists[id])===JSON.stringify(def),'conflict','Numbering definitions are immutable');
+        const fresh=Object.keys(registry.lists).filter(id=>!Object.hasOwn(old?.lists??{},id));
+        assert(fresh.length===registry.nextId-first&&fresh.every(id=>Number(id)>=first&&Number(id)<registry.nextId),'invalid','Noncontiguous numbering allocation');
+        numberingAdded=true;
+      }
+      if((featureId==='WRT-03'||featureId==='SLD-02')&&operation.path[0]==='resources'){
+        assert(operation.op==='set'&&operation.path.length===2&&typeof operation.path[1]==='string','unsupported','Image commands may only add an immutable image resource');
+        validateImageResource(operation.value);const id=operation.path[1];
+        assert(id===operation.value.id&&!Object.hasOwn(this.#document.resources,id)&&!newImages.has(id),'conflict','Cannot replace an existing resource');
+        newImages.add(id);
+      }
+    }
     const batch = applyBatch(this.#document, operations);
     if (batch.forward.length === 0) return this.#result(false);
     const bytes = new TextEncoder().encode(JSON.stringify([batch.forward, batch.inverse])).byteLength;

@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "source": "Independent python-docx default template",
+  "checks": [
+    "Ordinary external TableGrid DOCX opens in actual editable Writer",
+    "Real desktop edit and row insertion save native DOCX with style and all ancillary parts intact",
+    "Saved DOCX reopens editable without renderer errors"
+  ],
+  "sandbox": true,
+  "status": "passed"
+}

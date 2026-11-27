@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "source": "Independent python-docx default-template corpus",
+  "checks": [
+    "External DOCX renders rectangular, horizontal, and vertical merged cells without covered inputs",
+    "Actual merged cell edits save native DOCX while preserving spans and all ancillary parts",
+    "Native merge command joins the rectangle and retains all four editable paragraphs",
+    "Split, undo, redo and save preserve every original cell paragraph with no renderer errors"
+  ],
+  "sandbox": true,
+  "status": "passed"
+}

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 /** Pure request/origin validation. Does not parse document contents or grant filesystem access. */
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, resolve, extname } from 'node:path';
+import fileTypes from '../file-types.json' with {type:'json'};
 import { OfficeError, isRecord } from '@office-ex/contracts';
 import { isLanguagePreference, isRegionalPreference, isDocumentLanguagePreference } from '@office-ex/i18n';
 import type { TabState, PublicSettings } from '@office-ex/ui';
@@ -8,15 +9,17 @@ import type { TabState, PublicSettings } from '@office-ex/ui';
 export const TRUSTED_APP_ORIGIN = 'office-ex://app';
 export const IPC_MAX_DRAFT_BYTES = 32 * 1024 * 1024;
 export const IPC_MAX_TABS = 32;
+export const DOCUMENT_EXTENSIONS=Object.freeze(fileTypes.map(f=>f.extension));
+export function isDocumentPath(path:string):boolean{return DOCUMENT_EXTENSIONS.includes(extname(path).slice(1).toLowerCase());}
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 const CONTENT_ID = /^[A-Za-z0-9_.:-]{1,256}$/;
 const RECOVERY_ID = /^[A-Za-z0-9_-]{1,128}\.[0-9]+\.[a-f0-9-]{36}\.oex-recovery$/;
 const ARITY: Readonly<Record<string, number>> = Object.freeze({
-  'office:initialize': 0, 'office:open': 0, 'office:recent': 1, 'office:drop': 1,
-  'office:tabs': 1, 'office:save-draft': 1, 'office:save-copy': 1,
-  'office:confirm-close': 1, 'office:release': 2, 'office:finish-close': 0,
+  'office:initialize': 0, 'office:ready':0, 'office:open': 0, 'office:new-window':1, 'office:restore-window':1, 'office:show-home':0, 'office:recent': 1, 'office:drop': 1,
+  'office:tabs': 1, 'office:save-draft': 1, 'office:save-docx': 1, 'office:save-doc': 1, 'office:save-xlsx': 1, 'office:save-xls': 1, 'office:save-pptx': 1, 'office:save-ppt': 1, 'office:save-copy': 1, 'office:save-compatible':1,
+  'office:confirm-close': 1, 'office:release': 2, 'office:finish-close': 0, 'office:cancel-window-close': 0,
   'office:settings': 1, 'office:recover': 1, 'office:discard-recovery': 1,
-  'office:checkpoint': 1,
+  'office:checkpoint': 1, 'office:export-pdf': 1, 'office:print': 1,
 });
 function invalid(message = 'Invalid IPC request'): never { throw new OfficeError('invalid', message); }
 
@@ -89,6 +92,37 @@ export function parseDraftSave(value: unknown): DraftSaveRequest {
   if (typeof item.saveAs !== 'boolean') invalid('Invalid Save As flag');
   return { documentId: item.documentId, ...(item.sourceToken === undefined ? {} : { sourceToken: item.sourceToken }), bytes: item.bytes, revision: item.revision, contentId: item.contentId, saveAs: item.saveAs, title: item.title };
 }
+/** DOCX IPC accepts only a bounded serialized model, never a caller-chosen ZIP.
+ * Semantic verification occurs in the independent verifier renderer.
+ */
+export function parseDocxSave(value:unknown):DraftSaveRequest {
+  const request=parseDraftSave(value);
+  if(!request.contentId.startsWith(request.documentId+':content:')||!/^\d+$/.test(request.contentId.slice(request.documentId.length+9)))invalid('DOCX snapshot identity does not match the document');
+  return request;
+}
+export function parseCompatibilitySave(value:unknown):{format:'docx'|'xlsx'|'pptx';request:DraftSaveRequest}{
+ const v=fields(value,['format','documentId','sourceToken','bytes','revision','contentId','saveAs','title']);
+ const {format,...rest}=v;
+ if(format!=='docx'&&format!=='xlsx'&&format!=='pptx')invalid('Invalid compatibility save format');
+ const request=parseDocxSave(rest);if(!request.sourceToken)invalid('Compatibility save requires original source capability');
+ return {format,request};
+}
+export type PrintRequest = {kind:'document';documentId:string;revision:number;contentId:string;bytes:Uint8Array;sourceToken?:string} | {kind:'pdf';documentId:string;revision:number;sourceToken:string};
+/** PDF input is fetched from the main-owned source token. Document print input
+ * is only a bounded draft, independently parsed in the isolated output worker. */
+export function parsePrintRequest(value:unknown):PrintRequest {
+  const item=fields(value,['kind','documentId','revision','contentId','bytes','sourceToken']);
+  ipcId(item.documentId);revision(item.revision);
+  if(item.sourceToken!==undefined)ipcId(item.sourceToken);
+  if(item.kind==='pdf'){
+    if(item.sourceToken===undefined||item.contentId!==undefined||item.bytes!==undefined)invalid('PDF print requires an original file capability');
+    return {kind:'pdf',documentId:item.documentId,revision:item.revision,sourceToken:item.sourceToken};
+  }
+  if(item.kind!=='document')invalid('Invalid print kind');
+  bytes(item.bytes);contentId(item.contentId);
+  if(!item.contentId.startsWith(item.documentId+':content:')||!/^\d+$/.test(item.contentId.slice(item.documentId.length+9)))invalid('Print snapshot identity differs from document');
+  return {kind:'document',documentId:item.documentId,revision:item.revision,contentId:item.contentId,bytes:item.bytes,...(item.sourceToken===undefined?{}:{sourceToken:item.sourceToken})};
+}
 export function parsePreservedCopy(value: unknown): { documentId: string; sourceToken: string } {
   const item = fields(value, ['documentId', 'sourceToken']); ipcId(item.documentId); ipcId(item.sourceToken);
   return { documentId: item.documentId, sourceToken: item.sourceToken };
@@ -103,18 +137,20 @@ export function parseRelease(documentId: unknown, discard: unknown): { documentI
   ipcId(documentId); if (typeof discard !== 'boolean') invalid('Invalid close request');
   return { documentId, discard };
 }
-export function parseSettingsPatch(value: unknown): { theme?: PublicSettings['theme']; language?: PublicSettings['language']; region?:PublicSettings['region']; documentLanguage?:PublicSettings['documentLanguage']; clearRecent?: boolean } {
-  const item = fields(value, ['theme', 'language', 'region', 'documentLanguage', 'clearRecent']);
+export function parseSettingsPatch(value: unknown): { theme?: PublicSettings['theme']; language?: PublicSettings['language']; region?:PublicSettings['region']; documentLanguage?:PublicSettings['documentLanguage']; openInTabs?:boolean; clearRecent?: boolean } {
+  const item = fields(value, ['theme', 'language', 'region', 'documentLanguage', 'openInTabs', 'clearRecent']);
   if (item.theme !== undefined && item.theme !== 'system' && item.theme !== 'light' && item.theme !== 'dark') invalid('Invalid theme');
   if(item.language!==undefined&&!isLanguagePreference(item.language))invalid('Invalid language');
   if(item.region!==undefined&&!isRegionalPreference(item.region))invalid('Invalid region');
   if(item.documentLanguage!==undefined&&!isDocumentLanguagePreference(item.documentLanguage))invalid('Invalid document language preference');
+  if(item.openInTabs!==undefined&&typeof item.openInTabs!=='boolean')invalid('Invalid document window preference');
   if (item.clearRecent !== undefined && typeof item.clearRecent !== 'boolean') invalid('Invalid recent-history option');
   return {
     ...(item.theme === undefined ? {} : { theme: item.theme }),
     ...(item.language === undefined ? {} : { language: item.language }),
     ...(item.region===undefined?{}:{region:item.region}),
     ...(item.documentLanguage===undefined?{}:{documentLanguage:item.documentLanguage}),
+    ...(item.openInTabs===undefined?{}:{openInTabs:item.openInTabs}),
     ...(item.clearRecent === undefined ? {} : { clearRecent: item.clearRecent }),
   };
 }
@@ -126,15 +162,24 @@ export function parseRecoveryId(value: unknown): string {
 /** Only explicitly supplied document path arguments become OS-open requests. */
 export function commandLineFiles(argv: readonly string[], defaultApp: boolean, cwd: string): string[] {
   const result: string[] = [];
-  const allowed = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'oex', 'pdf']);
+
   for (const candidate of argv.slice(defaultApp ? 2 : 1)) {
     if (!candidate || candidate.length > 8192 || candidate.includes('\0') || candidate.startsWith('-')) continue;
     if (!isAbsolute(candidate) && /^[A-Za-z][A-Za-z0-9+.-]*:/.test(candidate)) continue;
-    const extension = candidate.slice(candidate.lastIndexOf('.') + 1).toLowerCase();
-    if (!allowed.has(extension)) continue;
+    if(!isDocumentPath(candidate))continue;
     const path = isAbsolute(candidate) ? candidate : resolve(cwd, candidate);
     if (path.length <= 8192 && !result.includes(path)) result.push(path);
     if (result.length === IPC_MAX_TABS) break;
   }
   return result;
+}
+
+/** Only blank-document requests may create a new window through IPC.
+ * File paths and recovery bytes are resolved by the main process. */
+export function parseNewWindow(value:unknown):{kind:'writer'|'sheets'|'slides';format:'oex'|'docx'|'doc'|'xlsx'|'xls'|'pptx'|'ppt'}{
+ const v=fields(value,['kind','format']);
+ const supported={writer:['oex','doc','docx'],sheets:['oex','xls','xlsx'],slides:['oex','ppt','pptx']} as const;
+ if(v.kind!=='writer'&&v.kind!=='sheets'&&v.kind!=='slides')invalid('Invalid new document kind');
+ if(typeof v.format!=='string'||!(supported[v.kind] as readonly string[]).includes(v.format))invalid('Invalid new document format');
+ return {kind:v.kind,format:v.format as 'oex'|'docx'|'doc'|'xlsx'|'xls'|'pptx'|'ppt'};
 }

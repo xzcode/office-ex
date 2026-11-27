@@ -24,6 +24,18 @@ export function shapeTransform(geometry: Geometry | DeepReadonly<Geometry>): Mat
   const cosine = Math.cos(radians); const sine = Math.sin(radians); const cx = geometry.width / 2; const cy = geometry.height / 2;
   return [cosine, sine, -sine, cosine, geometry.x + cx - cosine * cx + sine * cy, geometry.y + cy - sine * cx - cosine * cy];
 }
+/** Group child coordinate system including scaling, flips and rotation. */
+export function groupChildTransform(group:DeepReadonly<Extract<Shape,{type:'group'}>>):Matrix{
+ const g=group.geometry,c=group.childSpace,fx=group.flipH?-1:1,fy=group.flipV?-1:1,sx=fx*g.width/c.width,sy=fy*g.height/c.height;
+ return multiply(shapeTransform(g),[sx,0,0,sy,(group.flipH?g.width:0)-sx*c.x,(group.flipV?g.height:0)-sy*c.y]);
+}
+export function slideShapeParentTransform(shapes:readonly DeepReadonly<Shape>[],id:string,parent:Matrix=IDENTITY):Matrix|undefined{
+ for(const shape of shapes){
+  if(shape.id===id)return parent;
+  if(shape.type==='group'){const found=slideShapeParentTransform(shape.children,id,multiply(parent,groupChildTransform(shape)));if(found)return found;}
+ }
+ return undefined;
+}
 export interface Viewport { readonly zoom: number; readonly pan: Point; readonly origin: Point; readonly devicePixelRatio: number }
 export function viewportTransform(viewport: Viewport, devicePixels = false): Matrix {
   finite([viewport.zoom, viewport.devicePixelRatio, viewport.pan.x, viewport.pan.y, viewport.origin.x, viewport.origin.y]);
@@ -33,7 +45,8 @@ export function viewportTransform(viewport: Viewport, devicePixels = false): Mat
 }
 export function containsPoint(shape: DeepReadonly<Shape>, point: Point, tolerance = 0): boolean {
   assert(Number.isFinite(tolerance) && tolerance >= 0, 'invalid', 'Invalid hit tolerance');
-  const local = transform(inverse(shapeTransform(shape.geometry)), point); const { width, height } = shape.geometry;
+  let local = transform(inverse(shapeTransform(shape.geometry)), point); const { width, height } = shape.geometry;
+  local={x:shape.flipH?width-local.x:local.x,y:shape.flipV?height-local.y:local.y};
   if (shape.type === 'line') {
     const lengthSquared = width * width + height * height;
     const parameter = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, (local.x * width + local.y * height) / lengthSquared));
@@ -43,6 +56,13 @@ export function containsPoint(shape: DeepReadonly<Shape>, point: Point, toleranc
     const rx = width / 2 + tolerance; const ry = height / 2 + tolerance;
     return rx > 0 && ry > 0 && ((local.x - width / 2) / rx) ** 2 + ((local.y - height / 2) / ry) ** 2 <= 1;
   }
+  if(shape.type==='triangle'||shape.type==='diamond'||shape.type==='parallelogram'){
+    if(width<=0||height<=0)return false;
+    const u=local.x/width,v=local.y/height,eps=tolerance/Math.max(1,Math.min(width,height));
+    if(shape.type==='triangle')return v>=-eps&&v<=1+eps&&Math.abs(u-.5)<=v/2+eps;
+    if(shape.type==='diamond')return Math.abs(u-.5)+Math.abs(v-.5)<=.5+eps;
+    const inset=.25*Math.min(width,height)/width;return v>=-eps&&v<=1+eps&&u>=inset*(1-v)-eps&&u<=1-inset*v+eps;
+  }
   return local.x >= -tolerance && local.y >= -tolerance && local.x <= width + tolerance && local.y <= height + tolerance;
 }
 /** Shapes are in paint order; selection resolves the topmost hit. */
@@ -51,7 +71,7 @@ export function hitTest(shapes: readonly DeepReadonly<Shape>[], point: Point, to
   return undefined;
 }
 
-export interface FontRequest { readonly family: string; readonly size: number; readonly bold: boolean; readonly italic: boolean; readonly direction: 'ltr' | 'rtl' }
+export interface FontRequest { readonly family: string; readonly size: number; readonly bold: boolean; readonly italic: boolean; readonly direction: 'ltr' | 'rtl'; readonly characterSpacing?:number; readonly kerning?:'normal'|'none' }
 export interface TextCluster { readonly start: number; readonly end: number; readonly left: number; readonly right: number }
 export interface FontMeasurement {
   readonly advance: number; readonly ascent: number; readonly descent: number;
@@ -68,7 +88,7 @@ export interface MeasuredText { readonly text: string; readonly request: FontReq
 export function measureText(metrics: FontMetrics, text: string, style: TextStyle, direction: 'ltr' | 'rtl' = 'ltr'): MeasuredText {
   validateTextStyle(style); assert(text.length <= 1_000_000, 'limit', 'Text measurement budget exceeded');
   const boundaries = new Set(graphemeBoundaries(text));
-  const request: FontRequest = { family: style.fontFamily ?? 'sans-serif', size: style.fontSize ?? 152_400, bold: style.bold ?? false, italic: style.italic ?? false, direction };
+  const request: FontRequest = { family: style.fontFamily ?? 'sans-serif', size: style.fontSize ?? 152_400, bold: style.bold ?? false, italic: style.italic ?? false, direction,...(style.characterSpacing!==undefined?{characterSpacing:style.characterSpacing}:{}),...(style.kerningThreshold!==undefined?{kerning:(style.fontSize??152400)>=style.kerningThreshold?'normal' as const:'none' as const}:{}) };
   const measured = metrics.measure(text, request);
   finite([measured.advance, measured.ascent, measured.descent]);
   assert(measured.advance >= 0 && measured.ascent >= 0 && measured.descent >= 0 && typeof measured.actualFamily === 'string' && measured.actualFamily.length > 0, 'invalid', 'Invalid font measurement');
@@ -109,3 +129,9 @@ export class FontMeasurementCache {
   clear(): void { this.#entries.clear(); }
   get size(): number { return this.#entries.size; }
 }
+
+export * from './writer-layout.js';
+
+export * from './writer-pagination.js';
+
+export * from './slides-scene.js';

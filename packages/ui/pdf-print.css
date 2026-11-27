@@ -1,0 +1,10 @@
+/* SPDX-License-Identifier: MIT */
+@page { margin: 0; }
+html,body { margin: 0; padding: 0; background: white; color: #20242c; }
+* { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.office-print-document { margin: 0; padding: 0; }
+.office-print-page { position: relative; overflow: hidden; margin: 0; padding: 0; break-before: auto; break-after: page; break-inside: avoid; background: white; box-sizing: border-box; }
+.office-print-page:last-child { break-after: auto; }
+.office-print-page canvas { display: block; }
+.writer-native-paragraph { font-kerning: normal; }
+.writer-native-measure { contain: layout; }

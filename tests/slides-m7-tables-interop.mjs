@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MIT
+import assert from 'node:assert/strict';
+import {readFile,writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
+import {DocumentSession} from '@office-ex/core';
+import {openSlidesPptx,saveSlidesPptx} from '@office-ex/ooxml';
+import {inspectForEditor,prepareSlidesSave,serializeDraft} from '@office-ex/format-service';
+import {editSlideTableGrid,replaceSlideTable} from '@office-ex/slides';
+const dir=process.argv[2],bytes=await readFile(join(dir,'merged.pptx'));
+const source=openSlidesPptx(bytes,'m7-table','Merged table');
+const inspection=await inspectForEditor(bytes,'merged.pptx','m7-table');
+assert.equal(inspection.report.readOnly,false,inspection.semanticFailure?.detail);
+assert.ok(Buffer.from(saveSlidesPptx(bytes,source.document)).equals(bytes));
+const slide=source.document.slides[0],shape=slide.shapes[0];assert.equal(shape.type,'table');
+assert.deepEqual(shape.table.merges,[{row:0,column:0,rowCount:2,columnCount:3},{row:2,column:1,rowCount:2,columnCount:1}]);
+const s=new DocumentSession(source.document);
+let t=editSlideTableGrid(shape.table,{kind:'insert',axis:'row',index:1});
+t=editSlideTableGrid(t,{kind:'insert',axis:'column',index:4});
+t=editSlideTableGrid(t,{kind:'split',row:3,column:1});
+t.cells[3][2]='Edited';
+t=editSlideTableGrid(t,{kind:'format',range:{row:3,column:2,rowCount:1,columnCount:1},format:{textStyle:{italic:true}}});
+t=editSlideTableGrid(t,{kind:'format',range:{row:3,column:4,rowCount:1,columnCount:1},format:{fill:{kind:'rgba',red:100,green:200,blue:40,alpha:255}}});
+s.execute(replaceSlideTable(s.snapshot(),slide.id,shape.id,t));
+const out=prepareSlidesSave('pptx',serializeDraft(s.snapshot().document),'m7-table',bytes);
+await writeFile(join(dir,'merged-edited.pptx'),out);
+const reopened=openSlidesPptx(out,'m7-table','Merged table').document.slides[0].shapes[0].table;
+assert.deepEqual(reopened.cells,t.cells);assert.deepEqual(reopened.merges,t.merges);assert.deepEqual(reopened.formats,t.formats);
+console.log('Source-backed merged PPTX read/transaction/save/reopen passed');

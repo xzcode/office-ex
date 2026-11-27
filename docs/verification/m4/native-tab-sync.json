@@ -1,0 +1,41 @@
+{
+  "scope": "Real Office EX desktop entry, native file capabilities, isolated PPT/PPTX saves and PDF output; Linux headless is not a physical display/IME/printer or other-platform certificate.",
+  "platform": "linux",
+  "os": "6.6.119-51.5.oc9.x86_64",
+  "arch": "x64",
+  "node": "24.21.0",
+  "cpu": "Intel(R) Xeon(R) CPU E5-26xx v4",
+  "logicalCpus": 2,
+  "memoryBytes": 3833212928,
+  "headless": true,
+  "checks": [
+    "Real desktop boots with sandbox and restricted preload",
+    "Forged native presentation/export capabilities and caller PDF bytes rejected",
+    "Slides desktop edits text, vectors, embedded image, pages and presentation",
+    "Isolated PDF export preserves three pages, Unicode text, source bytes and clean state",
+    "Main-owned verifier saves PPTX and converts an independent PPT tab without changing source",
+    "Legacy PPT reopens, edits, saves in original format and independently reparses",
+    "Legacy PPT converts back to a real PPTX through the shared model",
+    "All 22 native UI locales switch without changing presentation revision or geometry direction",
+    "Native PDF tab loads local worker/fonts, searches text and navigates pages",
+    "Read-only PDF Save As preserves original bytes exactly",
+    "PDF native print invokes a sandboxed child and interactive print settings (physical printer callback stubbed)",
+    "New PDF assets keep external/file fetch blocked and output windows are destroyed"
+  ],
+  "startedAt": "2026-11-25T07:58:24.149Z",
+  "runtime": {
+    "electron": "45.4.1",
+    "chromium": "156.0.8078.100",
+    "sandbox": true,
+    "contextIsolation": true,
+    "nodeIntegration": false,
+    "webSecurity": true,
+    "sandboxDisabled": false
+  },
+  "completedAt": "2026-11-25T07:58:43.983Z",
+  "files": {
+    "pptx": "34ab5b934395b811b372ac1d0f86838ca5b324201072b35250ada41601626826",
+    "ppt": "34b98a817e726ce2759e25eeeedd5a8a64c0928e9dd83d512b0105494a69c112",
+    "pdf": "8ccf95bcbf7b000282eee9a50eff87fa459deb9a4504545c9159a2040a41bc3e"
+  }
+}

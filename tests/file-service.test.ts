@@ -165,3 +165,30 @@ test('FS-01/02: symlinks, hardlinks, directories and oversized sparse sources ar
   const huge = join(directory, 'huge'); await writeFile(huge, ''); await truncate(huge, MAX_FILE_BYTES + 1); await rejectsCode(readLocalFile(huge), 'limit');
   assert.equal(await readFile(path, 'utf8'), 'source');
 });
+
+test('M7.5 multi-chunk streamed identity checks preserve exact hashes and reject late external changes',async t=>{
+ const {createHash}=await import('node:crypto');
+ const directory=await temporary(t),path=join(directory,'large.oex'),authority=new FileAuthority();
+ const payload=new Uint8Array(3*1024*1024+317);for(let i=0;i<payload.length;i++)payload[i]=(i*17+(i>>>17))&255;
+ const token=await authority.authorizeTarget(path,1,'large-file',false);
+ const hash=(b:Uint8Array)=>createHash('sha256').update(b).digest('hex');
+ const first=await authority.commit(token,1,'large-file',payload,{validate});
+ assert.equal(first.identity.sha256,hash(payload));assert.equal(first.identity.size,payload.length);
+ const edited=payload.slice();edited[2*1024*1024+13]^=1;let backed=false;
+ const second=await authority.commit(token,1,'large-file',edited,{validate,backup:async(b,id)=>{assert.equal(hash(b),hash(payload));assert.equal(id.sha256,hash(payload));backed=true;}});
+ assert.ok(backed);assert.equal(second.identity.sha256,hash(edited));
+ assert.equal((await readLocalFile(path)).identity.sha256,hash(edited));
+ const foreign=edited.slice();foreign[foreign.length-1]^=1;
+ await rejectsCode(authority.commit(token,1,'large-file',payload,{validate,backup,fault:async point=>{if(point==='before-commit')await writeFile(path,foreign);}}),'conflict');
+ assert.equal((await readLocalFile(path)).identity.sha256,hash(foreign));await noTemps(directory);
+});
+
+test('M7.5 cross-window open lookup and target ownership preserve a single writable source',async t=>{
+ const directory=await temporary(t),path=join(directory,'source.docx');await writeFile(path,'data');
+ const authority=new FileAuthority(),source=await authority.authorizeOpen(path,1,'first');
+ const duplicate=await authority.findOpenSource(path);assert.equal(duplicate?.windowId,1);assert.equal(duplicate?.token,source.token);
+ await rejectsCode(authority.authorizeTarget(path,2,'second',true),'conflict');
+ assert.throws(()=>authority.get(source.token,2,'first'),{code:'unsafe'});
+ await writeFile(path,'changed externally');await rejectsCode(authority.findOpenSource(path),'conflict');
+ authority.revokeWindow(1);assert.equal(authority.hasToken(source.token),false);assert.equal(await authority.findOpenSource(path),undefined);
+});

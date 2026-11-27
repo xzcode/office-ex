@@ -125,7 +125,7 @@ test('SHT-01/MOD-02: sparse typed values retain empty string, zero and formula s
   if (snapshot.document.kind === 'sheets') assert.equal(Object.keys(snapshot.document.sheets[0]!.cells).length, 3);
   assert.throws(() => assertCellAddress(65_537, 1, 'xls'), code('invalid'));
   assert.throws(() => assertCellAddress(1, 257, 'xls'), code('invalid'));
-  assert.throws(() => renameSheet(session.snapshot(), 'sheet-1', 'renamed'), code('unsupported'));
+  session.execute(renameSheet(session.snapshot(), 'sheet-1', 'renamed')); assert.equal((session.snapshot().document as typeof snapshot.document).kind, 'sheets'); session.undo();
   session.execute(setCells(session.snapshot(), 'sheet-1', [{ row: 2, column: 1, cell: null }]));
   session.undo(); session.undo(); assert.equal(session.dirty, false);
 });

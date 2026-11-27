@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "platform": "linux",
+  "arch": "x64",
+  "sandbox": true,
+  "checks": [
+    "Double-click real PPTX table, edit cell and preserve all other source parts",
+    "Real insert dialog creates native rectangular table",
+    "Both native tables reopen editable with no renderer errors"
+  ],
+  "status": "passed"
+}

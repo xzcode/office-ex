@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "scope": "Locally generated archive extraction and actual packaged Electron launch; not installer, publisher signature, physical OS or reference Office acceptance.",
+  "sourceRevision": "877d72e97d20afcec4fac8507f6da4e5e40cf551",
+  "sourceClean": false,
+  "platform": "linux",
+  "arch": "x64",
+  "version": "0.1.0-dev.1",
+  "archive": "Office-EX-0.1.0-dev.1-linux-x64.tar.gz",
+  "archiveSha256": "240f6540ab7b43bdb1d4eb5931ff3849f9ba96b501ff93b5bc0be2cc9b494d80",
+  "checks": [
+    "Archive checksum and every packaged file/link verified",
+    "Actual packaged executable launches with sandbox, restricted preload and disabled DevTools",
+    "Product branding, native icon assets, real version, About and native-format home verified",
+    "Packaged create, native save, parse and reopen DOC",
+    "Packaged create, native save, parse and reopen DOCX",
+    "Packaged create, native save, parse and reopen XLS",
+    "Packaged create, native save, parse and reopen XLSX",
+    "Packaged create, native save, parse and reopen PPT",
+    "Packaged create, native save, parse and reopen PPTX",
+    "Packaged renderer blocks external requests and reports no page errors",
+    "Packaged app exits normally"
+  ],
+  "startedAt": "2026-11-25T12:42:31.103Z",
+  "startupMs": 1347.1882910000004,
+  "runtime": {
+    "packaged": true,
+    "name": "Office EX",
+    "version": "0.1.0-dev.1",
+    "electron": "45.4.1",
+    "chromium": "156.0.8078.100",
+    "sandbox": true,
+    "contextIsolation": true,
+    "nodeIntegration": false,
+    "webSecurity": true,
+    "devToolsOpened": false,
+    "noSandbox": false
+  },
+  "completedAt": "2026-11-25T12:42:47.682Z"
+}

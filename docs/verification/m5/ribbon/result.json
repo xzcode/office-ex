@@ -1,0 +1,18 @@
+{
+  "platform": "linux",
+  "arch": "x64",
+  "checks": [
+    "Writer default direct paper editing, formatting and paragraph layout commands save to DOCX",
+    "Writer alternate text mode and page view roundtrip",
+    "Sheets native formula bar, cell management ribbon and workbook save",
+    "Slides insert, arrange, contextual inspector and real PPTX save"
+  ],
+  "screenshots": [
+    "writer.png",
+    "sheets.png",
+    "slides.png"
+  ],
+  "startedAt": "2026-11-26T03:12:22.779Z",
+  "status": "passed",
+  "completedAt": "2026-11-26T03:12:35.364Z"
+}

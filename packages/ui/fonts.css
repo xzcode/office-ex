@@ -1,0 +1,12 @@
+/* SPDX-License-Identifier: MIT */
+/* Font files are separately licensed SIL OFL 1.1; see assets/fonts/manifest.json. */
+@font-face { font-family: "Noto Sans"; src: url("./fonts/NotoSans-Regular.ttf"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Noto Serif"; src: url("./fonts/NotoSerif-Regular.ttf"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Noto Sans Mono"; src: url("./fonts/NotoSansMono-Regular.ttf"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Noto Naskh Arabic"; src: url("./fonts/NotoNaskhArabic-Regular.ttf"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Noto Sans Hebrew"; src: url("./fonts/NotoSansHebrew-Regular.ttf"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Noto Sans Devanagari"; src: url("./fonts/NotoSansDevanagari-Regular.ttf"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Noto Sans Thai"; src: url("./fonts/NotoSansThai-Regular.ttf"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Noto Sans CJK SC"; src: url("./fonts/NotoSansCJKsc-Regular.otf"); font-weight: 400; font-style: normal; font-display: block; }
+:root { --office-font-sans: "Noto Sans", "Noto Naskh Arabic", "Noto Sans Hebrew", "Noto Sans Devanagari", "Noto Sans Thai", "Noto Sans CJK SC"; }
+body { font-family: var(--office-font-sans); }

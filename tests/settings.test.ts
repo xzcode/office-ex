@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { OfficeError } from '@office-ex/contracts';
 import { SettingsStore } from '../apps/desktop/src/settings.js';
 
-const defaults = { version: 2, theme: 'system', language: 'system', region: 'system', documentLanguage: 'system', recent: [] };
+const defaults = { version: 2, theme: 'system', language: 'system', region: 'system', documentLanguage: 'system', openInTabs:false, recent: [] };
 const fails = (code: string) => (error: unknown): boolean => error instanceof OfficeError && error.code === code;
 async function directory(t: TestContext): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), 'office-ex-settings-'));
@@ -86,7 +86,9 @@ test('Recent-file capabilities withhold paths and return defensive state copies'
   await store.addRecent(source, 'private.docx');
   const copy = store.value(), item = copy.recent[0]!;
   assert.equal(store.resolveRecent(item.id), source);
-  assert.deepEqual(store.publicValue().recent, [{ id: item.id, name: 'private.docx' }]);
+  assert.ok(Number.isSafeInteger(item.lastUsedAt));
+  assert.deepEqual(store.publicValue().recent, [{ id: item.id, name: 'private.docx', lastUsedAt:item.lastUsedAt }]);
+  assert.equal(Object.hasOwn(store.publicValue().recent[0]!,'path'),false);
   copy.recent[0]!.path = '/changed'; copy.theme = 'dark';
   const publicCopy = store.publicValue(); publicCopy.recent[0]!.name = 'changed';
   assert.equal(store.resolveRecent(item.id), source);
@@ -113,6 +115,12 @@ test('I18N settings v1 migration retains theme and recents and persists v2 on ne
   assert.deepEqual(await store.load(),{...defaults,theme:'dark',language:'en-US',recent});
   await store.update({region:'de-DE',documentLanguage:'ja-JP',language:'zh-TW'});
   assert.deepEqual(await new SettingsStore(path).load(),{...defaults,theme:'dark',language:'zh-TW',region:'de-DE',documentLanguage:'ja-JP',recent});
-  await assert.rejects(store.update({language:'ar'}),fails('invalid')); // Registry target, not a complete UI catalog.
+  await store.update({language:'ar'}); assert.equal(store.value().language,'ar'); // Candidate RTL catalog now available.
   await assert.rejects(store.update({region:'not-a-locale'}),fails('invalid'));
+});
+
+test('M7.5 missing window preference migrates to independent windows; tab mode is an explicit persisted choice',async t=>{
+ const path=await directory(t),{openInTabs,...old}=defaults;await writeFile(join(path,'settings.json'),JSON.stringify(old));
+ const store=new SettingsStore(path);assert.equal((await store.load()).openInTabs,false);
+ await store.update({openInTabs:true});assert.equal((await new SettingsStore(path).load()).openInTabs,true);
 });

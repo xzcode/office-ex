@@ -17,3 +17,7 @@ The JavaScript bundler emits external legal-comment files. Those files must rema
 No third-party font, icon set, image library, Office template or user document is bundled by M1. System fonts are requested from the host operating system; their presence and redistribution rights are not implied. Adding or embedding font or media files requires a separate asset review.
 
 Python compatibility readers and fixture generators are test-only. They are installed through `tests/requirements.txt`, are not imported by the application, and are not shipped as a production Office engine.
+
+## M4 PDF and font resources
+
+PDF.js 6.5.438 (Apache-2.0) is used for local PDF parsing and rendering only; see `packages/pdf/README.md` for the guarded distribution-worker adaptation. Its notices and bundled resource notices are included in `notices/`. The reviewed unmodified Noto assets are SIL OFL 1.1, not MIT; see `assets/fonts/manifest.json` and both upstream copyright notices. Fonts are restored from fixed sources during build setup and included locally at runtime.

@@ -32,3 +32,16 @@ export function insertBlocks(snapshot: DocumentSnapshot, sectionId: string, inde
   assert(section >= 0, 'invalid', 'Section does not exist');
   return patchCommand(snapshot, 'WRT-03', [{ op: 'splice', path: ['sections', section, 'blocks'], index, deleteCount: 0, items: blocks }]);
 }
+
+export * from './paragraphs.js';
+
+export * from './tables.js';
+
+export * from './images.js';
+export * from './page.js';
+
+export * from './ranges.js';
+
+export * from './clipboard.js';
+
+export * from './numbering.js';

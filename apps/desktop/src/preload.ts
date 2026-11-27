@@ -1,8 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DesktopBridge, MenuAction, OpenFileResult } from '@office-ex/ui';
 const api: DesktopBridge = {
+  exportPdf: request => ipcRenderer.invoke('office:export-pdf',request),
+  print: request => ipcRenderer.invoke('office:print',request),
   initialize: () => ipcRenderer.invoke('office:initialize'),
+  ready:()=>ipcRenderer.invoke('office:ready'),
   openFile: () => ipcRenderer.invoke('office:open'),
+  newWindow: request=>ipcRenderer.invoke('office:new-window',request),
+  restoreWindow: id=>ipcRenderer.invoke('office:restore-window',id),
+  showHome: ()=>ipcRenderer.invoke('office:show-home'),
+  onSettings: callback=>{const handler=(_event:Electron.IpcRendererEvent,value:Parameters<typeof callback>[0])=>callback(value);ipcRenderer.on('office:settings-changed',handler);return ()=>ipcRenderer.removeListener('office:settings-changed',handler);},
   openRecent: id => ipcRenderer.invoke('office:recent',id),
   openDroppedFile: async file => {
     // Electron resolves a native File capability, never a renderer-supplied path property.
@@ -12,11 +19,19 @@ const api: DesktopBridge = {
     return ipcRenderer.invoke('office:drop',path);
   },
   saveDraft: request => ipcRenderer.invoke('office:save-draft',request),
+  saveDocx: request => ipcRenderer.invoke('office:save-docx',request),
+  saveDoc: request => ipcRenderer.invoke('office:save-doc',request),
+  saveXlsx: request => ipcRenderer.invoke('office:save-xlsx',request),
+  saveXls: request => ipcRenderer.invoke('office:save-xls',request),
+  savePptx: request => ipcRenderer.invoke('office:save-pptx',request),
+  savePpt: request => ipcRenderer.invoke('office:save-ppt',request),
+  saveCompatible: request=>ipcRenderer.invoke('office:save-compatible',request),
   saveCopy: request => ipcRenderer.invoke('office:save-copy',request),
   updateTabs: states => ipcRenderer.invoke('office:tabs',states),
   confirmClose: id => ipcRenderer.invoke('office:confirm-close',id),
   releaseDocument: (id,discard) => ipcRenderer.invoke('office:release',id,discard),
   finishClose: () => ipcRenderer.invoke('office:finish-close'),
+  cancelWindowClose: () => ipcRenderer.invoke('office:cancel-window-close'),
   updateSettings: patch => ipcRenderer.invoke('office:settings',patch),
   recover: id => ipcRenderer.invoke('office:recover',id),
   discardRecovery: id => ipcRenderer.invoke('office:discard-recovery',id),

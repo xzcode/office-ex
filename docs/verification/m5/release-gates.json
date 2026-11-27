@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "gates": [
+    {
+      "id": "six-format-reference-office",
+      "status": "blocked",
+      "reason": "No reference Microsoft Word/Excel/PowerPoint environment with the required six-format corpus and native GUI equivalence."
+    },
+    {
+      "id": "legacy-doc",
+      "status": "open",
+      "reason": "Bounded native DOC adapter has independent interop but lacks reference Word and broader Office 97–2003 acceptance."
+    },
+    {
+      "id": "legacy-xls",
+      "status": "open",
+      "reason": "Bounded BIFF8 native adapter lacks reference Excel formula, legacy fixture breadth and target-conversion acceptance."
+    },
+    {
+      "id": "legacy-ppt",
+      "status": "open",
+      "reason": "Bounded legacy PPT semantic profile lacks reference PowerPoint playback and broader legacy acceptance."
+    },
+    {
+      "id": "native-installation",
+      "status": "open",
+      "reason": "Three-platform preview lifecycle verified for 877d72e; rebuild and reverify the exact future release candidate including native branding.",
+      "lastVerified": {
+        "sourceRevision": "877d72e97d20afcec4fac8507f6da4e5e40cf551",
+        "evidence": [
+          "https://github.com/xzcode/office-ex/actions/runs/45615295882"
+        ],
+        "scope": "Development preview installer lifecycle on disposable Windows x64, macOS ARM64 and Linux x64 runners"
+      }
+    },
+    {
+      "id": "publisher-trust",
+      "status": "open",
+      "reason": "Preview unsigned or ad-hoc only; publisher trust/signature/notarization and distribution policy are not certified."
+    },
+    {
+      "id": "performance",
+      "status": "open",
+      "reason": "QA-05 full cold/warm launch, document loads, interactions and peak total RSS measurements remain incomplete; earlier Sheets scroll p95 missed the target."
+    },
+    {
+      "id": "locale-human-review",
+      "status": "blocked",
+      "reason": "22 candidate catalogs exist but complete human terminology and linguistic quality review has not been performed."
+    },
+    {
+      "id": "native-ime-and-print",
+      "status": "open",
+      "reason": "Scripted composition and print callbacks are not physical cross-platform IME and printer acceptance."
+    }
+  ]
+}

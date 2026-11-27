@@ -1,0 +1,101 @@
+import {revealControl} from './ribbon-test-controls.mjs';
+/** Test-only headless grid exercise; native Electron/security acceptance is separate. */
+import {chromium} from 'playwright-core';
+import {createServer} from 'node:http';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {resolve,join} from 'node:path';
+import {cpus,totalmem,release} from 'node:os';
+import {createHash} from 'node:crypto';
+import assert from 'node:assert/strict';
+const root=resolve(process.env.OFFICE_EX_BROWSER_FILES??'.work/m3-browser');
+const output=resolve(process.env.OFFICE_EX_BROWSER_OUTPUT??'out/sheets-browser');await mkdir(output,{recursive:true});
+const server=createServer(async(req,res)=>{try{if(!['/','/entry.js','/sheets-recalc-worker.js','/styles.css'].includes(req.url)){res.writeHead(404);res.end();return;}const html='<!doctype html><html lang="zh-CN"><meta charset="utf-8"><link rel="stylesheet" href="/styles.css"><style>body{padding:20px}#test-root{max-width:1200px;margin:auto}</style><section id="test-root"></section><script type="module" src="/entry.js"></script></html>';res.setHeader('Content-Type',req.url==='/'?'text/html':req.url.endsWith('.css')?'text/css':'text/javascript');res.end(req.url==='/'?html:await readFile(join(root,req.url.slice(1))));}catch(error){res.writeHead(500);res.end(String(error));}});
+await new Promise(r=>server.listen(0,'127.0.0.1',r));
+let browser,page;const failures=[];const evidence={version:2,scope:'Headless UI functional and viewport measurement; not native security, CJK font or Office compatibility certification',platform:process.platform,os:release(),cpu:cpus()[0]?.model,logicalCpus:cpus().length,memoryBytes:totalmem(),node:process.versions.node,sourceFiles:Object.fromEntries(await Promise.all(['entry.js','sheets-recalc-worker.js','styles.css'].map(async name=>[name,createHash('sha256').update(await readFile(join(root,name))).digest('hex')]))),checks:[],performance:{},startedAt:new Date().toISOString()};
+try {
+  browser=await chromium.launch({...(process.env.OFFICE_EX_BROWSER?{executablePath:process.env.OFFICE_EX_BROWSER}:{}),headless:true,chromiumSandbox:true});
+  evidence.chromium=browser.version();page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>failures.push(String(e)));
+  await page.goto('http://127.0.0.1:'+server.address().port);await page.waitForSelector('#sheets-workspace');
+  const cell=address=>page.locator(`[data-address="${address}"]`);
+  const select=async(address)=>{await page.locator('#sheets-address').fill(address);await page.locator('#sheets-address').press('Enter');await page.locator('#sheets-scroll').focus();};
+  const enter=async(address,text)=>{await select(address);await page.locator('#sheets-formula').fill(text);await page.locator('#sheets-formula').press('Enter');await page.waitForFunction(({address,text})=>{const match=/([A-Z]+)([0-9]+)/.exec(address);const col=[...match[1]].reduce((n,c)=>n*26+c.charCodeAt(0)-64,0);const c=window.testSheets.snapshot().document.sheets.find(s=>s.id===document.querySelector('[role=tab][aria-selected=true]')?.dataset.sheetId)?.cells[match[2]+':'+col];return c&&(c.value.source===text||String(c.value.value)===text||text==='25%'&&c.value.value===.25);},{address,text});};
+  const addressInput=page.locator('#sheets-address');
+  await addressInput.fill('B1');
+  await page.evaluate(async()=>{document.querySelector('#sheets-scroll').dispatchEvent(new Event('scroll'));await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
+  assert.equal(await addressInput.inputValue(),'B1','Grid repaint must preserve an uncommitted address');
+  await addressInput.press('Enter');
+  await page.locator('#sheets-formula').fill('12');await page.locator('#sheets-formula').press('Enter');
+  await page.waitForFunction(()=>window.testSheets.snapshot().document.sheets[0].cells['1:2']?.value.value===12);
+  assert.equal(await cell('A1').textContent(),'');
+  evidence.checks.push('Address survives a scheduled grid repaint; subsequent input commits to the intended cell');
+  await page.locator('#sheets-formula').fill('21');
+  await addressInput.fill('D2');await addressInput.press('Enter');
+  await page.locator('#sheets-formula').fill('=B1*2');await page.locator('#sheets-formula').press('Enter');
+  await page.waitForFunction(()=>window.testSheets.snapshot().document.sheets[0].cells['2:4']?.value.source==='=B1*2');
+  assert.equal(await page.evaluate(()=>window.testSheets.snapshot().document.sheets[0].cells['1:2'].value.value),21);
+  await page.waitForFunction(()=>document.querySelector('[data-address=D2]')?.textContent==='42');
+  evidence.checks.push('Navigating from a pending formula commits it and selects the requested address after remount');
+  await page.evaluate(()=>window.testSheets.load(window.testSheets.fixture(0)));
+  if(process.env.OFFICE_EX_ADDRESS_ONLY!=='1'){
+  await enter('A1','12');await enter('B1','8');await enter('C1','=SUM(A1:B1)');await page.waitForFunction(()=>document.querySelector('[data-address=C1]')?.textContent==='20');
+  await page.evaluate(()=>window.testSheets.undo());await page.waitForFunction(()=>document.querySelector('[data-address=C1]')?.textContent==='');await page.evaluate(()=>window.testSheets.redo());await page.waitForFunction(()=>document.querySelector('[data-address=C1]')?.textContent==='20');evidence.checks.push('Real formula bar and grid calculate 20; one-step undo/redo restores source and derived result');
+  await select('A2');await page.locator('#sheets-scroll').evaluate(el=>{const data=new DataTransfer();data.setData('text/plain','中文\tTRUE\t25%\n"line\nwrap"\t2\t=ROUND(B1/3,2)');el.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,clipboardData:data}));});
+  await page.waitForFunction(()=>window.testSheets.snapshot().document.sheets[0].cells['3:3']?.value.source==='=ROUND(B1/3,2)');await page.waitForFunction(()=>document.querySelector('[data-address=C3]')?.textContent==='2.67');assert.equal(await cell('C2').textContent(),'25.00%');evidence.checks.push('TSV paste preserves Unicode, quoted newlines, boolean, percentage and formula in one transaction');
+  await select('A5:C5');await (await revealControl(page,'#sheet-merge')).click();assert.equal(await cell('A5').getAttribute('aria-colspan'),'3');await (await revealControl(page,'#sheet-unmerge')).click();assert.equal(await cell('A5').getAttribute('aria-colspan'),null);
+  await select('A1');await (await revealControl(page,'#sheet-bold')).click();await (await revealControl(page,'#sheet-fill-color')).fill('#ffcc44');await page.locator('#sheet-fill-color').dispatchEvent('change');await page.waitForFunction(()=>{const el=document.querySelector('[data-address=A1]');return el&&getComputedStyle(el).fontWeight==='700';});evidence.checks.push('Merge/unmerge and selected cell formatting update the model and projected grid');
+  await (await revealControl(page,'#sheet-add')).click();await enter('A1','=Sheet1!$A$1+3');await page.waitForFunction(()=>document.querySelector('[data-address=A1]')?.textContent==='15');
+  await (await revealControl(page,'#sheet-name')).fill('Totals 中文');await (await revealControl(page,'#sheet-rename')).click();assert.equal(await page.locator('.sheet-tabs [role=tab][aria-selected=true]').textContent(),'Totals 中文');evidence.checks.push('Add and rename sheets; cross-sheet formula recalculates');
+  await select('B2');await (await revealControl(page,'#sheet-freeze')).click();assert.equal(await cell('A1').evaluate(el=>el.classList.contains('frozen')),true);
+  await page.locator('#sheets-scroll').evaluate(el=>{el.scrollTop=12;el.scrollLeft=52;});await page.waitForFunction(()=>{const b=document.querySelector('#sheets-scroll').getBoundingClientRect();return document.elementFromPoint(b.x+121,b.y+44)?.closest('[data-address]')?.getAttribute('data-address')==='A1';});await page.locator('#sheets-scroll').evaluate(el=>{el.scrollTop=el.scrollLeft=0;});
+  await (await revealControl(page,'#sheet-rtl')).click();assert.equal(await page.locator('#sheets-scroll').getAttribute('data-rtl'),'true');evidence.checks.push('Freeze panes and RTL viewport retain workbook coordinates');
+  await page.screenshot({path:join(output,'sheets-grid.png')});
+  await page.evaluate(()=>window.testSheets.load(window.testSheets.fixture(1)));
+  await enter('A1','=SUM(1,2)');await enter('B1','1234.5');await select('C1');await page.locator('#sheets-formula').fill("'00123");await page.locator('#sheets-formula').press('Enter');
+  await page.evaluate(()=>window.testSheets.setRegion('de-DE'));await (await revealControl(page,'#sheet-formula-mode')).selectOption('regional');
+  const unchanged=await page.evaluate(()=>JSON.stringify(window.testSheets.snapshot()));
+  for(const [address,value]of [['A1','=SUMME(1;2)'],['B1','1234,5'],['C1',"'00123"]]){await select(address);await page.locator('#sheets-scroll').press('F2');assert.equal(await page.locator('#sheets-cell-editor').inputValue(),value);await page.locator('#sheets-cell-editor').press('Enter');}
+  assert.equal(await page.evaluate(()=>JSON.stringify(window.testSheets.snapshot())),unchanged);
+  await select('A1');await page.locator('#sheets-formula').fill('=SUMME(1,5;2)');await page.locator('#sheets-formula').press('Enter');await page.waitForFunction(()=>document.querySelector('[data-address=A1]')?.textContent==='3,5');
+  evidence.checks.push('Regional F2/Enter preserves unchanged formula, numeric value and numeric-looking text; edited German formula canonicalizes and calculates 3.5');
+  await select('D1');const beforeInvalid=await page.evaluate(()=>JSON.stringify(window.testSheets.snapshot()));await page.locator('#sheets-formula').fill('=SUM(');await (await revealControl(page,'#sheet-bold')).click();
+  assert.equal(await page.evaluate(()=>JSON.stringify(window.testSheets.snapshot())),beforeInvalid);assert.equal(await page.locator('#sheets-formula').inputValue(),'=SUM(');assert.equal(await page.evaluate(()=>document.activeElement.id),'sheets-formula');await page.locator('#sheets-formula').press('Escape');
+  assert.ok(await page.evaluate(()=>window.testSheets.errors.length)>0);await page.evaluate(()=>window.testSheets.errors.length=0);
+  await select('E1');await page.evaluate(()=>window.testSheets.reject(true));await page.locator('#sheets-scroll').press('F2');await page.locator('#sheets-cell-editor').fill('99');await page.locator('#sheets-cell-editor').press('Enter');assert.equal(await page.locator('#sheets-cell-editor').isVisible(),true);assert.equal(await page.locator('#sheets-cell-editor').inputValue(),'99');assert.equal(await page.evaluate(()=>JSON.stringify(window.testSheets.snapshot())),beforeInvalid);await page.evaluate(()=>window.testSheets.reject(false));await page.locator('#sheets-cell-editor').press('Enter');
+  evidence.checks.push('Invalid formula blocks toolbar mutations; rejected commands retain editable input and do not change history');
+  await page.evaluate(()=>window.testSheets.opaquePreview());await page.waitForFunction(()=>document.querySelector('[data-address=A1]')?.textContent==='3'&&document.querySelector('[data-address=B1]')?.textContent==='4');await select('A1:B1');
+  const copied=await page.locator('#sheets-scroll').evaluate(el=>{const data=new DataTransfer();el.dispatchEvent(new ClipboardEvent('copy',{bubbles:true,clipboardData:data}));return data.getData('text/plain');});assert.equal(copied,'3\t4');assert.equal(await cell('A1').getAttribute('data-calculation-state'),'unsupported');assert.equal(await page.evaluate(()=>window.testSheets.snapshot().document.sheets[0].cells['1:1']),undefined);evidence.checks.push('Opaque BIFF preview copies cached values 3/4 without inserting a fabricated source cell or recalculating dependents');
+  // Recycled cells must never retain formatting, accessibility spans or
+  // selection state belonging to the previously visible source cell.
+  await page.evaluate(()=>{
+    const model=window.testSheets.fixture(0),sheet=model.sheets[0];
+    for(let row=1;row<=30;row++)for(let column=1;column<=16;column++)sheet.cells[row+':'+column]={value:{kind:'number',value:row*100+column},style:{fontFamily:'Arial',bold:true,italic:true,underline:true,fill:{kind:'rgba',red:255,green:204,blue:68,alpha:255},wrapText:true,alignment:'center',border:{width:9525,color:{kind:'rgba',red:1,green:2,blue:3,alpha:255}}}};
+    sheet.merges=[{row:1,column:1,rowCount:2,columnCount:2}];for(const key of ['1:2','2:1','2:2'])delete sheet.cells[key];
+    sheet.cells['5000:1']={value:{kind:'number',value:5000}};
+    window.testSheets.load(model);
+  });
+  await page.waitForSelector('[data-address=A1][aria-rowspan="2"]');
+  await page.evaluate(()=>{window.previousGridNodes=Array.from(document.querySelectorAll('[role=gridcell]'));});
+  await select('A5000');await page.waitForFunction(()=>document.querySelector('[data-address=A5000]')?.textContent==='5000');
+  const recycled=await page.evaluate(()=>{
+    const nodes=Array.from(document.querySelectorAll('[role=gridcell]')),reused=nodes.filter(node=>window.previousGridNodes.includes(node));
+    return {count:nodes.length,reused:reused.length,stale:nodes.filter(node=>node.hasAttribute('aria-rowspan')||node.hasAttribute('aria-colspan')||node.style.backgroundColor||node.style.border||node.style.whiteSpace||node.style.overflowWrap||node.style.textAlign||getComputedStyle(node).fontWeight==='700'||node.classList.contains('frozen')).length,unique:new Set(nodes.map(node=>node.id)).size,active:document.querySelector('#sheets-scroll').getAttribute('aria-activedescendant'),layerHeight:document.querySelector('.sheets-cell-layer').clientHeight,viewportHeight:document.querySelector('#sheets-scroll').clientHeight};
+  });
+  assert.ok(recycled.reused>0,JSON.stringify(recycled));assert.equal(recycled.stale,0);assert.equal(recycled.unique,recycled.count);assert.equal(recycled.active,'sheet-cell-5000-1');assert.equal(recycled.layerHeight,recycled.viewportHeight);
+  evidence.checks.push('Viewport node recycling preserves identity bounds and clears old merged, styled and accessibility state');
+  await page.evaluate(()=>window.testSheets.setRegion('en-US'));
+  const times=[];
+  for(let i=0;i<5;i++){
+    const timing=await page.evaluate(async()=>{const model=window.testSheets.fixture(100000);const start=performance.now();window.testSheets.load(model);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return{ms:performance.now()-start,cells:document.querySelectorAll('[role=gridcell]').length};});times.push(timing.ms);assert.ok(timing.cells<1600,JSON.stringify(timing));
+  }
+  evidence.performance['100k-model-first-grid-ms']={samples:times,median:[...times].sort((a,b)=>a-b)[2],max:Math.max(...times)};
+  await page.waitForFunction(()=>document.querySelector('#sheets-workspace').dataset.calculating==='false');
+  const scrollTimes=await page.evaluate(async()=>{const list=[];for(let i=0;i<30;i++){const start=performance.now();document.querySelector('#sheets-scroll').scrollTop=1000+i*777;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));list.push(performance.now()-start);}return list;});
+  evidence.performance.scrollTwoAnimationFrameWait={description:'Retained original harness metric: waits two requestAnimationFrame callbacks per scroll; this is not a single frame interval.',samples:scrollTimes,p95:[...scrollTimes].sort((a,b)=>a-b)[Math.floor(scrollTimes.length*.95)],max:Math.max(...scrollTimes)};
+  const frames=await page.evaluate(async()=>{const samples=[];let previous;for(let i=0;i<130;i++){const now=await new Promise(r=>requestAnimationFrame(r));if(i>=10)samples.push(now-previous);previous=now;document.querySelector('#sheets-scroll').scrollTop=1000+i*777;}return samples;});
+  evidence.performance.scrollFrameIntervals={description:'120 consecutive requestAnimationFrame intervals after 10 warm-up frames, scrolling 777 CSS px every frame; includes main-thread work and browser rendering scheduling.',samples:frames,p95:[...frames].sort((a,b)=>a-b)[Math.floor(frames.length*.95)],max:Math.max(...frames)};
+  const latency=await page.evaluate(async()=>{const samples=[],grid=document.querySelector('#sheets-scroll');for(let i=0;i<30;i++){await new Promise(r=>requestAnimationFrame(r));const start=performance.now();await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{observer.disconnect();reject(new Error('Viewport projection timeout'));},2000);const observer=new MutationObserver(()=>{observer.disconnect();clearTimeout(timer);resolve();});observer.observe(grid.querySelector('.sheets-cell-layer'),{childList:true,subtree:true,attributes:true});grid.scrollTop=200000+i*777;});samples.push(performance.now()-start);}return samples;});
+  evidence.performance.scrollToDomUpdate={description:'Scroll assignment to MutationObserver delivery after the next viewport projection; excludes compositor presentation.',samples:latency,p95:[...latency].sort((a,b)=>a-b)[Math.floor(latency.length*.95)],max:Math.max(...latency)};
+  await select('J10000');assert.equal(await cell('J10000').textContent(),'100000');assert.ok(await page.locator('[role=gridcell]').count()<1600);evidence.checks.push('100,000 nonempty cells, bounded DOM viewport, scroll and jump to final source cell');
+  }
+  const errors=await page.evaluate(()=>window.testSheets.errors);assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);evidence.completedAt=new Date().toISOString();console.log(JSON.stringify(evidence,null,2));
+} catch(error) {evidence.failure=String(error);evidence.browserErrors=failures;if(page)await page.screenshot({path:join(output,'failure.png')}).catch(()=>{});throw error;} finally {await writeFile(join(output,'result.json'),JSON.stringify(evidence,null,2)+'\n');await browser?.close();await new Promise(r=>server.close(r));}

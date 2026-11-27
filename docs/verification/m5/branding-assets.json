@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "mark": "Office EX geometric monogram",
+  "sizes": [
+    16,
+    24,
+    32,
+    48,
+    64,
+    128,
+    256,
+    512,
+    1024
+  ],
+  "files": [
+    {
+      "name": "office-ex.svg",
+      "bytes": 425,
+      "sha256": "2ce6f8e04ce3c860b1c250f09c45ace819f00cfcd17ce689f3c24b317c17fa7f"
+    },
+    {
+      "name": "office-ex-16.png",
+      "bytes": 216,
+      "sha256": "1d679f48179c46ec44b783d07542411800facc04342cd8c6b53c8bf85a78d6df"
+    },
+    {
+      "name": "office-ex-24.png",
+      "bytes": 305,
+      "sha256": "c10f73e696e6a95b5b4e43c3f3b30e42cbc05fa0edfb52e95fc8b49a0cb82460"
+    },
+    {
+      "name": "office-ex-32.png",
+      "bytes": 379,
+      "sha256": "fc578280e5a2f6dd3c7bebfb62efe22ba71cdaadb3de7ed6a0739cd6cc64cd21"
+    },
+    {
+      "name": "office-ex-48.png",
+      "bytes": 523,
+      "sha256": "1350a699edc0fffceab4dc9d336c943ffc4a685e6f992ec62d9b36953de7dc38"
+    },
+    {
+      "name": "office-ex-64.png",
+      "bytes": 613,
+      "sha256": "d53060b42cdc308bfbcd8f20d7936106184c5559e993d16f8398c2617f4b13e2"
+    },
+    {
+      "name": "office-ex-128.png",
+      "bytes": 1255,
+      "sha256": "bb3ec82fdff279d054de0e1757f34f82feceb6de6576179f3c851872be9b610c"
+    },
+    {
+      "name": "office-ex-256.png",
+      "bytes": 2534,
+      "sha256": "0502bd6572ec34183d87a43d02ccf591f30c9e2aa0a568e3e5b7e9b2e4a5eb38"
+    },
+    {
+      "name": "office-ex-512.png",
+      "bytes": 4448,
+      "sha256": "7ba9e6802b498bf8fc85de9f09b9d973a2bf8c21a01c85f9f9bb1affedc34960"
+    },
+    {
+      "name": "office-ex-1024.png",
+      "bytes": 11944,
+      "sha256": "0fcfbddee963da503181ab5d839cad4dc7568b7393710cd256580589ccb0d144"
+    },
+    {
+      "name": "office-ex.ico",
+      "bytes": 5943,
+      "sha256": "1c976552d034f48ad917558620db48d04941f01ee6dd3c9223d179c63bda547a"
+    },
+    {
+      "name": "office-ex.icns",
+      "bytes": 29459,
+      "sha256": "3753939e2d2fb4457b7df0a0a0f6bb58901b435f302925a1e6c1d7a3ab81e1b7"
+    }
+  ]
+}

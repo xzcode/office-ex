@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: MIT
+import assert from 'node:assert/strict';
+import {readFile,writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
+import {openWriterDocx,saveWriterDocx,openOpc} from '@office-ex/ooxml';
+import {DocumentSession,buildWriterNumberingMarkers} from '@office-ex/core';
+import {replaceParagraphRange,setWriterList,restartWriterList} from '@office-ex/writer';
+import {inspectForEditor} from '@office-ex/format-service';
+const dir=process.argv[2],bytes=await readFile(join(dir,'lists.docx')),source=openWriterDocx(bytes,'external-list','External List');
+const labels=d=>[...buildWriterNumberingMarkers(d).values()].map(m=>m.text);
+assert.deepEqual(labels(source.document),['1.','2.','•','4.','4.1.','4.2.','5.']);
+assert.ok(Buffer.from(saveWriterDocx(source,source.document)).equals(bytes));
+const s=new DocumentSession(source.document,{saved:true}),blocks=source.document.sections[0].blocks;
+s.execute(replaceParagraphRange(s.snapshot(),blocks[0].id,0,5,'Edited','external-edit'));
+const edited=saveWriterDocx(source,s.snapshot().document);
+const originalParts=openOpc(bytes).parts,editedParts=openOpc(edited).parts;
+for(const [name,data]of originalParts)if(name!==source.mainPart)assert.deepEqual(editedParts.get(name),data,name);
+await writeFile(join(dir,'lists-edited.docx'),edited);
+s.execute(restartWriterList(s.snapshot(),blocks[3].id,7));
+const added=saveWriterDocx(source,s.snapshot().document),after=openWriterDocx(added,'external-list','External List');
+assert.deepEqual(labels(after.document),['1.','2.','•','7.','7.1.','7.2.','8.']);
+await writeFile(join(dir,'lists-restarted.docx'),added);
+const protectedBytes=await readFile(join(dir,'protected.docx'));
+assert.equal((await inspectForEditor(protectedBytes,'protected.docx','protected')).report.readOnly,true);
+console.log('Independent default named bullets/numbers, multilevel decimal and start override; exact original copy, source-preserving edit, append-only restart and opaque unsupported format protection passed.');

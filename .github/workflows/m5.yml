@@ -1,0 +1,144 @@
+name: M5 development preview distribution
+on:
+  push:
+    branches: [m5-distribution-20261125]
+    tags: ['v*-dev.*']
+    paths-ignore: ['docs/**', 'README.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: m5-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '24.22.3', cache: npm}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.12.14', cache: pip, cache-dependency-path: tests/requirements.txt}
+      - run: npm ci --ignore-scripts
+      - run: npm run setup:fonts
+      - run: python -m pip install -r tests/requirements.txt
+      - run: sudo apt-get update && sudo apt-get install --no-install-recommends -y antiword
+      - run: npm run check
+        env: {PYTHON: python}
+      - run: npm run test:interop
+      - run: npm run audit:licenses
+      - run: npm run release:readiness
+      - name: Validate exact development preview tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node --input-type=module -e "import {readFileSync} from 'node:fs';import {validatePreviewTag} from './scripts/prepare-preview-release.mjs';validatePreviewTag(process.env.GITHUB_REF_NAME,JSON.parse(readFileSync('package.json','utf8')).version,process.env.GITHUB_SHA)"
+
+  package-preview:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, platform: linux, arch: x64}
+          - {os: windows-2025, platform: win32, arch: x64}
+          - {os: macos-15, platform: darwin, arch: arm64}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '24.22.3', cache: npm}
+      - name: Verify native architecture
+        run: node -e "if(process.platform !== '${{ matrix.platform }}' || process.arch !== '${{ matrix.arch }}') process.exit(1)"
+      - run: npm ci --ignore-scripts
+      - run: npm run setup:fonts
+      - run: npm run setup:desktop
+      - name: Linux desktop runtime and PDF inspection dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libgtk-3-0t64 libnss3 libgbm1 libasound2t64 libxss1 libx11-xcb1 fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core poppler-utils xvfb
+      - name: Find native Windows installer compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $p = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $p)) { throw 'Inno Setup 6 is required on the preview build host.' }
+          "OFFICE_EX_ISCC=$p" >> $env:GITHUB_ENV
+      - run: npm run build
+      - run: npm run package:preview -- --installer
+      - name: Verify extracted Linux app (sandbox remains enabled)
+        if: runner.os == 'Linux'
+        env: {OFFICE_EX_CONFIGURE_TEST_SANDBOX: '1'}
+        run: xvfb-run -a --server-args="-screen 0 1280x900x24" node --import tsx scripts/verify-preview.mjs "$(find out/m5-preview -maxdepth 1 -name '*.manifest.json' -print -quit)"
+      - name: Verify extracted macOS app
+        if: runner.os == 'macOS'
+        run: node --import tsx scripts/verify-preview.mjs "$(find out/m5-preview -maxdepth 1 -name '*.manifest.json' -print -quit)"
+      - name: Verify extracted Windows app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $manifest = (Get-ChildItem out/m5-preview -Filter *.manifest.json | Select-Object -First 1).FullName
+          node --import tsx scripts/verify-preview.mjs "$manifest"
+      - name: Install, launch and remove Linux DEB on disposable runner
+        if: runner.os == 'Linux'
+        env: {OFFICE_EX_INSTALL_TEST: '1'}
+        run: xvfb-run -a --server-args="-screen 0 1280x900x24" node scripts/verify-preview-install.mjs "$(find out/m5-preview -maxdepth 1 -name '*.manifest.json' -print -quit)"
+      - name: Mount, copy, launch and remove macOS DMG app
+        if: runner.os == 'macOS'
+        env: {OFFICE_EX_INSTALL_TEST: '1'}
+        run: node scripts/verify-preview-install.mjs "$(find out/m5-preview -maxdepth 1 -name '*.manifest.json' -print -quit)"
+      - name: Install, launch and uninstall Windows EXE on disposable runner
+        if: runner.os == 'Windows'
+        env: {OFFICE_EX_INSTALL_TEST: '1'}
+        shell: pwsh
+        run: |
+          $manifest = (Get-ChildItem out/m5-preview -Filter *.manifest.json | Select-Object -First 1).FullName
+          node scripts/verify-preview-install.mjs "$manifest"
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        if: success()
+        with:
+          name: office-ex-preview-${{ matrix.platform }}-${{ matrix.arch }}
+          path: out/m5-preview/Office-EX-*
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        if: failure()
+        with:
+          name: office-ex-preview-failure-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            out/m5-preview/*.verification.json
+            out/m5-preview/*.installation.json
+          if-no-files-found: ignore
+
+  assemble-draft-preview:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [verify, package-preview]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '24.22.3'}
+      - name: Fetch only this run's three passed native artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name office-ex-preview-linux-x64 --name office-ex-preview-win32-x64 --name office-ex-preview-darwin-arm64 --dir out/release-input
+      - name: Assemble exact source-correlated preview release
+        run: node scripts/prepare-preview-release.mjs out/release-input out/release-draft
+      - name: Create unpublished prerelease draft (never publish automatically)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$GITHUB_SHA"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "A release already exists for this tag; refusing to overwrite it."
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" out/release-draft/Office-EX-* out/release-draft/SHA256SUMS out/release-draft/preview-release-evidence.json --draft --prerelease --latest=false --verify-tag --target "$GITHUB_SHA" --title "Office EX ${GITHUB_REF_NAME#v} Development Preview" --notes-file out/release-draft/RELEASE-NOTES.md
