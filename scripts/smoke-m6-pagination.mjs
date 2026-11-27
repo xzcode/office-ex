@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 /** Native pagination controls, source-backed DOCX save, and real PDF export. */
 import {revealControl} from './ribbon-test-controls.mjs';
@@ -11,7 +12,7 @@ import {execFileSync} from 'node:child_process';
 import {createDocument} from '@office-ex/core';
 import {writeWriterDocx,openWriterDocx} from '@office-ex/ooxml';
 const work=await mkdtemp(join(tmpdir(),'office-ex-pagination-')),profile=join(work,'profile');
-await mkdir(profile);
+await prepareTabbedProfile(profile);
 const file=join(work,'pagination.docx'),pdf=join(work,'pagination.pdf');
 const model=createDocument('writer','pagination-native');
 model.defaultTextStyle={fontFamily:'Noto Sans',fontSize:127000};

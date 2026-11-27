@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 import {revealControl} from './ribbon-test-controls.mjs';
 // SPDX-License-Identifier: MIT
 /** Real desktop entry/preload/main/isolated verifiers, with test-only native
@@ -14,7 +15,7 @@ import { createDocument } from '@office-ex/core';
 import { openLegacyPpt } from '@office-ex/format-service';
 import { PNG } from '../tests/writer-image-fixture.ts';
 
-const work=await mkdtemp(join(tmpdir(),'office-ex-m4-native-')),profile=join(work,'profile'),output=resolve(process.env.OFFICE_EX_M4_NATIVE_OUTPUT??'out/m4-native');await mkdir(profile);await mkdir(output,{recursive:true});
+const work=await mkdtemp(join(tmpdir(),'office-ex-m4-native-')),profile=join(work,'profile'),output=resolve(process.env.OFFICE_EX_M4_NATIVE_OUTPUT??'out/m4-native');await prepareTabbedProfile(profile);await mkdir(output,{recursive:true});
 const headless=process.env.OFFICE_EX_HEADLESS==='1',evidence={scope:'Real Office EX desktop entry, native file capabilities, isolated PPT/PPTX saves and PDF output; Linux headless is not a physical display/IME/printer or other-platform certificate.',platform:process.platform,os:release(),arch:process.arch,node:process.versions.node,cpu:cpus()[0]?.model,logicalCpus:cpus().length,memoryBytes:totalmem(),headless,checks:[],startedAt:new Date().toISOString()};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex'),record=name=>{evidence.checks.push(name);console.log('PASS '+name);};
 const pngPath=join(work,'image.png');await writeFile(pngPath,PNG);

@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 /** Native desktop: value-only recalculation transport and bounded thumbnails. */
 import {_electron as electron} from 'playwright-core';
@@ -9,7 +10,7 @@ import {join,resolve} from 'node:path';
 import {createDocument} from '@office-ex/core';
 import {writeSheetsXlsx,writeSlidesPptx} from '@office-ex/ooxml';
 import {createCalculationUpdate,setCells} from '@office-ex/sheets';
-const work=await mkdtemp(join(tmpdir(),'office-ex-m7-perf-')),profile=join(work,'profile');await mkdir(profile);
+const work=await mkdtemp(join(tmpdir(),'office-ex-m7-perf-')),profile=join(work,'profile');await prepareTabbedProfile(profile);
 const workbook=join(work,'large.xlsx'),deck=join(work,'large.pptx');
 const d=createDocument('sheets','performance-native'),s=d.sheets[0];
 for(let r=1;r<=2000;r++)s.cells[r+':2']={value:{kind:'number',value:r}};

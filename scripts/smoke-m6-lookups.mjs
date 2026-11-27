@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 /** Real sandboxed desktop: imported cross-sheet lookups, conditional aggregates and native XLSX save. */
 import {_electron as electron} from 'playwright-core';
@@ -7,7 +8,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {openSheetsXlsx,openOpc} from '@office-ex/ooxml';
 const fixtures=resolve(process.argv[2]??'.work/m6-lookup-corpus');
-const work=await mkdtemp(join(tmpdir(),'office-ex-m6-lookup-')),profile=join(work,'profile');await mkdir(profile);
+const work=await mkdtemp(join(tmpdir(),'office-ex-m6-lookup-')),profile=join(work,'profile');await prepareTabbedProfile(profile);
 const file=join(work,'lookup.xlsx');await copyFile(join(fixtures,'m6-lookups.xlsx'),file);
 const original=await readFile(file),checks=[];let app;
 const check=name=>{checks.push(name);console.log('PASS',name);};

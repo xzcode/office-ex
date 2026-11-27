@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 import {revealControl} from './ribbon-test-controls.mjs';
 import {_electron as electron} from 'playwright-core';
 import assert from 'node:assert/strict';
@@ -7,7 +8,7 @@ import {join,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {openSlidesPptx} from '@office-ex/ooxml';
 const fixtures=resolve(process.argv[2]??'.work/m5-hotfix');
-const work=await mkdtemp(join(tmpdir(),'office-ex-preview-'));const profile=join(work,'profile');await mkdir(profile);
+const work=await mkdtemp(join(tmpdir(),'office-ex-preview-'));const profile=join(work,'profile');await prepareTabbedProfile(profile);
 const source=join(work,'extended.xlsx'),copy=join(work,'copy.xlsx');await copyFile(join(fixtures,'extended.xlsx'),source);
 const original=await readFile(source),hash=b=>createHash('sha256').update(b).digest('hex'),checks=[];let app;
 const check=name=>{checks.push(name);console.log('PASS',name);};

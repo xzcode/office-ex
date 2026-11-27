@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 import {revealControl} from './ribbon-test-controls.mjs';
 // SPDX-License-Identifier: MIT
 /** Verify and launch a locally generated trusted development-preview archive.
@@ -51,7 +52,7 @@ try{
  const appDir=process.platform==='darwin'?join(folder,'Contents','Resources','app'):join(folder,'resources','app');
  const appPackage=JSON.parse(await readFile(join(appDir,'package.json'),'utf8'));assert.equal(appPackage.version,manifest.version);
  assert.equal(appPackage.main,'dist/desktop/main.cjs');assert.ok(actual.some(f=>f.path.endsWith('/dist/licenses/THIRD_PARTY_NOTICES.md')));
- await mkdir(profile);
+ await prepareTabbedProfile(profile);
  if(process.platform==='linux'&&process.env.OFFICE_EX_CONFIGURE_TEST_SANDBOX==='1'){
   // CI-only setup in the freshly extracted private directory. No privilege
   // changes to user files or distributed archives.

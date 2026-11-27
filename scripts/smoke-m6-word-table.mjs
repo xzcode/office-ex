@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 /** Focused native regression using independently generated python-docx files.
  * Generate via tests/office_external_compat.py; no production test backdoor. */
@@ -10,7 +11,7 @@ import {join,resolve} from 'node:path';
 import {openWriterDocx,openOpc} from '@office-ex/ooxml';
 const fixtures=resolve(process.argv[2]??'.work/m6-external-final');
 const work=await mkdtemp(join(tmpdir(),'office-ex-m6-native-')),profile=join(work,'profile');
-await mkdir(profile);
+await prepareTabbedProfile(profile);
 const file=join(work,'ordinary-table.docx');await copyFile(join(fixtures,'ordinary-table.docx'),file);
 const before=openOpc(await readFile(file)),checks=[];
 let app;

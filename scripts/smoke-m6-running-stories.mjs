@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 /** Native running-story layout and editing using independently generated DOCX. */
 import {revealControl} from './ribbon-test-controls.mjs';
@@ -9,7 +10,7 @@ import {join,resolve} from 'node:path';
 import {openWriterDocx,openOpc} from '@office-ex/ooxml';
 const fixtures=resolve(process.argv[2]??'.work/m6-running-corpus');
 const work=await mkdtemp(join(tmpdir(),'office-ex-running-')),profile=join(work,'profile');
-await mkdir(profile);
+await prepareTabbedProfile(profile);
 const file=join(work,'running.docx');await copyFile(join(fixtures,'running-stories.docx'),file);
 const before=openOpc(await readFile(file)),checks=[];let app;
 const check=name=>{checks.push(name);console.log('PASS',name);};

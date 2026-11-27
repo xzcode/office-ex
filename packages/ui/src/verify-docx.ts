@@ -14,6 +14,7 @@ window.docxVerification.onJob(value=>{
     else done({id:job.id,ok:false,error:response.error});
   };
   worker.onerror=()=>done({id:job.id,ok:false});
-  worker.postMessage({id:1,type:job.format==='ppt'?'ppt-save':job.format==='pptx'?'pptx-save':job.format==='xls'?'xls-save':job.format==='xlsx'?'xlsx-save':job.format==='doc'?'doc-save':'docx-save',documentId:job.documentId,bytes:job.bytes,sourceBytes:job.sourceBytes});
+  worker.onmessageerror=()=>done({id:job.id,ok:false});
+  try{worker.postMessage({id:1,type:job.format==='ppt'?'ppt-save':job.format==='pptx'?'pptx-save':job.format==='xls'?'xls-save':job.format==='xlsx'?'xlsx-save':job.format==='doc'?'doc-save':'docx-save',documentId:job.documentId,bytes:job.bytes,sourceBytes:job.sourceBytes});}catch{done({id:job.id,ok:false});}
 });
 export {};

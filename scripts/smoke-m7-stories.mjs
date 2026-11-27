@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 /** Native variants/multiple story paragraphs, modal edit, save and PDF readback. */
 import {revealControl} from './ribbon-test-controls.mjs';
@@ -11,7 +12,7 @@ import {execFileSync} from 'node:child_process';
 import {createDocument} from '@office-ex/core';
 import {writeWriterDocx,openWriterDocx} from '@office-ex/ooxml';
 const work=await mkdtemp(join(tmpdir(),'office-ex-m7-stories-')),profile=join(work,'profile');
-await mkdir(profile);const file=join(work,'variants.docx'),pdf=join(work,'variants.pdf');
+await prepareTabbedProfile(profile);const file=join(work,'variants.docx'),pdf=join(work,'variants.pdf');
 const model=createDocument('writer','m7-native');
 model.defaultTextStyle={fontFamily:'Noto Sans',fontSize:127000};model.differentEvenOddPages=true;
 const section=model.sections[0];

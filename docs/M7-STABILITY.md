@@ -55,3 +55,19 @@ M7.3 A baseline `f8f3be70b93b495c508a2fd8fbd6368ee7ee4751` passed [CI 4591860613
 - No new runtime dependencies, version bump, release or master merge. Exact new-source CI required. Large bulk history, full-document validation, worker response size, more complex calculation ranges, long-session heap profiling and reference Office/performance acceptance remain open.
 
 Next: further M7 stability/performance and UX work, then preview release acceptance. 
+
+
+## M7.5 — Desktop feedback and file interoperability (dev.4 candidate)
+
+- Separate native document windows are the default; the home launcher stays independent. Optional tabbed mode persists via `openInTabs`. Existing files are focused rather than opened twice. Window-scoped ownership, close/quit confirmation, recovery and cross-window save collision checks are retained.
+- Fix titlebar flex layout and drag region; disable text selection on ordinary UI chrome while preserving editable inputs, document content and diagnostics. Resizable Writer page navigation and Slides navigation/inspector panels retain widths and collapse state.
+- Register DOC, DOCX, XLS, XLSX, PPT, PPTX, PDF and OEX using Windows application capabilities/Open With, macOS document types/UTI and Linux MIME desktop declarations. Do not override the user's default application. Verify registration and installed handler behavior in native installer CI.
+- Reuse verified OPC inspection results and avoid repeated hashing, validation and source-backed output parsing. Transfer worker-owned bytes and perform identity-only file scans in bounded chunks. Preserve atomic writes, source checks and sandboxing.
+- Improve DOCX body and story parsing for theme-backed fonts/colors, proofing metadata, paragraph IDs and cached page breaks. Open compatibility diagnostics automatically. Unsupported actual editing constructs remain guarded; this is not a claim of universal Office compatibility. The specific user DOCX shown in a screenshot has not been supplied for reproduction.
+- Bump project/workspace versions to 0.1.0-dev.4 without changing third-party dependency pins. Keep public dev.3 immutable. English-first bilingual READMEs are synchronized from master.
+
+Local evidence: `npm run check` 316/316, license audit and build passed. Linux native product acceptance 6/6, quit regression 2/2. Independent ordinary DOCX/XLSX/PPTX corpus and new Chinese DOCX compatibility fixture passed. Independent Word legacy DOC verification passed after configuring test-only Antiword. The complete local interoperability command remains blocked by missing test-only xlrd; exact-source CI must run the full requirements and native installer matrix. macOS physical window dragging and platform file association installation/uninstallation still require native confirmation.
+
+Same-host adapter benchmark (4,000 rows / 12,001 cells; 30 slides / 300 shapes): XLSX open 4095.19 → 2214.59 ms, XLSX save 18418.29 → 11875.37 ms, PPTX open 1779.55 → 763.52 ms. Reports: `docs/verification/m7/file-io-before.json`, `file-io-after.json`, `native-product.json`. These are bounded fixture timings, not universal performance guarantees.
+
+Next gate: exact dev.4 source CI success, three installer artifacts and association checks; only then publish dev.4 and update the bilingual download links.

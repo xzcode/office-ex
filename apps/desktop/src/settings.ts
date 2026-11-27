@@ -6,18 +6,20 @@ import { randomUUID } from 'node:crypto';
 import { OfficeError, isRecord } from '@office-ex/contracts';
 import { isLanguagePreference, isRegionalPreference, isDocumentLanguagePreference, type LanguagePreference, type RegionalPreference, type DocumentLanguagePreference } from '@office-ex/i18n';
 import { parseSettingsPatch } from './ipc-policy.js';
-export interface Settings { version: 2; theme: 'system' | 'light' | 'dark'; language: LanguagePreference; region: RegionalPreference; documentLanguage: DocumentLanguagePreference; recent: { id: string; path: string; name: string; lastUsedAt?:number }[] }
+export interface Settings { version: 2; theme: 'system' | 'light' | 'dark'; language: LanguagePreference; region: RegionalPreference; documentLanguage: DocumentLanguagePreference; openInTabs:boolean; recent: { id: string; path: string; name: string; lastUsedAt?:number }[] }
 const MAX_SETTINGS_BYTES = 128 * 1024;
-const defaults = (): Settings => ({ version: 2, theme: 'system', language: 'system', region: 'system', documentLanguage: 'system', recent: [] });
+const defaults = (): Settings => ({ version: 2, theme: 'system', language: 'system', region: 'system', documentLanguage: 'system', openInTabs:false, recent: [] });
 function validPath(path: unknown): path is string { return typeof path === 'string' && path.length > 0 && path.length <= 8192 && !path.includes('\0') && isAbsolute(path); }
 function validName(name: unknown): name is string { return typeof name === 'string' && name.length > 0 && name.length <= 1024 && !name.includes('\0'); }
 function validate(value: unknown): Settings | null {
   if (!isRecord(value)) return null;
   const legacy=value.version===1;
-  if(Object.keys(value).some(key=>!(legacy?['version','theme','language','recent']:['version','theme','language','region','documentLanguage','recent']).includes(key)))return null;
+  if(Object.keys(value).some(key=>!(legacy?['version','theme','language','recent']:['version','theme','language','region','documentLanguage','openInTabs','recent']).includes(key)))return null;
   if(legacy&&(value.language!=='zh-CN'&&value.language!=='en'))return null;
   const language=legacy&&value.language==='en'?'en-US':value.language;
   const region=legacy?'system':value.region, documentLanguage=legacy?'system':value.documentLanguage;
+  const openInTabs=legacy||value.openInTabs===undefined?false:value.openInTabs;
+  if(typeof openInTabs!=='boolean')return null;
   if((!legacy&&value.version!==2)||(value.theme!=='system'&&value.theme!=='light'&&value.theme!=='dark')||
     !isLanguagePreference(language)||!isRegionalPreference(region)||!isDocumentLanguagePreference(documentLanguage)||
     !Array.isArray(value.recent)||value.recent.length>20)return null;
@@ -27,7 +29,7 @@ function validate(value: unknown): Settings | null {
         !validPath(item.path) || !validName(item.name) || item.lastUsedAt!==undefined&&(typeof item.lastUsedAt!=='number'||!Number.isSafeInteger(item.lastUsedAt)||item.lastUsedAt<0||item.lastUsedAt>8640000000000000) || ids.has(item.id) || paths.has(item.path)) return null;
     ids.add(item.id); paths.add(item.path); recent.push({id:item.id,path:item.path,name:item.name,...(typeof item.lastUsedAt==='number'?{lastUsedAt:item.lastUsedAt}:{})});
   }
-  return {version:2,theme:value.theme,language,region,documentLanguage,recent};
+  return {version:2,theme:value.theme,language,region,documentLanguage,openInTabs,recent};
 }
 export class SettingsStore {
   private settings: Settings = defaults();
@@ -57,7 +59,7 @@ export class SettingsStore {
   }
   value(): Settings { return structuredClone(this.settings); }
   publicValue(): Omit<Settings,'recent'> & {recent: {id:string;name:string;lastUsedAt?:number}[]} { return { ...this.settings, recent: this.settings.recent.map(({id,name,lastUsedAt}) => ({id,name,...(lastUsedAt===undefined?{}:{lastUsedAt})})) }; }
-  async update(patch: {theme?:unknown;language?:unknown;region?:unknown;documentLanguage?:unknown;clearRecent?:unknown}): Promise<void> {
+  async update(patch: {theme?:unknown;language?:unknown;region?:unknown;documentLanguage?:unknown;openInTabs?:unknown;clearRecent?:unknown}): Promise<void> {
     // Validate the whole transaction before queuing; never coerce objects to enum strings.
     const checked = parseSettingsPatch(patch);
     await this.change(current => ({...current,
@@ -65,6 +67,7 @@ export class SettingsStore {
       ...(checked.language === undefined ? {} : {language:checked.language}),
       ...(checked.region === undefined ? {} : {region:checked.region}),
       ...(checked.documentLanguage === undefined ? {} : {documentLanguage:checked.documentLanguage}),
+      ...(checked.openInTabs===undefined?{}:{openInTabs:checked.openInTabs}),
       ...(checked.clearRecent === true ? {recent:[]} : {}),
     }));
   }

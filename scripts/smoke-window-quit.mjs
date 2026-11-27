@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 import {revealControl} from './ribbon-test-controls.mjs';
 // SPDX-License-Identifier: MIT
 // Real Electron quit handshake; native confirmation dialog choices are stubbed.
@@ -10,6 +11,7 @@ const work=await mkdtemp(join(tmpdir(),'office-ex-quit-')),output=resolve('out/w
 const evidence={platform:process.platform,checks:[],startedAt:new Date().toISOString()};let app;
 const bounded=async(promise,label)=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(label)),20000);})]);}finally{clearTimeout(timer);}};
 try{
+ await prepareTabbedProfile(work);
  const env={...process.env,OFFICE_EX_PROFILE_DIR:work};delete env.ELECTRON_RUN_AS_NODE;
  app=await electron.launch({chromiumSandbox:true,args:[...(process.env.OFFICE_EX_HEADLESS==='1'?['--headless','--ozone-platform=headless']:[]),resolve('apps/desktop')],env,timeout:30000});
  const page=await app.firstWindow();await page.waitForSelector('body[data-ready=true]');

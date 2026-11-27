@@ -29,6 +29,7 @@ export interface DocxStyleProfile{
   builtinTableStyles?:ReadonlySet<'TableNormal'|'TableGrid'>;
   builtinStoryStyles?:ReadonlySet<'Header'|'Footer'>;
   numbering?:NumberingSource;
+  theme?:ThemeProfile;
 }
 type RunReader=(el:Element,reference?:((id:string)=>void),theme?:ThemeProfile,named?:boolean,toggles?:('bold'|'italic')[])=>TextStyle;
 type ParagraphReader=(el:Element,reference?:((id:string)=>void),sectionEnd?:Element,theme?:ThemeProfile)=>TextStyle;
@@ -302,5 +303,6 @@ export function readStyleProfile(pkg:OpcPackage,options:ContainerOptions,readRun
   const numbering=numberingPath?readNumbering(numberingPath,pkg.parts.get(numberingPath)!,options):undefined;
   const profile:DocxStyleProfile=stylePath?readStyles(pkg.parts.get(stylePath)!,options,readRun,readParagraph,theme,numbering):{styles:{},defaults:{},tableDefaultsSafe:true};
   if(numbering)profile.numbering=numbering;
+  if(theme)profile.theme=theme;
   return {part:main,profile,stories,settingsPath,differentEvenOddPages};
 }

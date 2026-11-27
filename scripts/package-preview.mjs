@@ -7,6 +7,7 @@ import {createReadStream} from 'node:fs';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {basename,dirname,isAbsolute,join,relative,resolve,sep} from 'node:path';
 import {tmpdir} from 'node:os';
+import {fileTypes,desktopEntry,mimePackage,windowsRegistry,macDocumentDeclarations} from './file-associations.mjs';
 
 const root=resolve('.'),out=resolve(process.env.OFFICE_EX_PACKAGE_OUT??'out/m5-preview');
 const platform=process.platform,arch=process.arch;
@@ -72,13 +73,20 @@ try{
   await rename(join(stage,'Contents','MacOS','Electron'),join(stage,'Contents','MacOS',executableName));
   for(const [key,value]of [['CFBundleExecutable',executableName],['CFBundleName','Office EX'],['CFBundleDisplayName','Office EX'],['CFBundleIconFile','office-ex.icns'],['CFBundleIdentifier','com.officex.preview'],['CFBundleShortVersionString',version.split('-')[0]],['CFBundleVersion',version.split('-')[0]]]){if(spawnSync('/usr/libexec/PlistBuddy',['-c','Print :'+key,plist],{stdio:'ignore'}).status===0)run('/usr/libexec/PlistBuddy',['-c','Set :'+key+' '+value,plist]);else run('/usr/libexec/PlistBuddy',['-c','Add :'+key+' string '+value,plist]);}
   await copyFile('dist/desktop/branding/office-ex.icns',join(resources,'office-ex.icns'));
+  // Use plutil's typed XML insertion, before ad-hoc signing. Replacing
+  // inherited Electron declarations avoids claiming unrelated types.
+  for(const [key,value]of Object.entries(macDocumentDeclarations())){
+   if(spawnSync('/usr/libexec/PlistBuddy',['-c','Print :'+key,plist],{stdio:'ignore'}).status===0)run('/usr/bin/plutil',['-remove',key,plist]);
+   run('/usr/bin/plutil',['-insert',key,'-xml',value,plist]);
+  }
+  run('/usr/bin/plutil',['-lint',plist]);
   // The pinned runtime's nested helpers stay intact. Ad-hoc signing is not a
   // publisher signature or notarization.
   run('codesign',['--force','--deep','--sign','-',stage]);
   run('codesign',['--verify','--deep','--strict',stage]);
  }
  const entries=await files(stage);
- const manifest={schema:1,product:'Office EX',channel:'development-preview',formalRelease:false,version,sourceRevision:source,sourceClean,platform,arch,electron:actualElectron,signing:platform==='darwin'?'ad-hoc':'unsigned',branding:{sha256:await hash(join('dist/desktop/branding','manifest.json')),icon:platform==='darwin'?'Contents/Resources/office-ex.icns':platform==='win32'?executableName:'resources/app/dist/desktop/branding/office-ex-512.png'},appFolder:folder,executable:platform==='darwin'?'Contents/MacOS/'+executableName:executableName,files:entries};
+ const manifest={schema:1,product:'Office EX',channel:'development-preview',formalRelease:false,version,sourceRevision:source,sourceClean,platform,arch,electron:actualElectron,signing:platform==='darwin'?'ad-hoc':'unsigned',branding:{sha256:await hash(join('dist/desktop/branding','manifest.json')),icon:platform==='darwin'?'Contents/Resources/office-ex.icns':platform==='win32'?executableName:'resources/app/dist/desktop/branding/office-ex-512.png'},fileAssociations:fileTypes.map(f=>f.extension),appFolder:folder,executable:platform==='darwin'?'Contents/MacOS/'+executableName:executableName,files:entries};
  const manifestPath=join(out,slug+'.manifest.json');await writeFile(manifestPath,JSON.stringify(manifest,null,2)+'\n');
  const archive=join(out,slug+(platform==='linux'?'.tar.gz':'.zip'));
  await rm(archive,{force:true});
@@ -99,7 +107,11 @@ try{
    // Chromium sandbox. The unprivileged portable archive remains mode 0755.
    await chmod(join(target,'chrome-sandbox'),0o4755);await mkdir(join(debRoot,'usr','bin'),{recursive:true});await mkdir(join(debRoot,'usr','share','applications'),{recursive:true});
    const wrapper=join(debRoot,'usr','bin','office-ex-preview');await writeFile(wrapper,'#!/bin/sh\nexec /opt/office-ex-preview/office-ex "$@"\n',{mode:0o755});
-   await writeFile(join(debRoot,'usr','share','applications','office-ex-preview.desktop'),'[Desktop Entry]\nType=Application\nName=Office EX Preview\nExec=office-ex-preview %F\nTerminal=false\nIcon=office-ex-preview\nStartupWMClass=Office EX\nCategories=Office;\n');
+   await writeFile(join(debRoot,'usr','share','applications','office-ex-preview.desktop'),desktopEntry());
+   const mimeDir=join(debRoot,'usr','share','mime','packages');await mkdir(mimeDir,{recursive:true});await writeFile(join(mimeDir,'office-ex-preview.xml'),mimePackage());
+   // Standard desktop/MIME caches; optional helpers are not runtime deps.
+   const refresh='#!/bin/sh\nset -e\nif command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database /usr/share/applications || true; fi\nif command -v update-mime-database >/dev/null 2>&1; then update-mime-database /usr/share/mime || true; fi\nexit 0\n';
+   for(const name of ['postinst','postrm'])await writeFile(join(debRoot,'DEBIAN',name),refresh,{mode:0o755});
    for(const size of [16,24,32,48,64,128,256,512]){const directory=join(debRoot,'usr','share','icons','hicolor',size+'x'+size,'apps');await mkdir(directory,{recursive:true});await copyFile('dist/desktop/branding/office-ex-'+size+'.png',join(directory,'office-ex-preview.png'));}
    await writeFile(join(debRoot,'DEBIAN','control'),'Package: office-ex-preview\nVersion: '+version.replace('-dev.','~dev.')+'\nArchitecture: amd64\nMaintainer: Office EX contributors\nDepends: libgtk-3-0t64 | libgtk-3-0, libnss3, libgbm1, libasound2t64 | libasound2, libxss1, libx11-xcb1\nSection: editors\nPriority: optional\nDescription: Office EX offline development preview\n Not a certified Office-compatible release.\n');
    const deb=join(out,slug+'.deb');await rm(deb,{force:true});run('dpkg-deb',['--root-owner-group','--build',debRoot,deb]);run('dpkg-deb',['--info',deb]);outputs.push(deb);
@@ -107,7 +119,7 @@ try{
    // Inno Setup is a native build-time compiler, never bundled in the app.
    const compiler=process.env.OFFICE_EX_ISCC??join(process.env['ProgramFiles(x86)']??'C:\\Program Files (x86)','Inno Setup 6','ISCC.exe');
    const iss=join(work,'preview.iss'),safe=value=>{assert(!/["\r\n]/.test(value),'Invalid installer path');return value;};
-   await writeFile(iss,`[Setup]\r\nAppId=OfficeEXPreview\r\nAppName=Office EX Preview\r\nAppVersion=${version}\r\nDefaultDirName={localappdata}\\Programs\\Office EX Preview\r\nDisableDirPage=yes\r\nDisableProgramGroupPage=yes\r\nUsePreviousAppDir=no\r\nCloseApplications=no\r\nRestartApplications=no\r\nPrivilegesRequired=lowest\r\nArchitecturesAllowed=x64compatible\r\nArchitecturesInstallIn64BitMode=x64compatible\r\nOutputDir=${safe(out)}\r\nOutputBaseFilename=${slug}-setup\r\nCompression=lzma2\r\nSolidCompression=yes\r\nSetupIconFile=${safe(resolve('dist/desktop/branding/office-ex.ico'))}\r\nUninstallDisplayIcon={app}\\Office EX.exe\r\n[Files]\r\nSource: "${safe(stage)}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs\r\n[Icons]\r\nName: "{autoprograms}\\Office EX Preview"; Filename: "{app}\\Office EX.exe"\r\n`);
+   await writeFile(iss,`[Setup]\r\nAppId=OfficeEXPreview\r\nAppName=Office EX Preview\r\nAppVersion=${version}\r\nDefaultDirName={localappdata}\\Programs\\Office EX Preview\r\nDisableDirPage=yes\r\nDisableProgramGroupPage=yes\r\nUsePreviousAppDir=no\r\nCloseApplications=no\r\nRestartApplications=no\r\nPrivilegesRequired=lowest\r\nChangesAssociations=yes\r\nArchitecturesAllowed=x64compatible\r\nArchitecturesInstallIn64BitMode=x64compatible\r\nOutputDir=${safe(out)}\r\nOutputBaseFilename=${slug}-setup\r\nCompression=lzma2\r\nSolidCompression=yes\r\nSetupIconFile=${safe(resolve('dist/desktop/branding/office-ex.ico'))}\r\nUninstallDisplayIcon={app}\\Office EX.exe\r\n[Files]\r\nSource: "${safe(stage)}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs\r\n[Icons]\r\nName: "{autoprograms}\\Office EX Preview"; Filename: "{app}\\Office EX.exe"\r\n${windowsRegistry()}`);
    run(compiler,[iss]);outputs.push(join(out,slug+'-setup.exe'));
   }
  }

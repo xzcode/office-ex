@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 import {revealControl} from './ribbon-test-controls.mjs';
 /** Runs the real Electron binary; no sandbox disabling and no product test backdoor. */
 import { _electron as electron } from 'playwright-core';
@@ -14,7 +15,7 @@ import {PNG,JPEG} from '../tests/writer-image-fixture.ts';
 import { openOpc } from '@office-ex/ooxml';
 
 const work=await mkdtemp(join(tmpdir(),'office-ex-native-'));
-const profile=join(work,'profile');await mkdir(profile);
+const profile=join(work,'profile');await prepareTabbedProfile(profile);
 await mkdir('out/native',{recursive:true});
 const name=`${process.platform}-${process.arch}`;
 const evidence={platform:process.platform,arch:process.arch,node:process.versions.node,checks:[],startedAt:new Date().toISOString()};

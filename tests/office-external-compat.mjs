@@ -57,7 +57,7 @@ doc.sections[0].blocks[0].runs[0].width=457200;doc.sections[0].blocks[0].runs[0]
 await write('image-edited.docx',prepareWriterDocxSave(serializeDraft(doc),'compat-corpus',word.bytes));
 const tableFile=await inspect('ordinary-table.docx');assert.equal(tableFile.result.report.readOnly,false,tableFile.result.semanticFailure?.detail);
 const sourceTable=openWriterDocx(tableFile.bytes,'compat-corpus','Table');
-assert.deepEqual(saveWriterDocx(sourceTable,sourceTable.document),tableFile.bytes);
+assert.ok(Buffer.from(saveWriterDocx(sourceTable,sourceTable.document)).equals(tableFile.bytes));
 const tableSession=new DocumentSession(sourceTable.document,{saved:true});
 const tableOf=d=>d.sections[0].blocks.find(b=>b.type==='table');
 const t=tableOf(tableSession.snapshot().document);
@@ -112,7 +112,7 @@ for(const [name,edits]of [
 ]){
  const file=await inspect(name);assert.equal(file.result.report.readOnly,false,file.result.semanticFailure?.detail);
  const source=openWriterDocx(file.bytes,'compat-corpus','Merged'),session=new DocumentSession(source.document,{saved:true});
- assert.deepEqual(saveWriterDocx(source,source.document),file.bytes);
+ assert.ok(Buffer.from(saveWriterDocx(source,source.document)).equals(file.bytes));
  for(const [row,col,text,rows,columns]of edits){
   const anchor=tableOf(session.snapshot().document).rows[row].cells[col];
   assert.deepEqual({...anchor.merge},{rows,columns});
@@ -131,7 +131,7 @@ const invalidMerge=await inspect('invalid-merged-table.docx');assert.equal(inval
 const running=await inspect('running-stories.docx');
 assert.equal(running.result.report.readOnly,false,running.result.semanticFailure?.detail);
 const runningSource=openWriterDocx(running.bytes,'compat-corpus','Running stories');
-assert.deepEqual(saveWriterDocx(runningSource,runningSource.document),running.bytes);
+assert.ok(Buffer.from(saveWriterDocx(runningSource,runningSource.document)).equals(running.bytes));
 const runningSession=new DocumentSession(runningSource.document,{saved:true});
 const first=runningSource.document.sections[0],second=runningSource.document.sections[1];
 assert.equal(first.pageNumberStart,5);assert.equal(second.pageNumberStart,undefined);

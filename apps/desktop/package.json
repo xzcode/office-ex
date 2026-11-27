@@ -1,14 +1,14 @@
 {
   "name": "@office-ex/desktop",
-  "version": "0.1.0-dev.3",
+  "version": "0.1.0-dev.4",
   "private": true,
   "type": "module",
   "license": "MIT",
   "main": "../../dist/desktop/main.cjs",
   "dependencies": {
-    "@office-ex/contracts": "0.1.0-dev.3",
-    "@office-ex/core": "0.1.0-dev.3",
-    "@office-ex/ui": "0.1.0-dev.3",
-    "@office-ex/i18n": "0.1.0-dev.3"
+    "@office-ex/contracts": "0.1.0-dev.4",
+    "@office-ex/core": "0.1.0-dev.4",
+    "@office-ex/ui": "0.1.0-dev.4",
+    "@office-ex/i18n": "0.1.0-dev.4"
   }
 }

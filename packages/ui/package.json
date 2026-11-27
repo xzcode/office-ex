@@ -1,6 +1,6 @@
 {
   "name": "@office-ex/ui",
-  "version": "0.1.0-dev.3",
+  "version": "0.1.0-dev.4",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -8,15 +8,15 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@office-ex/contracts": "0.1.0-dev.3",
-    "@office-ex/core": "0.1.0-dev.3",
-    "@office-ex/format-common": "0.1.0-dev.3",
-    "@office-ex/writer": "0.1.0-dev.3",
-    "@office-ex/sheets": "0.1.0-dev.3",
-    "@office-ex/slides": "0.1.0-dev.3",
-    "@office-ex/render": "0.1.0-dev.3",
-    "@office-ex/format-service": "0.1.0-dev.3",
-    "@office-ex/i18n": "0.1.0-dev.3",
-    "@office-ex/pdf": "0.1.0-dev.3"
+    "@office-ex/contracts": "0.1.0-dev.4",
+    "@office-ex/core": "0.1.0-dev.4",
+    "@office-ex/format-common": "0.1.0-dev.4",
+    "@office-ex/writer": "0.1.0-dev.4",
+    "@office-ex/sheets": "0.1.0-dev.4",
+    "@office-ex/slides": "0.1.0-dev.4",
+    "@office-ex/render": "0.1.0-dev.4",
+    "@office-ex/format-service": "0.1.0-dev.4",
+    "@office-ex/i18n": "0.1.0-dev.4",
+    "@office-ex/pdf": "0.1.0-dev.4"
   }
 }

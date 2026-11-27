@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 /** Native editing of independently generated merged tables and UI commands. */
 import {revealControl} from './ribbon-test-controls.mjs';
@@ -9,7 +10,7 @@ import {join,resolve} from 'node:path';
 import {openWriterDocx,openOpc} from '@office-ex/ooxml';
 const fixtures=resolve(process.argv[2]??'.work/m6-merged-corpus');
 const work=await mkdtemp(join(tmpdir(),'office-ex-m6-merge-')),profile=join(work,'profile');
-await mkdir(profile);
+await prepareTabbedProfile(profile);
 const complex=join(work,'complex.docx'),ordinary=join(work,'ordinary.docx');
 await copyFile(join(fixtures,'complex-merged-table.docx'),complex);
 await copyFile(join(fixtures,'ordinary-table.docx'),ordinary);

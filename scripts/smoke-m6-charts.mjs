@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 /** Real desktop chart overlay and conditional rule controls, original XLSX save. */
 import {revealControl} from './ribbon-test-controls.mjs';
@@ -8,7 +9,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {openSheetsXlsx,openOpc} from '@office-ex/ooxml';
 const fixtures=resolve(process.argv[2]??'.work/m6-chart-corpus');
-const work=await mkdtemp(join(tmpdir(),'office-ex-m6-chart-')),profile=join(work,'profile');await mkdir(profile);
+const work=await mkdtemp(join(tmpdir(),'office-ex-m6-chart-')),profile=join(work,'profile');await prepareTabbedProfile(profile);
 const file=join(work,'charts.xlsx');await copyFile(join(fixtures,'m6-charts.xlsx'),file);
 const original=await readFile(file),checks=[];let app;
 const check=name=>{checks.push(name);console.log('PASS',name);};

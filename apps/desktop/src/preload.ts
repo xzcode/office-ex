@@ -4,7 +4,12 @@ const api: DesktopBridge = {
   exportPdf: request => ipcRenderer.invoke('office:export-pdf',request),
   print: request => ipcRenderer.invoke('office:print',request),
   initialize: () => ipcRenderer.invoke('office:initialize'),
+  ready:()=>ipcRenderer.invoke('office:ready'),
   openFile: () => ipcRenderer.invoke('office:open'),
+  newWindow: request=>ipcRenderer.invoke('office:new-window',request),
+  restoreWindow: id=>ipcRenderer.invoke('office:restore-window',id),
+  showHome: ()=>ipcRenderer.invoke('office:show-home'),
+  onSettings: callback=>{const handler=(_event:Electron.IpcRendererEvent,value:Parameters<typeof callback>[0])=>callback(value);ipcRenderer.on('office:settings-changed',handler);return ()=>ipcRenderer.removeListener('office:settings-changed',handler);},
   openRecent: id => ipcRenderer.invoke('office:recent',id),
   openDroppedFile: async file => {
     // Electron resolves a native File capability, never a renderer-supplied path property.

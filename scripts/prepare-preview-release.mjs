@@ -43,6 +43,10 @@ export async function preparePreviewRelease(artifacts,target,version,tag,source,
   assert(verification.checks.includes('Product branding, native icon assets, real version, About and native-format home verified'),'Missing product identity check');
   assert(install.installer===stem+installerExt&&install.sha256===sums.get(stem+installerExt)&&install.checks.includes('Native uninstall / removal completes')&&install.checks.includes('Installed product identity and icon assets verified'),'Installer evidence mismatch');
   for(const name of expected){await copyFile(join(artifact,name),join(dir,name));output.push(name);}
+  if(manifest.fileAssociations!==undefined){
+   assert.deepEqual(manifest.fileAssociations,['doc','docx','xls','xlsx','ppt','pptx','pdf','oex'],'Association coverage mismatch');
+   assert(install.checks.includes('Native installer advertises all eight supported document types without forcing a default application')&&install.checks.includes('Installed handler accepts a real filename with spaces into a separate window and reopens the saved value'),'Missing native document association evidence');
+  }
   summaries.push({platform,arch,archive:stem+archiveExt,installer:stem+installerExt,signing:manifest.signing,archiveChecks:verification.checks.length,installerChecks:install.checks.length});
  }
  const report={schema:1,version,tag,sourceRevision:source,workflowRun:String(runId),channel:'development-preview',formalRelease:false,publication:'draft-only',platforms:summaries};

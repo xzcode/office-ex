@@ -2,6 +2,9 @@
 // Candidate M4 translations. Human terminology and native layout review remain M5 gates.
 export const m4Catalogs = {
   "en-US": {
+    "documentWindowMode": "Open documents in",
+    "documentSeparateWindows": "Separate windows",
+    "documentTabbedWindows": "Tabs in one window",
     "slideTableStartRow": "Start row",
     "slideTableStartColumn": "Start column",
     "slideTableRowCount": "Selected rows",
@@ -240,6 +243,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "New Writer and Slides documents use this text language. Existing files retain their own language."
   },
   "zh-CN": {
+    "documentWindowMode": "文档打开方式",
+    "documentSeparateWindows": "独立窗口",
+    "documentTabbedWindows": "同一窗口标签页",
     "slideTableStartRow": "起始行",
     "slideTableStartColumn": "起始列",
     "slideTableRowCount": "选中行数",
@@ -478,6 +484,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建 Writer 和 Slides 文档使用此文字语言，现有文件保留自身语言。"
   },
   "zh-TW": {
+    "documentWindowMode": "文件開啟方式",
+    "documentSeparateWindows": "獨立視窗",
+    "documentTabbedWindows": "同一視窗分頁",
     "slideTableStartRow": "起始列",
     "slideTableStartColumn": "起始欄",
     "slideTableRowCount": "選取列數",
@@ -716,6 +725,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "新建的 Writer 和 Slides 文件使用此文字語言，現有檔案保留原有語言。"
   },
   "ja-JP": {
+    "documentWindowMode": "文書の開き方",
+    "documentSeparateWindows": "別ウィンドウ",
+    "documentTabbedWindows": "同じウィンドウのタブ",
     "slideTableStartRow": "開始行",
     "slideTableStartColumn": "開始列",
     "slideTableRowCount": "選択行数",
@@ -954,6 +966,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "新しい Writer と Slides 文書にこの言語を使用します。既存ファイルの言語は保持されます。"
   },
   "ko-KR": {
+    "documentWindowMode": "문서 열기 방식",
+    "documentSeparateWindows": "별도 창",
+    "documentTabbedWindows": "한 창의 탭",
     "slideTableStartRow": "시작 행",
     "slideTableStartColumn": "시작 열",
     "slideTableRowCount": "선택 행 수",
@@ -1192,6 +1207,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "새 Writer 및 Slides 문서는 이 텍스트 언어를 사용합니다. 기존 파일의 언어는 유지됩니다."
   },
   "fr-FR": {
+    "documentWindowMode": "Ouvrir les documents dans",
+    "documentSeparateWindows": "Fenêtres séparées",
+    "documentTabbedWindows": "Onglets dans une fenêtre",
     "slideTableStartRow": "Ligne de départ",
     "slideTableStartColumn": "Colonne de départ",
     "slideTableRowCount": "Lignes sélectionnées",
@@ -1430,6 +1448,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Les nouveaux documents Writer et Slides utilisent cette langue. Les fichiers existants conservent leur langue."
   },
   "de-DE": {
+    "documentWindowMode": "Dokumente öffnen in",
+    "documentSeparateWindows": "Separate Fenster",
+    "documentTabbedWindows": "Registerkarten in einem Fenster",
     "slideTableStartRow": "Startzeile",
     "slideTableStartColumn": "Startspalte",
     "slideTableRowCount": "Ausgewählte Zeilen",
@@ -1668,6 +1689,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Neue Writer- und Slides-Dokumente verwenden diese Textsprache. Vorhandene Dateien behalten ihre Sprache."
   },
   "es-ES": {
+    "documentWindowMode": "Abrir documentos en",
+    "documentSeparateWindows": "Ventanas independientes",
+    "documentTabbedWindows": "Pestañas en una ventana",
     "slideTableStartRow": "Fila inicial",
     "slideTableStartColumn": "Columna inicial",
     "slideTableRowCount": "Filas seleccionadas",
@@ -1906,6 +1930,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Los nuevos documentos Writer y Slides usan este idioma. Los archivos existentes conservan el suyo."
   },
   "pt-BR": {
+    "documentWindowMode": "Abrir documentos em",
+    "documentSeparateWindows": "Janelas separadas",
+    "documentTabbedWindows": "Abas em uma janela",
     "slideTableStartRow": "Linha inicial",
     "slideTableStartColumn": "Coluna inicial",
     "slideTableRowCount": "Linhas selecionadas",
@@ -2144,6 +2171,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Novos documentos Writer e Slides usam este idioma. Arquivos existentes mantêm o próprio idioma."
   },
   "it-IT": {
+    "documentWindowMode": "Apri documenti in",
+    "documentSeparateWindows": "Finestre separate",
+    "documentTabbedWindows": "Schede in una finestra",
     "slideTableStartRow": "Riga iniziale",
     "slideTableStartColumn": "Colonna iniziale",
     "slideTableRowCount": "Righe selezionate",
@@ -2382,6 +2412,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "I nuovi documenti Writer e Slides usano questa lingua. I file esistenti mantengono la propria."
   },
   "ru-RU": {
+    "documentWindowMode": "Открывать документы в",
+    "documentSeparateWindows": "Отдельных окнах",
+    "documentTabbedWindows": "Вкладках одного окна",
     "slideTableStartRow": "Начальная строка",
     "slideTableStartColumn": "Начальный столбец",
     "slideTableRowCount": "Выбранные строки",
@@ -2620,6 +2653,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Новые документы Writer и Slides используют этот язык. Существующие файлы сохраняют свой язык."
   },
   "ar": {
+    "documentWindowMode": "فتح المستندات في",
+    "documentSeparateWindows": "نوافذ منفصلة",
+    "documentTabbedWindows": "علامات تبويب في نافذة واحدة",
     "slideTableStartRow": "صف البداية",
     "slideTableStartColumn": "عمود البداية",
     "slideTableRowCount": "الصفوف المحددة",
@@ -2858,6 +2894,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "تستخدم مستندات Writer وSlides الجديدة هذه اللغة. تحتفظ الملفات الموجودة بلغتها."
   },
   "he-IL": {
+    "documentWindowMode": "פתיחת מסמכים ב",
+    "documentSeparateWindows": "חלונות נפרדים",
+    "documentTabbedWindows": "לשוניות בחלון אחד",
     "slideTableStartRow": "שורת התחלה",
     "slideTableStartColumn": "עמודת התחלה",
     "slideTableRowCount": "שורות נבחרות",
@@ -3096,6 +3135,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "מסמכי Writer ו־Slides חדשים משתמשים בשפה זו. קבצים קיימים שומרים על שפתם."
   },
   "hi-IN": {
+    "documentWindowMode": "दस्तावेज़ खोलें",
+    "documentSeparateWindows": "अलग विंडो",
+    "documentTabbedWindows": "एक विंडो में टैब",
     "slideTableStartRow": "प्रारंभिक पंक्ति",
     "slideTableStartColumn": "प्रारंभिक स्तंभ",
     "slideTableRowCount": "चयनित पंक्तियाँ",
@@ -3334,6 +3376,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "नए Writer और Slides दस्तावेज़ इस भाषा का उपयोग करते हैं। मौजूदा फ़ाइलों की अपनी भाषा बनी रहती है।"
   },
   "th-TH": {
+    "documentWindowMode": "เปิดเอกสารใน",
+    "documentSeparateWindows": "หน้าต่างแยก",
+    "documentTabbedWindows": "แท็บในหน้าต่างเดียว",
     "slideTableStartRow": "แถวเริ่มต้น",
     "slideTableStartColumn": "คอลัมน์เริ่มต้น",
     "slideTableRowCount": "แถวที่เลือก",
@@ -3572,6 +3617,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "เอกสาร Writer และ Slides ใหม่ใช้ภาษานี้ ไฟล์ที่มีอยู่ยังคงใช้ภาษาของตนเอง"
   },
   "vi-VN": {
+    "documentWindowMode": "Mở tài liệu trong",
+    "documentSeparateWindows": "Cửa sổ riêng",
+    "documentTabbedWindows": "Tab trong một cửa sổ",
     "slideTableStartRow": "Hàng bắt đầu",
     "slideTableStartColumn": "Cột bắt đầu",
     "slideTableRowCount": "Số hàng chọn",
@@ -3810,6 +3858,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Tài liệu Writer và Slides mới dùng ngôn ngữ này. Tệp hiện có giữ nguyên ngôn ngữ riêng."
   },
   "id-ID": {
+    "documentWindowMode": "Buka dokumen di",
+    "documentSeparateWindows": "Jendela terpisah",
+    "documentTabbedWindows": "Tab dalam satu jendela",
     "slideTableStartRow": "Baris awal",
     "slideTableStartColumn": "Kolom awal",
     "slideTableRowCount": "Baris terpilih",
@@ -4048,6 +4099,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baru memakai bahasa ini. File yang sudah ada mempertahankan bahasanya."
   },
   "ms-MY": {
+    "documentWindowMode": "Buka dokumen dalam",
+    "documentSeparateWindows": "Tetingkap berasingan",
+    "documentTabbedWindows": "Tab dalam satu tetingkap",
     "slideTableStartRow": "Baris mula",
     "slideTableStartColumn": "Lajur mula",
     "slideTableRowCount": "Baris dipilih",
@@ -4286,6 +4340,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Dokumen Writer dan Slides baharu menggunakan bahasa ini. Fail sedia ada mengekalkan bahasanya."
   },
   "tr-TR": {
+    "documentWindowMode": "Belgeleri aç",
+    "documentSeparateWindows": "Ayrı pencereler",
+    "documentTabbedWindows": "Tek pencerede sekmeler",
     "slideTableStartRow": "Başlangıç satırı",
     "slideTableStartColumn": "Başlangıç sütunu",
     "slideTableRowCount": "Seçili satırlar",
@@ -4524,6 +4581,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Yeni Writer ve Slides belgeleri bu metin dilini kullanır. Mevcut dosyalar kendi dilini korur."
   },
   "nl-NL": {
+    "documentWindowMode": "Documenten openen in",
+    "documentSeparateWindows": "Afzonderlijke vensters",
+    "documentTabbedWindows": "Tabbladen in één venster",
     "slideTableStartRow": "Beginrij",
     "slideTableStartColumn": "Beginkolom",
     "slideTableRowCount": "Geselecteerde rijen",
@@ -4762,6 +4822,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nieuwe Writer- en Slides-documenten gebruiken deze taal. Bestaande bestanden behouden hun eigen taal."
   },
   "pl-PL": {
+    "documentWindowMode": "Otwieraj dokumenty w",
+    "documentSeparateWindows": "Oddzielnych oknach",
+    "documentTabbedWindows": "Kartach jednego okna",
     "slideTableStartRow": "Wiersz początkowy",
     "slideTableStartColumn": "Kolumna początkowa",
     "slideTableRowCount": "Wybrane wiersze",
@@ -5000,6 +5063,9 @@ export const m4Catalogs = {
     "documentLanguageNote": "Nowe dokumenty Writer i Slides używają tego języka. Istniejące pliki zachowują swój język."
   },
   "uk-UA": {
+    "documentWindowMode": "Відкривати документи у",
+    "documentSeparateWindows": "Окремих вікнах",
+    "documentTabbedWindows": "Вкладках одного вікна",
     "slideTableStartRow": "Початковий рядок",
     "slideTableStartColumn": "Початковий стовпець",
     "slideTableRowCount": "Вибрані рядки",

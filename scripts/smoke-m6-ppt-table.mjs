@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 import {revealControl} from './ribbon-test-controls.mjs';
 import {_electron as electron} from 'playwright-core';
@@ -7,7 +8,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {openSlidesPptx,openOpc} from '@office-ex/ooxml';
 const fixture=resolve(process.argv[2]??'.work/m6-conditional-corpus/advanced.pptx');
-const work=await mkdtemp(join(tmpdir(),'office-ex-m6-ppt-table-')),profile=join(work,'profile'),file=join(work,'table.pptx');await mkdir(profile);await copyFile(fixture,file);
+const work=await mkdtemp(join(tmpdir(),'office-ex-m6-ppt-table-')),profile=join(work,'profile'),file=join(work,'table.pptx');await prepareTabbedProfile(profile);await copyFile(fixture,file);
 const original=await readFile(file),checks=[];let app;
 const check=name=>{checks.push(name);console.log('PASS',name);};
 async function wait(fn,label){const end=Date.now()+30000;while(Date.now()<end){try{if(await fn())return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Timed out: '+label);}

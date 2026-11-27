@@ -5,6 +5,7 @@ import { addSlide, duplicateSlide, deleteSlide, moveSlide, locateSlide, locateSh
 import { buildSlideScene, walkSlideScene, hitTest, shapeTransform, inverse, transform, multiply, IDENTITY, groupChildTransform, slideShapeParentTransform, type Matrix, type SlideScene, type Point } from '@office-ex/render';
 import type { MessageKey } from '@office-ex/i18n';
 import {installRibbon,ribbonNodes,type RibbonState,decorateOfficeButton} from './office-ribbon.js';
+import {createPanelSplitter,panelWidth,panelCollapsed,persistPanelCollapsed} from './panel-splitter.js';
 import { createSlideSceneElement, slideCssColor, overflowingSlideText, measureSlideTextFit, measureSlideShapeGrowth, updateSlideShapeGeometry } from './slides-scene-dom.js';
 
 export interface SlidesViewState extends RibbonState {inspectorMode?:'object'|'text'|'slide';inspectorCollapsed?:boolean;slideId?:string;groupId?:string;selectedIds:string[];zoom:number;lockAspect?:boolean;flush?:()=>boolean;dispose?:()=>void}
@@ -23,10 +24,20 @@ function element<K extends keyof HTMLElementTagNameMap>(tag:K,value='',className
 function isTyping(target:EventTarget|null):boolean{return target instanceof HTMLElement&&(target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName));}
 
 export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLElement {
-  state.dispose?.();state.selectedIds??=[];state.zoom??=0;state.lockAspect??=true;
+  state.dispose?.();state.selectedIds??=[];state.zoom??=0;state.lockAspect??=true;state.inspectorCollapsed??=panelCollapsed('slide-inspector');
   const t=host.t,root=element('section','','slides-workspace');root.id='slides-workspace';root.setAttribute('aria-label',t('slides'));
   const toolbar=element('div','','slides-toolbar'),body=element('div','','slides-workbench'),rail=element('nav','','slides-thumbnails'),stage=element('div','','slides-stage'),inspector=element('aside','','slides-inspector'),surface=element('div','','slides-surface'),scaled=element('div','','slides-scaled-scene'),overlay=element('div','','slides-selection-overlay'),status=element('div','','slides-status');
-  toolbar.setAttribute('role','toolbar');toolbar.setAttribute('aria-label',t('slides'));rail.setAttribute('aria-label',t('slides'));stage.tabIndex=0;stage.setAttribute('role','application');stage.setAttribute('aria-label',t('canvas'));root.append(toolbar,body,status);body.append(rail,stage,inspector);stage.append(surface);surface.append(scaled);scaled.append(overlay);
+  toolbar.setAttribute('role','toolbar');toolbar.setAttribute('aria-label',t('slides'));rail.setAttribute('aria-label',t('slides'));stage.tabIndex=0;stage.setAttribute('role','application');stage.setAttribute('aria-label',t('canvas'));root.append(toolbar,body,status);body.classList.add('resizable-slides');
+  let railWidth=panelWidth('slide-rail',158,110,360),inspectorWidth=panelWidth('slide-inspector',270,200,560);
+  const available=()=>body.clientWidth||window.innerWidth;
+  function layoutPanels(){
+   const room=available(),right=state.inspectorCollapsed?0:Math.min(inspectorWidth,Math.max(200,room-railWidth-260-16));
+   const left=Math.min(railWidth,Math.max(110,room-right-260-16));
+   body.style.setProperty('--slide-rail-width',left+'px');body.style.setProperty('--slide-inspector-width',right+'px');
+  }
+  const leftSplitter=createPanelSplitter({key:'slide-rail',label:t('ribbonPages'),side:'start',panel:rail,width:()=>railWidth,setWidth:v=>{railWidth=v;layoutPanels();},limits:()=>({min:110,max:Math.max(110,Math.min(360,available()-(state.inspectorCollapsed?0:Math.min(inspectorWidth,560))-276))})});
+  const rightSplitter=createPanelSplitter({key:'slide-inspector',label:t('ribbonProperties'),side:'end',panel:inspector,width:()=>inspectorWidth,setWidth:v=>{inspectorWidth=v;layoutPanels();},limits:()=>({min:200,max:Math.max(200,Math.min(560,available()-railWidth-276))})});
+  body.append(rail,leftSplitter,stage,rightSplitter,inspector);layoutPanels();stage.append(surface);surface.append(scaled);scaled.append(overlay);
   const help=element('p',t('slideHelp'),'muted slides-help'),overflow=element('p','','slides-overflow'),position=element('span','');status.append(position,overflow,help);overflow.hidden=true;
   let scene:SlideScene,sceneElement:HTMLDivElement,gesture:Gesture|undefined,disposed=false,zoom=1,textTimer:ReturnType<typeof setTimeout>|undefined,textDirty=false,editingId:string|undefined,observer:ResizeObserver|undefined,thumbObserver:IntersectionObserver|undefined,presentationDialog:HTMLDialogElement|undefined,closePresentation:(()=>void)|undefined;
   const editControls:(HTMLButtonElement|HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement)[]=[];const selectionControls:(HTMLButtonElement|HTMLInputElement|HTMLSelectElement)[]=[];
@@ -357,7 +368,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   state.inspectorMode??='slide';
   function focusTextEditor():void{state.inspectorMode='text';state.inspectorCollapsed=false;showInspector();resize();textEditor.focus();}
   function showInspector():void{
-    inspector.hidden=!!state.inspectorCollapsed;
+    persistPanelCollapsed('slide-inspector',!!state.inspectorCollapsed);inspector.hidden=!!state.inspectorCollapsed;rightSplitter.hidden=!!state.inspectorCollapsed;layoutPanels();
     body.classList.toggle('properties-collapsed',!!state.inspectorCollapsed);
     propertiesButton.setAttribute('aria-pressed',String(!state.inspectorCollapsed));
     for(const [key,b] of propertyButtons)b.setAttribute('aria-pressed',String(key===state.inspectorMode));
@@ -476,6 +487,7 @@ export function slidesWorkspace(host:SlidesHost,state:SlidesViewState):HTMLEleme
   }
   function refresh():void {if(disposed)return;refreshScene();refreshThumbnails();syncInspector();}
   function resize():void {
+    layoutPanels();
     if(!scene)return;const width=scene.width/EMU_PER_CSS_PIXEL,height=scene.height/EMU_PER_CSS_PIXEL,style=getComputedStyle(stage),
       innerWidth=Math.max(1,stage.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-2),
       innerHeight=Math.max(1,stage.clientHeight-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom)-2),

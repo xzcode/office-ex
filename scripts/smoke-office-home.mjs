@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 import {_electron as electron} from 'playwright-core';
 import assert from 'node:assert/strict';
@@ -7,7 +8,7 @@ import {join,resolve} from 'node:path';
 import {openWriterDocx,openSheetsXlsx,openSlidesPptx} from '@office-ex/ooxml';
 import {revealControl} from './ribbon-test-controls.mjs';
 const work=await mkdtemp(join(tmpdir(),'office-ex-home-')),profile=join(work,'profile'),out=resolve(process.env.OFFICE_EX_HOME_OUTPUT??'out/m5-home');
-await mkdir(profile);await mkdir(out,{recursive:true});
+await prepareTabbedProfile(profile);await mkdir(out,{recursive:true});
 const report={platform:process.platform,arch:process.arch,checks:[],screenshots:[],startedAt:new Date().toISOString()};let app;
 const check=name=>{report.checks.push(name);console.log('PASS',name);};
 try{

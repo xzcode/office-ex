@@ -284,8 +284,8 @@
 #office-titlebar .titlebar-file-actions .titlebar-open{background:var(--surface)}
 #app.office-editor-shell .brand>span{display:none}
 #app.office-editor-shell #office-titlebar .brand{padding:0}
-#app.office-editor-shell #office-titlebar .tablist{flex:1 1 0;max-width:none}
-#app.office-editor-shell #office-titlebar .titlebar-drag-space{flex:0 0 18px}
+#app.office-editor-shell #office-titlebar .tablist{flex:0 1 auto;max-width:65%}
+#app.office-editor-shell #office-titlebar .titlebar-drag-space{flex:1 1 32px;min-width:18px}
 #app.office-editor-shell #office-titlebar .stage-pill{display:none}
 #office-titlebar .toolbar-actions[hidden]{display:none!important}
 #office-titlebar .stage-pill{white-space:nowrap;flex-shrink:0;background:none;border:0;color:var(--muted)}
@@ -387,3 +387,28 @@
 #slide-table-dialog button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent)}
 #slide-table-dialog #slide-table-apply,#slide-table-dialog #slide-table-cancel{margin-top:12px}
 #slide-table-cells[hidden]{display:none!important}
+
+
+/* Desktop UI text is chrome, not document content. Keep labels, legends,
+   navigation, toolbars, headers, status bars and dialog controls from
+   creating accidental browser selections. Text editing and explicit
+   read-only data surfaces opt back in. */
+body{-webkit-user-select:none;user-select:none}
+:where(button,label,legend,summary,option,[role="tab"],[role="button"],[role="menuitem"]){-webkit-user-select:none;user-select:none}
+:where(input:not([type]),input[type="text"],input[type="search"],input[type="number"],input[type="password"],input[type="email"],input[type="url"],input[type="tel"],textarea,[contenteditable="true"],[contenteditable="plaintext-only"]){-webkit-user-select:text;user-select:text}
+:where(.office-text-body,.xlsx-preview-grid td,.xlsx-preview-cell-detail,.pdf-text-layer,.parts-table td,.compatibility-detail>p,.about-info code,.copyable-text){-webkit-user-select:text;user-select:text}
+
+/* The flex spacer, not the interactive tabs or file actions, moves the
+   native window. Windows/Linux still have the OS caption as well. */
+#office-titlebar .titlebar-drag-space{-webkit-app-region:drag;app-region:drag}
+#office-titlebar :is(button,input,select,textarea,.tab,.tablist,.toolbar-actions,.titlebar-file-actions){-webkit-app-region:no-drag;app-region:no-drag}
+:root[data-window-role=document] #office-titlebar .tablist{max-width:min(60%,440px)}
+
+/* Bounded, keyboard and pointer resizable workbench panels. */
+.office-panel-splitter{width:7px;min-width:7px;min-height:0;cursor:col-resize;touch-action:none;position:relative;z-index:5;background:var(--sidebar);border-inline-start:1px solid var(--line);user-select:none}
+.office-panel-splitter:hover,.office-panel-splitter.dragging,.office-panel-splitter:focus-visible{background:var(--accent);outline:0}
+.office-panel-splitter[hidden]{display:none!important}
+.slides-workspace .slides-workbench.resizable-slides,.office-document-content .slides-workspace .slides-workbench.resizable-slides{grid-template-columns:var(--slide-rail-width,158px) 7px minmax(0,1fr) 7px var(--slide-inspector-width,270px);gap:0}
+.slides-workspace .slides-workbench.resizable-slides.properties-collapsed,.office-document-content .slides-workbench.resizable-slides.properties-collapsed{grid-template-columns:var(--slide-rail-width,158px) 7px minmax(0,1fr)!important}
+.slides-workbench.resizable-slides .slides-thumbnails,.slides-workbench.resizable-slides .slides-stage,.slides-workbench.resizable-slides .slides-inspector{grid-column:auto;min-width:0}
+.writer-page-workbench.resizable-writer{grid-template-columns:var(--writer-rail-width,122px) 7px minmax(0,1fr)}

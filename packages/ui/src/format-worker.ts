@@ -27,7 +27,7 @@ self.onmessage = async (event:MessageEvent<WorkerRequest>):Promise<void> => {
       : request.type === 'convert-ppt'||request.type === 'convert-pptx' ? (prepareSlidesSave(request.type==='convert-ppt'?'ppt':'pptx',serializeDraft(request.document),request.documentId!),true)
       : request.type === 'convert-docx' ? (prepareWriterDocxSave(serializeDraft(request.document),request.documentId!),true)
       : request.type === 'image' ? makeImageResource(request.bytes!) : (() => {throw new Error('Invalid worker request');})();
-    if(request.type==='image'){const r=makeImageResource(request.bytes!);await verifyRaster(request.bytes!,r.mimeType,r.pixelWidth,r.pixelHeight);}
+    if(request.type==='image'){const r=value as ReturnType<typeof makeImageResource>;await verifyRaster(request.bytes!,r.mimeType,r.pixelWidth,r.pixelHeight);}
     else if(request.type==='inspect'&&request.documentId){
       const inspection=value as Awaited<ReturnType<typeof inspectForEditor>>;
       try{await verifyResources(inspection.editableWriter??inspection.editableSlides??inspection.draft);}catch{
@@ -37,6 +37,9 @@ self.onmessage = async (event:MessageEvent<WorkerRequest>):Promise<void> => {
     }else if(request.type==='serialize'||request.type==='docx-save'||request.type==='doc-save'||request.type==='ppt-save'||request.type==='pptx-save'){
       await verifyResources(parseDraft(request.type==='serialize'?value as Uint8Array:request.bytes!));
     }else if(request.type==='recover')await verifyResources(value as OfficeDocument);
-    self.postMessage({id:request.id,ok:true,value});
+    if(value instanceof Uint8Array){
+      const bytes=value.byteOffset===0&&value.byteLength===value.buffer.byteLength&&value.buffer instanceof ArrayBuffer?value:Uint8Array.from(value);
+      self.postMessage({id:request.id,ok:true,value:bytes},{transfer:[bytes.buffer]});
+    }else self.postMessage({id:request.id,ok:true,value});
   } catch (error) { self.postMessage({id:request.id,ok:false,error:asFailure(error)}); }
 };

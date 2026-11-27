@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { OfficeError } from '@office-ex/contracts';
 import { SettingsStore } from '../apps/desktop/src/settings.js';
 
-const defaults = { version: 2, theme: 'system', language: 'system', region: 'system', documentLanguage: 'system', recent: [] };
+const defaults = { version: 2, theme: 'system', language: 'system', region: 'system', documentLanguage: 'system', openInTabs:false, recent: [] };
 const fails = (code: string) => (error: unknown): boolean => error instanceof OfficeError && error.code === code;
 async function directory(t: TestContext): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), 'office-ex-settings-'));
@@ -117,4 +117,10 @@ test('I18N settings v1 migration retains theme and recents and persists v2 on ne
   assert.deepEqual(await new SettingsStore(path).load(),{...defaults,theme:'dark',language:'zh-TW',region:'de-DE',documentLanguage:'ja-JP',recent});
   await store.update({language:'ar'}); assert.equal(store.value().language,'ar'); // Candidate RTL catalog now available.
   await assert.rejects(store.update({region:'not-a-locale'}),fails('invalid'));
+});
+
+test('M7.5 missing window preference migrates to independent windows; tab mode is an explicit persisted choice',async t=>{
+ const path=await directory(t),{openInTabs,...old}=defaults;await writeFile(join(path,'settings.json'),JSON.stringify(old));
+ const store=new SettingsStore(path);assert.equal((await store.load()).openInTabs,false);
+ await store.update({openInTabs:true});assert.equal((await new SettingsStore(path).load()).openInTabs,true);
 });

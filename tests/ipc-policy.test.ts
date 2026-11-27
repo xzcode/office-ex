@@ -92,3 +92,15 @@ test('DOCX save IPC accepts only bounded snapshot requests bound to the register
   ])assert.throws(()=>parseDocxSave(invalid),fails('invalid'));
   assert.throws(()=>parseDocxSave({...request,bytes:new Uint8Array(new SharedArrayBuffer(4))}),fails('unsafe'));
 });
+
+test('M7.5 native open arguments and new-window IPC are bounded and format-specific',async()=>{
+ const {DOCUMENT_EXTENSIONS,parseNewWindow,isDocumentPath}=await import('../apps/desktop/src/ipc-policy.js');
+ const cwd=resolve('fixtures');
+ assert.deepEqual(commandLineFiles(['Office EX',...DOCUMENT_EXTENSIONS.map(ext=>'中文 path.'+ext.toUpperCase()),'docx','bad.txt','https://bad.invalid/evil.docx','--no-sandbox'],false,cwd),DOCUMENT_EXTENSIONS.map(ext=>resolve(cwd,'中文 path.'+ext.toUpperCase())));
+ assert.equal(isDocumentPath('justdocx'),false);assert.equal(isDocumentPath('book.xlsx'),true);
+ assert.deepEqual(parseNewWindow({kind:'writer',format:'docx'}),{kind:'writer',format:'docx'});
+ for(const request of [{kind:'writer',format:'xlsx'},{kind:'pdf',format:'pdf'},{kind:'writer',format:'docx',path:'/private/a.docx'}])assert.throws(()=>parseNewWindow(request),fails('invalid'));
+ assert.deepEqual(parseSettingsPatch({openInTabs:true}),{openInTabs:true});
+ assert.throws(()=>parseSettingsPatch({openInTabs:'true'}),fails('invalid'));
+ assert.doesNotThrow(()=>assertIpcArity('office:new-window',[{kind:'sheets',format:'xlsx'}]));
+});

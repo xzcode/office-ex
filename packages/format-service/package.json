@@ -1,6 +1,6 @@
 {
   "name": "@office-ex/format-service",
-  "version": "0.1.0-dev.3",
+  "version": "0.1.0-dev.4",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -8,11 +8,11 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@office-ex/contracts": "0.1.0-dev.3",
-    "@office-ex/core": "0.1.0-dev.3",
-    "@office-ex/format-common": "0.1.0-dev.3",
-    "@office-ex/ooxml": "0.1.0-dev.3",
-    "@office-ex/cfb": "0.1.0-dev.3",
-    "@office-ex/sheets": "0.1.0-dev.3"
+    "@office-ex/contracts": "0.1.0-dev.4",
+    "@office-ex/core": "0.1.0-dev.4",
+    "@office-ex/format-common": "0.1.0-dev.4",
+    "@office-ex/ooxml": "0.1.0-dev.4",
+    "@office-ex/cfb": "0.1.0-dev.4",
+    "@office-ex/sheets": "0.1.0-dev.4"
   }
 }

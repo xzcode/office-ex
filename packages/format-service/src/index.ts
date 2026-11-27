@@ -2,7 +2,7 @@
 import { OfficeError } from '@office-ex/contracts';
 import { validateDocument, type OfficeDocument, type WriterDocument, type SheetsDocument, type SlidesDocument } from '@office-ex/core';
 import { BoundedReader, sniffContainer, sortedDiagnostics, type Detection, type FormatId, type FormatDiagnostic, type CompatibilityReport } from '@office-ex/format-common';
-import { openOpc, openWriterDocx, writeWriterDocx, saveWriterDocx, openSheetsXlsx, previewSheetsXlsx, type XlsxValuePreview, previewOfficeText, type OfficeTextPreview, writeSheetsXlsx, saveSheetsXlsx, openSlidesPptx, writeSlidesPptx, saveSlidesPptx } from '@office-ex/ooxml';
+import { inspectOpc,prepareOpcInspection,type OpcInspectionSummary,type ContainerOptions,openWriterDocx, writeWriterDocx, saveWriterDocx, openSheetsXlsx, previewSheetsXlsx, type XlsxValuePreview, previewOfficeText, type OfficeTextPreview, writeSheetsXlsx, saveSheetsXlsx, openSlidesPptx, writeSlidesPptx, saveSlidesPptx } from '@office-ex/ooxml';
 import type { CalculatedValue } from '@office-ex/sheets';
 import { openLegacyXls, writeLegacyXls, saveLegacyXls } from './legacy-xls.js';
 export { openLegacyXls, writeLegacyXls, saveLegacyXls } from './legacy-xls.js';
@@ -18,16 +18,16 @@ export interface Inspection { semanticFailure?:{code:string;detail:string};xlsxV
 function semanticFailure(inspection:Inspection,error:OfficeError):Inspection{
  return {...inspection,semanticFailure:{code:error.code,detail:error.message.slice(0,512)}};
 }
-function addOfficeTextPreview(result:Inspection,bytes:Uint8Array,signal?:AbortSignal):void{
+function addOfficeTextPreview(result:Inspection,bytes:Uint8Array,options:ContainerOptions):void{
  try{
-  result.officeTextPreview=previewOfficeText(bytes,{signal});
+  result.officeTextPreview=previewOfficeText(bytes,options);
   const diagnostics=sortedDiagnostics([...result.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),diagnostic('OFFICE_TEXT_PREVIEW','FMT-04','format.officeTextPreview')]);
   result.report={...result.report,diagnostics};result.detection={...result.detection,diagnostics};
  }catch(error){if(!(error instanceof OfficeError)||!['unsupported','invalid','limit','unsafe'].includes(error.code))throw error;}
 }
-function addXlsxPreview(result:Inspection,bytes:Uint8Array,signal?:AbortSignal):void{
+function addXlsxPreview(result:Inspection,bytes:Uint8Array,options:ContainerOptions):void{
  try{
-  result.xlsxValuePreview=previewSheetsXlsx(bytes,{signal});
+  result.xlsxValuePreview=previewSheetsXlsx(bytes,options);
   const diagnostics=sortedDiagnostics([...result.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),diagnostic('XLSX_VALUE_PREVIEW','SHT-05','format.xlsxValuePreview')]);
   result.report={...result.report,diagnostics};result.detection={...result.detection,diagnostics};
  }catch(error){if(!(error instanceof OfficeError)||!['unsupported','invalid','limit','unsafe'].includes(error.code))throw error;}
@@ -38,7 +38,7 @@ const MAX_DRAFT = 32 * 1024 * 1024;
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const diagnostic = (code: string, featureId: string, messageKey: string, severity: FormatDiagnostic['severity'] = 'warning'): FormatDiagnostic => ({code, featureId, messageKey, severity, safeAction: 'read-only'});
 export async function sha256(bytes: Uint8Array): Promise<string> {
-  return Array.from(new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes.slice().buffer)), b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', Uint8Array.from(bytes).buffer)), b => b.toString(16).padStart(2, '0')).join('');
 }
 export function parseDraft(bytes: Uint8Array): OfficeDocument {
   if (bytes.byteLength > MAX_DRAFT) throw new OfficeError('limit', 'Draft exceeds the 32 MiB budget');
@@ -60,17 +60,22 @@ export function serializeDraft(document: unknown): Uint8Array {
   parseDraft(bytes); // Re-read our own serialized envelope before any filesystem commit.
   return bytes;
 }
-export async function inspectFile(bytes: Uint8Array, filename = '', signal?: AbortSignal): Promise<Inspection> {
-  if (!(bytes instanceof Uint8Array) || bytes.byteLength > MAX_INPUT) throw new OfficeError('limit','Input exceeds the 100 MiB budget');
-  if (signal?.aborted) throw new OfficeError('cancelled','Inspection cancelled');
+function assertInspectionInput(bytes:Uint8Array,signal?:AbortSignal):void{
+ if(!(bytes instanceof Uint8Array)||bytes.byteLength>MAX_INPUT)throw new OfficeError('limit','Input exceeds the 100 MiB budget');
+ if(signal?.aborted)throw new OfficeError('cancelled','Inspection cancelled');
+}
+export async function inspectFile(bytes:Uint8Array,filename='',signal?:AbortSignal):Promise<Inspection>{
+ return inspectFileInternal(bytes,filename,signal);
+}
+async function inspectFileInternal(bytes:Uint8Array,filename:string,signal?:AbortSignal,zipSummary?:OpcInspectionSummary):Promise<Inspection>{
+  assertInspectionInput(bytes,signal);
   const container = sniffContainer(bytes);
   let format: FormatId = 'unknown'; let version = 'unknown'; let encrypted = false; let draft: OfficeDocument | undefined;
   const diagnostics: FormatDiagnostic[] = [];
   const parts: {name:string;bytes:Uint8Array}[] = [];
   if (container === 'zip') {
-    const opc = openOpc(bytes, {signal});
-    format = opc.kind ?? 'zip'; version = opc.conformance;
-    for (const [name, data] of opc.parts) parts.push({name, bytes:data});
+    const opc=zipSummary??inspectOpc(bytes,{signal});zipSummary=opc;
+    format=opc.kind??'zip';version=opc.conformance;
     if (opc.hasMacros) diagnostics.push(diagnostic('MACROS_DISABLED','SEC-02','format.macrosDisabled'));
     if (opc.hasSignatures) diagnostics.push(diagnostic('SIGNED_READ_ONLY','FMT-03','format.signedReadOnly'));
     if (opc.externalRelationships) diagnostics.push(diagnostic('EXTERNAL_LINKS_DISABLED','SEC-02','format.externalDisabled'));
@@ -157,7 +162,7 @@ export async function inspectFile(bytes: Uint8Array, filename = '', signal?: Abo
   const extension = filename.includes('.') ? filename.split('.').pop()!.toLowerCase() : '';
   if (extension && extension !== format && ['doc','docx','xls','xlsx','ppt','pptx','oex','pdf'].includes(extension) && !(encrypted && container === 'cfb')) diagnostics.push(diagnostic('EXTENSION_MISMATCH','FMT-01','format.extensionMismatch'));
   const sorted = sortedDiagnostics(diagnostics);
-  const entries: ContainerEntry[] = [];
+  const entries:ContainerEntry[]=zipSummary?.entries??[];
   for (const part of parts) {
     if (signal?.aborted) throw new OfficeError('cancelled','Inspection cancelled');
     entries.push({name:part.name,size:part.bytes.byteLength,sha256:await sha256(part.bytes)});
@@ -168,7 +173,8 @@ export async function inspectFile(bytes: Uint8Array, filename = '', signal?: Abo
     {featureId:container === 'cfb' ? 'LEG-01' : container === 'zip' ? 'FMT-05' : 'FMT-01',read:true,write:Boolean(draft),preserve:true,blocked:false,level:'C1'},
     {featureId:'FMT-04',read:Boolean(draft),write:Boolean(draft),preserve:true,blocked:!draft,level:draft ? 'C2':'C0'}
   ]};
-  return {detection,report,entries,sha256:await sha256(bytes),...(draft ? {draft} : {})};
+  if(signal?.aborted)throw new OfficeError('cancelled','Inspection cancelled');
+  return {detection,report,entries,sha256:zipSummary?.sha256??await sha256(bytes),...(draft?{draft}:{})};
 }
 
 /** The desktop editor opts in only to the narrow, independently tested DOCX profile.
@@ -176,33 +182,37 @@ export async function inspectFile(bytes: Uint8Array, filename = '', signal?: Abo
  * A .docx extension is required for native editing, not for container detection.
  */
 export async function inspectForEditor(bytes:Uint8Array,filename:string,documentId:string,signal?:AbortSignal):Promise<Inspection>{
-  const inspection=await inspectFile(bytes,filename,signal);
+  assertInspectionInput(bytes,signal);
+  const scope=sniffContainer(bytes)==='zip'?prepareOpcInspection(bytes,{signal}):undefined;
+  try{
+  const options:ContainerOptions=scope?.options??{signal};
+  const inspection=await inspectFileInternal(bytes,filename,signal,scope?.summary);
   const format=inspection.detection.format;
   if((format==='ppt'||format==='pptx')&&filename.toLowerCase().endsWith('.'+format)&&bytes.byteLength<=MAX_DRAFT&&!inspection.detection.encrypted){
     try{
-      const source=format==='pptx'?openSlidesPptx(bytes,documentId,filename,{signal}):openLegacyPpt(bytes,documentId,filename,{signal});
-      const editableSlides=validateDocument(source.document) as SlidesDocument,featureId=format==='ppt'?'LEG-04':'SLD-03';
+      const source=format==='pptx'?openSlidesPptx(bytes,documentId,filename,options):openLegacyPpt(bytes,documentId,filename,{signal});
+      const editableSlides=(format==='pptx'?source.document:validateDocument(source.document)) as SlidesDocument,featureId=format==='ppt'?'LEG-04':'SLD-03';
       const diagnostics=sortedDiagnostics([...inspection.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),{code:format==='ppt'?'PPT_PROFILE_ACTIVE':'PPTX_PROFILE_ACTIVE',featureId,messageKey:format==='ppt'?'format.pptProfile':'format.pptxProfile',severity:'info',safeAction:'none'}]);
       return {...inspection,editableSlides,editableSlidesFormat:format,...('native' in source&&(source.native.layoutPaths.length>1||source.native.auxiliaryPaths.some(path=>path!==source.native.presPropsPath)||Boolean(source.document.theme?.majorFontDetails||source.document.theme?.minorFontDetails))?{slidesTemplateConversionBlocked:true}:{}),detection:{...inspection.detection,diagnostics},report:{...inspection.report,readOnly:false,diagnostics,features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]}};
-    }catch(error){if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code)){const result=semanticFailure(inspection,error);if(format==='pptx')addOfficeTextPreview(result,bytes,signal);return result;}throw error;}
+    }catch(error){if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code)){const result=semanticFailure(inspection,error);if(format==='pptx')addOfficeTextPreview(result,bytes,options);return result;}throw error;}
   }
   if((format==='xls'||format==='xlsx')&&filename.toLowerCase().endsWith('.'+format)&&bytes.byteLength<=MAX_DRAFT&&!inspection.detection.encrypted){
     try{
-      const xlsxSource=format==='xlsx'?openSheetsXlsx(bytes,documentId,filename,{signal}):undefined;
+      const xlsxSource=format==='xlsx'?openSheetsXlsx(bytes,documentId,filename,options):undefined;
       const source=xlsxSource??openLegacyXls(bytes,documentId,filename);
-      const editableSheets=validateDocument(source.document) as SheetsDocument,featureId=format==='xls'?'LEG-03':'SHT-05';
+      const editableSheets=(xlsxSource?source.document:validateDocument(source.document)) as SheetsDocument,featureId=format==='xls'?'LEG-03':'SHT-05';
       const diagnostics=sortedDiagnostics([...inspection.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),{code:format==='xls'?'XLS_PROFILE_ACTIVE':'XLSX_PROFILE_ACTIVE',featureId,messageKey:format==='xls'?'format.xlsProfile':'format.xlsxProfile',severity:'info',safeAction:'none'}]);
       return {...inspection,editableSheets,editableSheetsFormat:format,...(xlsxSource?.native.conversionBlocked?{sheetsTemplateConversionBlocked:true}:{}),sheetsCachedValues:source.cachedValues,detection:{...inspection.detection,diagnostics},report:{...inspection.report,readOnly:false,diagnostics,features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]}};
     }catch(error){
       if(!(error instanceof OfficeError)||!['unsupported','invalid','limit'].includes(error.code))throw error;
       const result=semanticFailure(inspection,error);
-      if(format==='xlsx')addXlsxPreview(result,bytes,signal);
+      if(format==='xlsx')addXlsxPreview(result,bytes,options);
       return result;
     }
   }
   if(format==='xlsx'&&filename.toLowerCase().endsWith('.xlsx')&&!inspection.detection.encrypted&&bytes.byteLength>MAX_DRAFT){
     const result=semanticFailure(inspection,new OfficeError('limit','Workbook exceeds the editable model input budget'));
-    addXlsxPreview(result,bytes,signal);
+    addXlsxPreview(result,bytes,options);
     return result;
   }
   if((format!=='docx'&&format!=='doc')||!filename.toLowerCase().endsWith('.'+format)||bytes.byteLength>MAX_DRAFT||inspection.detection.encrypted)return inspection;
@@ -210,8 +220,8 @@ export async function inspectForEditor(bytes:Uint8Array,filename:string,document
     try{inspection.legacyDocText=inspectLegacyDocText(bytes);}catch(error){if(!(error instanceof OfficeError)||!['unsupported','invalid','limit'].includes(error.code))throw error;}
   }
   try{
-    const source=format==='docx'?openWriterDocx(bytes,documentId,filename,{signal}):openLegacyDoc(bytes,documentId,filename);
-    const editableWriter=validateDocument(source.document) as WriterDocument;
+    const source=format==='docx'?openWriterDocx(bytes,documentId,filename,options):openLegacyDoc(bytes,documentId,filename);
+    const editableWriter=(format==='docx'?source.document:validateDocument(source.document)) as WriterDocument;
     const featureId=format==='doc'?'LEG-02':'WRT-04';
     const diagnostics=sortedDiagnostics([
       ...inspection.report.diagnostics.filter(d=>d.code!=='SEMANTIC_ADAPTER_PENDING'),
@@ -222,9 +232,10 @@ export async function inspectForEditor(bytes:Uint8Array,filename:string,document
       features:[...inspection.report.features,{featureId,read:true,write:true,preserve:true,blocked:false,level:'C2'}]
     }};
   }catch(error){
-    if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code)){const result=semanticFailure(inspection,error);if(format==='docx')addOfficeTextPreview(result,bytes,signal);return result;}
+    if(error instanceof OfficeError&&['unsupported','invalid','limit'].includes(error.code)){const result=semanticFailure(inspection,error);if(format==='docx')addOfficeTextPreview(result,bytes,options);return result;}
     throw error;
   }
+  }finally{scope?.release();}
 }
 /** Called only by the main-owned sandbox verifier when committing desktop DOCX.
  * The request contains an OEX snapshot, not caller-chosen output bytes. Existing
@@ -260,7 +271,7 @@ export function prepareSheetsSave(format:'xls'|'xlsx',snapshotBytes:Uint8Array,d
   if(sourceBytes!==undefined&&(!(sourceBytes instanceof Uint8Array)||!sourceBytes.byteLength||sourceBytes.byteLength>MAX_DRAFT))throw new OfficeError('limit','Spreadsheet source exceeds editable profile budget');
   const output=format==='xlsx'?(sourceBytes===undefined?writeSheetsXlsx(model):saveSheetsXlsx(sourceBytes,model)):(sourceBytes===undefined?writeLegacyXls(model):saveLegacyXls(sourceBytes,model));
   if(output.byteLength>MAX_DRAFT)throw new OfficeError('limit','Spreadsheet output exceeds editable profile budget');
-  if(format==='xlsx')openSheetsXlsx(output,documentId,model.title);else openLegacyXls(output,documentId,model.title);
+  if(format==='xlsx'){if(sourceBytes===undefined)openSheetsXlsx(output,documentId,model.title);}else openLegacyXls(output,documentId,model.title);
   return output;
 }
 
@@ -271,6 +282,6 @@ export function prepareSlidesSave(format:'ppt'|'pptx',snapshotBytes:Uint8Array,d
   if(sourceBytes!==undefined&&(!(sourceBytes instanceof Uint8Array)||!sourceBytes.byteLength||sourceBytes.byteLength>MAX_DRAFT))throw new OfficeError('limit','Presentation source exceeds editable profile budget');
   const output=format==='pptx'?(sourceBytes===undefined?writeSlidesPptx(model):saveSlidesPptx(sourceBytes,model)):(sourceBytes===undefined?writeLegacyPpt(model):saveLegacyPpt(sourceBytes,model));
   if(output.byteLength>MAX_DRAFT)throw new OfficeError('limit','Presentation output exceeds editable profile budget');
-  if(format==='pptx')openSlidesPptx(output,documentId,model.title);else openLegacyPpt(output,documentId,model.title);
+  if(format==='pptx'){if(sourceBytes===undefined)openSlidesPptx(output,documentId,model.title);}else openLegacyPpt(output,documentId,model.title);
   return output;
 }

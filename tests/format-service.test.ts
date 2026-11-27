@@ -186,3 +186,35 @@ test('WRT-04 save verifier rejects raw archive input, mismatched model IDs, othe
   assert.throws(()=>prepareWriterDocxSave(snapshot,'tab-1',unsupported),code('unsupported'));
   assert.equal(digest(unsupported),before);
 });
+
+test('M7.5 OPC inspection pins limits, reuses only one private validated graph, and retains exact hashes',async()=>{
+ const {prepareOpcInspection,inspectOpc,writeOpc}=await import('@office-ex/ooxml');
+ const source=writeWriterDocx(createDocument('writer','inspection-scope'));
+ const scope=prepareOpcInspection(source);
+ assert.equal(scope.summary.sha256,digest(source));assert.ok(Object.isFrozen(scope.options)&&Object.isFrozen(scope.options.limits));
+ const graph=openOpc(source,scope.options);
+ for(const e of scope.summary.entries){const part=graph.parts.get(e.name)!;assert.equal(e.size,part.length);assert.equal(e.sha256,digest(part));}
+ assert.deepEqual(writeOpc(graph),source);
+ graph.parts.delete(graph.mainPart!);
+ // A consumed scope never shares a caller-mutated package with a later open.
+ const fresh=openOpc(source,scope.options);assert.ok(fresh.parts.has(fresh.mainPart!));
+ assert.deepEqual(inspectOpc(source).entries,scope.summary.entries);scope.release();
+ const changed=source.slice(),other=prepareOpcInspection(changed);changed[0]^=255;
+ assert.throws(()=>openOpc(changed,other.options),code('conflict'));
+ const controller=new AbortController(),cancelled=prepareOpcInspection(source,{signal:controller.signal});controller.abort();
+ assert.throws(()=>openOpc(source,cancelled.options),code('cancelled'));cancelled.release();
+ assert.throws(()=>prepareOpcInspection(source,{limits:{maxFileBytes:1}}),code('limit'));
+});
+test('M7.5 scoped editor inspection reports the exact source digest and structural part digests',async()=>{
+ const {writeSheetsXlsx,writeSlidesPptx}=await import('@office-ex/ooxml');
+ const docs=[['docx',writeWriterDocx(createDocument('writer','m75-word'))],['xlsx',writeSheetsXlsx(createDocument('sheets','m75-sheet'))],['pptx',writeSlidesPptx(createDocument('slides','m75-slides'))]] as const;
+ for(const [ext,b]of docs){
+  const structural=await inspectFile(b,'test.'+ext),editor=await inspectForEditor(b,'test.'+ext,'m75-open');
+  assert.equal(editor.report.readOnly,false,editor.semanticFailure?.detail);
+  assert.equal(editor.sha256,digest(b));assert.deepEqual(editor.entries,structural.entries);
+ }
+ // Changing bytes while an async inspection is yielding must not let a
+ // previously validated private graph authorize a different byte stream.
+ const source=docs[0][1].slice(),pending=inspectForEditor(source,'test.docx','m75-changed');
+ source[0]^=255;await assert.rejects(pending,code('conflict'));
+});

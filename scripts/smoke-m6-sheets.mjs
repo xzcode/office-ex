@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 /** Independent workbook import, editable grid, live recalculation and native save. */
 import {revealControl} from './ribbon-test-controls.mjs';
@@ -8,7 +9,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {openSheetsXlsx,openOpc} from '@office-ex/ooxml';
 const fixtures=resolve(process.argv[2]??'.work/m6-sheet-corpus');
-const work=await mkdtemp(join(tmpdir(),'office-ex-m6-sheet-')),profile=join(work,'profile');await mkdir(profile);
+const work=await mkdtemp(join(tmpdir(),'office-ex-m6-sheet-')),profile=join(work,'profile');await prepareTabbedProfile(profile);
 const file=join(work,'report.xlsx');await copyFile(join(fixtures,'m6-sheet.xlsx'),file);
 const original=await readFile(file),checks=[];let app;
 const check=name=>{checks.push(name);console.log('PASS',name);};

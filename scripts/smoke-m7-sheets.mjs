@@ -1,3 +1,4 @@
+import {prepareTabbedProfile} from './tabbed-test-profile.mjs';
 // SPDX-License-Identifier: MIT
 /** Native rich text display/edit and named style controls using independent files. */
 import {revealControl} from './ribbon-test-controls.mjs';
@@ -8,7 +9,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {openSheetsXlsx} from '@office-ex/ooxml';
 const fixtures=resolve(process.argv[2]??'.work/m7-sheet-corpus'),work=await mkdtemp(join(tmpdir(),'office-ex-m7-sheet-')),profile=join(work,'profile');
-await mkdir(profile);const file=join(work,'inline.xlsx');await copyFile(join(fixtures,'inline.xlsx'),file);
+await prepareTabbedProfile(profile);const file=join(work,'inline.xlsx');await copyFile(join(fixtures,'inline.xlsx'),file);
 const checks=[];let app;const check=name=>{checks.push(name);console.log('PASS',name);};
 async function wait(fn,label){const end=Date.now()+30000;while(Date.now()<end){try{if(await fn())return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Timed out: '+label);}
 try{

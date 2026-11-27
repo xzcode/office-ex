@@ -76,3 +76,18 @@ test('WRT-04 source style definitions/defaults are immutable and style applicati
   assert.throws(()=>setParagraphNamedStyle(session.snapshot(),id,'UnusedList'),fails('unsupported'));
   assert.equal(paragraphText(session.snapshot(),id),'Styled 中文 😀');assert.equal(session.dirty,false);
 });
+
+test('M7.5 ordinary Word theme overrides, proofing hints and cached pagination metadata remain editable',async()=>{
+ const b=alterPart(styledFixture(),'word/document.xml',s=>s.replace('<w:document ','<w:document xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" ').replace('<w:p><w:pPr>','<w:p w14:paraId="1234ABCD" w14:textId="2345ABCD"><w:pPr>').replace('<w:rStyle w:val="Accent"/>','<w:rStyle w:val="Accent"/><w:rFonts w:asciiTheme="majorAscii" w:hAnsiTheme="majorHAnsi" w:hint="default"/><w:color w:val="CC0000" w:themeColor="accent2"/><w:noProof/>').replace('</w:pPr><w:r>','</w:pPr><w:proofErr w:type="spellStart"/><w:r>').replace('</w:rPr><w:t','</w:rPr><w:lastRenderedPageBreak/><w:t').replace('</w:r></w:p>','</w:r><w:proofErr w:type="spellEnd"/></w:p>'));
+ const inspection=await inspectForEditor(b,'word-authored.docx','m75-theme');assert.equal(inspection.report.readOnly,false,inspection.semanticFailure?.detail);
+ const source=openWriterDocx(b,'m75-theme','Word'),doc=source.document;
+ const run=paragraph(doc).runs[0]!;assert.equal(run.type,'text');if(run.type!=='text')return;
+ assert.equal(run.style?.fontFamily,'Arial');assert.deepEqual(run.style?.color,{kind:'rgba',red:204,green:0,blue:0,alpha:255});
+ assert.deepEqual(saveWriterDocx(source,doc),b);
+ const s=new DocumentSession(doc);s.execute(replaceParagraphRange(s.snapshot(),paragraph(doc).id,0,6,'Updated','m75-edit'));
+ const edited=prepareWriterDocxSave(serializeDraft(s.snapshot().document),'m75-theme',b),out=openWriterDocx(edited,'m75-theme','Word');
+ assert.match(paragraphText(new DocumentSession(out.document).snapshot(),paragraph(out.document).id),/^Updated/);
+ for(const [path,data]of openOpc(b).parts)if(path!=='word/document.xml')assert.deepEqual(openOpc(edited).parts.get(path),data);
+ const tracked=alterPart(b,'word/document.xml',s=>s.replace('<w:proofErr w:type="spellStart"/>','<w:ins w:id="1"/>'));
+ assert.equal((await inspectForEditor(tracked,'tracked.docx','m75-track')).report.readOnly,true);
+});

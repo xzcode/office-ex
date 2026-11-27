@@ -36,6 +36,9 @@ function attrs(el:Element,allowed:readonly string[]=[]):void{
     const a=el.attributes.item(i)!;
     if(a.namespaceURI===XMLNS)continue;
     if(a.namespaceURI==='http://schemas.openxmlformats.org/markup-compatibility/2006'&&a.localName==='Ignorable'&&['hdr','ftr'].includes(el.localName??'')&&a.value.split(/\s+/).every(p=>p&&el.lookupNamespaceURI(p)?.startsWith('http://schemas.microsoft.com/office/')))continue;
+    // Word's paragraph/text revision identifiers are metadata, not actual
+    // insert/delete revision markup. The latter is still rejected.
+    if(a.namespaceURI==='http://schemas.microsoft.com/office/word/2010/wordml'&&el.localName==='p'&&['paraId','textId'].includes(a.localName??'')&&/^[0-9a-fA-F]{8}$/.test(a.value))continue;
     // rsid identifies an editing session, not tracked-change content. No
     // revision markup is admitted. Ignore only the enumerated metadata attrs.
     if(a.namespaceURI===W&&['rsidR','rsidRPr','rsidRDefault','rsidP','rsidDel','rsidSect'].includes(a.localName??'')&&['p','r','sectPr'].includes(el.localName??'')&&/^[0-9A-Fa-f]{8}$/.test(a.value))continue;
@@ -68,6 +71,7 @@ export function readRunStyle(el:Element,reference?:(id:string)=>void,theme?:Them
   for(const child of elements(el)){
     valid(child.namespaceURI===W&&child.localName!==null&&!seen.has(child.localName),'Duplicate or foreign run property');seen.add(child.localName);
     switch(child.localName){
+      case 'noProof':toggled(child);break; // Optional proofing hint, not visible content.
       case 'lang':{attrs(child,['w:val','w:eastAsia','w:bidi']);empty(child);let count=0;for(const [key,property] of [['val','language'],['eastAsia','eastAsiaLanguage'],['bidi','bidiLanguage']] as const){const lang=prop(child,key);if(lang!==undefined){valid(isDocumentLanguageTag(lang),'Unsupported document language tag');style[property]=lang;count++;}}valid(count>0,'Empty language property');break;}
       case 'rtl':{valid(!named,'Named RTL toggle is outside this profile');style.runDirection=toggled(child)?'rtl':'ltr';break;}
       case 'rStyle':{valid(reference,'Unexpected character style reference');attrs(child,['w:val']);empty(child);const id=prop(child,'val');valid(id,'Missing character style reference');reference(id);break;}
@@ -80,7 +84,7 @@ export function readRunStyle(el:Element,reference?:(id:string)=>void,theme?:Them
       case 'szCs':attrs(child,['w:val']);empty(child);style.complexFontSize=numberProp(child,'val',1,3276)*6350;break;
       case 'bCs':case 'iCs':{valid(named||theme,'Independent complex-script toggle requires preserved source style');const value=toggled(child);const corresponding=child.localName==='bCs'?'bold':'italic';const direct=elements(el).find(e=>isW(e,corresponding==='bold'?'b':'i'));valid(direct&&toggled(direct)===value,'Independent complex-script toggle needs a later adapter');break;}
       case 'color':{attrs(child,theme?['w:val','w:themeColor','w:themeShade','w:themeTint']:['w:val']);empty(child);const key=prop(child,'themeColor'),shade=prop(child,'themeShade'),tint=prop(child,'themeTint');valid(!(shade&&tint)&&(!shade||/^[0-9a-fA-F]{2}$/.test(shade))&&(!tint||/^[0-9a-fA-F]{2}$/.test(tint))&&(!(shade||tint)||key&&theme?.colors[key]),'Invalid theme transform');const color=shade||tint?prop(child,'val')??'':key!==undefined?(theme?.colors[key]??''):prop(child,'val')??'';valid(/^[0-9a-fA-F]{6}$/.test(color),'Unsupported color');style.color={kind:'rgba',red:parseInt(color.slice(0,2),16),green:parseInt(color.slice(2,4),16),blue:parseInt(color.slice(4,6),16),alpha:255};break;}
-      case 'rFonts':{attrs(child,theme?['w:ascii','w:hAnsi','w:eastAsia','w:cs','w:asciiTheme','w:hAnsiTheme','w:eastAsiaTheme','w:cstheme']:['w:ascii','w:hAnsi','w:eastAsia','w:cs']);empty(child);const fontKeys=[['ascii','asciiTheme'],['hAnsi','hAnsiTheme'],['eastAsia','eastAsiaTheme'],['cs','cstheme']] as const;const fonts=fontKeys.map(([literal,themed])=>{const ref=prop(child,themed);return ref!==undefined?theme?.fonts[ref]:prop(child,literal);});const font=fonts[0]??fonts[1];valid(font,'Missing Latin font mapping');
+      case 'rFonts':{attrs(child,theme?['w:ascii','w:hAnsi','w:eastAsia','w:cs','w:asciiTheme','w:hAnsiTheme','w:eastAsiaTheme','w:cstheme','w:hint']:['w:ascii','w:hAnsi','w:eastAsia','w:cs','w:hint']);empty(child);valid((prop(child,'hint')??'default')==='default','Nondefault font hint requires script-specific shaping');const fontKeys=[['ascii','asciiTheme'],['hAnsi','hAnsiTheme'],['eastAsia','eastAsiaTheme'],['cs','cstheme']] as const;const fonts=fontKeys.map(([literal,themed])=>{const ref=prop(child,themed);return ref!==undefined?theme?.fonts[ref]:prop(child,literal);});const font=fonts[0]??fonts[1];valid(font,'Missing Latin font mapping');
         for(const [literal,themed] of fontKeys){const ref=prop(child,themed);if(ref!==undefined)valid(theme&&Object.hasOwn(theme.fonts,ref),'Unknown theme font');}
         if(fonts.every(f=>f===font))style.fontFamily=font;
         else {style.fontFamily=font;for(let i=0;i<fonts.length;i++)if(fonts[i])style[(['fontAscii','fontHighAnsi','fontEastAsia','fontComplex'] as const)[i]!]=fonts[i];}
@@ -193,6 +197,14 @@ function readPageStory(bytes:Uint8Array,kind:'header'|'footer',profile:DocxStyle
   const paragraphs=nodes.map(p=>readStoryParagraph(p,kind,profile));
   const [first,...rest]=paragraphs;return {kind,...first!,...(rest.length?{additionalParagraphs:rest}:{})};
 }
+function proofingMarker(e:Element):boolean{
+ if(!isW(e,'proofErr'))return false;
+ attrs(e,['w:type']);empty(e);valid(['spellStart','spellEnd','gramStart','gramEnd'].includes(prop(e,'type')??''),'Invalid proofing marker');return true;
+}
+function renderedPageBreak(e:Element):boolean{
+ if(!isW(e,'lastRenderedPageBreak'))return false;
+ attrs(e);empty(e);return true;
+}
 function readStoryParagraph(p:Element,kind:'header'|'footer',profile:DocxStyleProfile|undefined):WriterStoryParagraph{
   attrs(p);const items=elements(p);let i=0;
   const story:WriterStoryParagraph={text:''};
@@ -212,8 +224,8 @@ function readStoryParagraph(p:Element,kind:'header'|'footer',profile:DocxStylePr
   const recordStyle=(style:TextStyle)=>{if(!haveStyle){uniform=style;haveStyle=true;}else valid(canonicalData(uniform??{})===canonicalData(style),'Mixed running story run formatting');};
   const readRun=(r:Element):{style:TextStyle;items:Element[]}=>{
     requireElement(r,'r');attrs(r);const nodes=elements(r);let style:TextStyle={};
-    if(nodes[0]&&isW(nodes[0]!,'rPr'))style=readRunStyle(nodes.shift()!);
-    return {style,items:nodes};
+    if(nodes[0]&&isW(nodes[0]!,'rPr'))style=readRunStyle(nodes.shift()!,undefined,profile?.theme);
+    return {style,items:nodes.filter(n=>!renderedPageBreak(n))};
   };
   const plain=(nodes:Element[])=>nodes.map(n=>{requireElement(n,'t');return simpleText(n);}).join('');
   const field=(r:Element,type:string)=>{const data=readRun(r);valid(!Object.keys(data.style).length&&data.items.length===1&&isW(data.items[0]!,'fldChar'),'Unsupported field marker run');const e=data.items[0]!;attrs(e,['w:fldCharType']);empty(e);valid(prop(e,'fldCharType')===type,'Invalid PAGE field chain');};
@@ -222,6 +234,7 @@ function readStoryParagraph(p:Element,kind:'header'|'footer',profile:DocxStylePr
   const append=(s:string)=>{if(story.pageNumber)story.after=(story.after??'')+s;else story.text+=s;};
   while(i<items.length){
     const e=items[i++]!;
+    if(proofingMarker(e))continue;
     if(isW(e,'fldSimple')){
       attrs(e,['w:instr']);valid((prop(e,'instr')??'').trim().toUpperCase()==='PAGE','Unsupported running story field');
       let value='';for(const r of elements(e)){const d=readRun(r),t=plain(d.items);if(t)recordStyle(d.style);value+=t;}setField(value);continue;
@@ -405,12 +418,12 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
   const readParagraph=(p:Element,inCell=false,sectionEnd?:Element):WriterBlock=>{
     const bi=paragraphIndex++;valid(paragraphIndex<=MAX_BLOCKS,'Paragraph budget exceeded');requireElement(p,'p');attrs(p);const nodes=elements(p);
     let style:TextStyle|undefined,styleId=profile?.defaultParagraph;let i=0;
-    if(nodes[0]&&isW(nodes[0],'pPr')){style=readParagraphStyle(nodes[0],profile?id=>{styleId=requireStyleReference(profile,id,'paragraph');}:undefined,sectionEnd);i++;}
+    if(nodes[0]&&isW(nodes[0],'pPr')){style=readParagraphStyle(nodes[0],profile?id=>{styleId=requireStyleReference(profile,id,'paragraph');}:undefined,sectionEnd,profile?.theme);i++;}
     const runs:Inline[]=[];let pageBreak=false;
     for(;i<nodes.length;i++){
-      const r=nodes[i]!;requireElement(r,'r');attrs(r);valid(++runCount<=MAX_RUNS,'Run limit exceeded');
+      const r=nodes[i]!;if(proofingMarker(r))continue;requireElement(r,'r');attrs(r);valid(++runCount<=MAX_RUNS,'Run limit exceeded');
       const items=elements(r);let j=0;let direct:TextStyle|undefined,runStyleId:string|undefined;
-      if(items[0]&&isW(items[0],'rPr')){direct=readRunStyle(items[0],profile?id=>{runStyleId=requireStyleReference(profile,id,'character');}:undefined);j++;}
+      if(items[0]&&isW(items[0],'rPr')){direct=readRunStyle(items[0],profile?id=>{runStyleId=requireStyleReference(profile,id,'character');}:undefined,profile?.theme);j++;}
       if(items[j]&&isW(items[j]!,'drawing')){
         valid(items.length===1&&!direct&&!runStyleId,'An inline drawing must be in its own unformatted run');
         const picture=readInlinePicture(items[j]!,media,'r-'+bi+'-image-'+runs.length);
@@ -419,6 +432,7 @@ function readMain(xml:Document,documentId:string,title:string,profile:DocxStyleP
       let text='';
       for(;j<items.length;j++){
         const child=items[j]!;
+        if(renderedPageBreak(child))continue;
         if(isW(child,'t'))text+=simpleText(child);
         else if(isW(child,'tab')){attrs(child);empty(child);text+='\t';}
         else if(isW(child,'br')){

@@ -12,6 +12,7 @@ import {CanvasFontMetrics} from './font-metrics.js';
 import {BrowserParagraphShaper} from './native-writer-shaper.js';
 import {writerParagraphRule,writerListMarker} from './writer-paragraph-decoration.js';
 import type {WriterHost,WriterViewState} from './writer-workspace.js';
+import {createPanelSplitter,panelWidth} from './panel-splitter.js';
 import {decorateOfficeButton} from './office-ribbon.js';
 
 const PX=EMU_PER_CSS_PIXEL,css=(n:number)=>n/PX+'px';
@@ -32,7 +33,10 @@ export interface NativeWriterController {getRange():WriterRange|undefined;setRan
 export function nativeWriterPage(host:WriterHost,state:WriterViewState,external?:{ready(controller:NativeWriterController):void;selection():void}):HTMLElement{
   const root=node('section','','writer-native-workspace'),toolbar=node('div','','writer-controls'),pagebar=node('div','','writer-pagebar'),viewport=node('div','','writer-native-viewport'),paper=node('div','','writer-native-paper'),info=node('p','','muted writer-native-info');
   const workbench=node('div','','writer-page-workbench'),rail=node('nav','','writer-page-rail'),railHeader=node('div',host.t('ribbonPages'),'writer-page-rail-title'),pageList=node('div','','writer-page-list'),pageWrap=node('div','','writer-page-wrap'),ruler=node('div','','writer-ruler'),sheetWrap=node('div','','writer-paper-wrap');
-  rail.setAttribute('aria-label',host.t('ribbonPages'));rail.append(railHeader,pageList);pageWrap.append(ruler,sheetWrap);sheetWrap.append(paper);viewport.append(pageWrap);workbench.append(rail,viewport);
+  rail.setAttribute('aria-label',host.t('ribbonPages'));rail.append(railHeader,pageList);pageWrap.append(ruler,sheetWrap);sheetWrap.append(paper);viewport.append(pageWrap);workbench.classList.add('resizable-writer');let railWidth=panelWidth('writer-rail',122,96,360);
+  const layoutPanels=()=>workbench.style.setProperty('--writer-rail-width',Math.min(railWidth,Math.max(96,(workbench.clientWidth||window.innerWidth)-300))+'px');
+  const splitter=createPanelSplitter({key:'writer-rail',label:host.t('ribbonPages'),side:'start',panel:rail,width:()=>railWidth,setWidth:v=>{railWidth=v;layoutPanels();},limits:()=>({min:96,max:Math.max(96,Math.min(360,(workbench.clientWidth||window.innerWidth)-300))})});
+  workbench.append(rail,splitter,viewport);layoutPanels();
   let railRevision=-1;
   paper.id='writer-native-page';paper.setAttribute('aria-label',host.t('writerPagePreview'));paper.dir='ltr';
   const input=node('textarea','','writer-native-input');input.id='writer-page-input';input.setAttribute('aria-label',host.t('writerPageEdit'));input.autocomplete='off';input.spellcheck=false;input.rows=1;input.dir='auto';
@@ -295,7 +299,7 @@ export function nativeWriterPage(host:WriterHost,state:WriterViewState,external?
   });
   root.append(...(external?[]:[toolbar]),workbench,pagebar);
   external?.ready({getRange:()=>range,setRange(value,focus=false){range=value;preferredX=undefined;refresh(focus);},refresh});
-  const observer=new ResizeObserver(()=>{if(!root.isConnected){observer.disconnect();return;}if(state.pageZoom===undefined)applyZoom();});observer.observe(viewport);
+  const observer=new ResizeObserver(()=>{if(!root.isConnected){observer.disconnect();return;}layoutPanels();if(state.pageZoom===undefined)applyZoom();});observer.observe(viewport);
   requestAnimationFrame(()=>refresh(true));return root;
 }
 
