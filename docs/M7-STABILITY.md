@@ -71,3 +71,22 @@ Local evidence: `npm run check` 316/316, license audit and build passed. Linux n
 Same-host adapter benchmark (4,000 rows / 12,001 cells; 30 slides / 300 shapes): XLSX open 4095.19 → 2214.59 ms, XLSX save 18418.29 → 11875.37 ms, PPTX open 1779.55 → 763.52 ms. Reports: `docs/verification/m7/file-io-before.json`, `file-io-after.json`, `native-product.json`. These are bounded fixture timings, not universal performance guarantees.
 
 Next gate: exact dev.4 source CI success, three installer artifacts and association checks; only then publish dev.4 and update the bilingual download links.
+
+
+## 2026-11-27 — verified dev.4 publication
+
+[v0.1.0-dev.4](https://github.com/xzcode/office-ex/releases/tag/v0.1.0-dev.4) is public (release ID 460271468, non-draft prerelease), published 2026-11-27 07:16:40 UTC. Exact lightweight tag points to verified source `5561b171d07c908f5d630d556e35f469c60bb24b` (tree `fb1a7980e3867c1709290b4cbb39dedc0dbff203`). [CI 45955956363](https://github.com/xzcode/office-ex/actions/runs/45955956363) and [publication 45957141482](https://github.com/xzcode/office-ex/actions/runs/45957141482) succeeded. Verify logs: 316/316 core, complete independent Office interoperability (including Antiword DOC and xlrd BIFF8), license/readiness, native package/installer matrix. Each installed app advertised all eight document types without forcing a default handler, opened a file with spaces into a separate window with its saved value, and passed removal. Public API confirmed exact tag and all 20 assets uploaded with SHA256 digests. Publication reuses verified artifact IDs 15179425356 (macOS), 15179141384 (Windows), 15178513114 (Linux); publication branch commit b2641cd9c02310bc7a042bf9303d9cda63ccd85f is not the source tag target.
+
+Primary installers (bytes / SHA256):
+- macOS ARM64 DMG: 152586223 / 63a9118b69aec6a954bb8daf17f837919cae1d7c3d7bee7467f4e4ecbc01a9e1
+- Windows x64 EXE: 129292006 / 66997c328feafec29a7280d7bdb744b0a5239959052bee408950b7dcb3142bc7
+- Linux x64 DEB: 112920452 / 21c593c21d7f565eb1bef084a766dfcceb59ac8271fdb643eaf819f474991e35
+
+M7.1–M7.5 development-preview delivery is complete; formal Office fidelity and production release gates remain open. Bilingual master README updated to dev.4 (documentation-only commit 5b4dcfe4ad6af80267b341c2d77c5cb71d431d2e). Previous releases and master implementation are unchanged.
+
+
+## M7.6 — real-world DOCX compatibility follow-up
+
+A privately supplied intact DOCX was inspected locally (no original document, text, media, workbook, filename, or digest is committed or transferred to the public repository). Structural analysis identified embedded Excel packages represented by VML/OLE, omitted page margins, numeric paragraph-style references with empty style definitions, producer-specific minimal numbering (including color/size and no explicit level index/start/geometry), direct strike/shading and bookmarks. Individual reduced synthetic fixtures run through the dev.4 parser reproduced all seven admission blockers; the control opened editable. See [probe script](../scripts/probe-real-world-docx.mjs) and [baseline report](verification/m7/real-profile-probes.json). This is structural inspection of the original and actual parser tests of anonymized reproductions, not an end-to-end original file edit/save.
+
+Prioritize lossless source-backed compatibility: model/render direct strike and shading; support standard safe defaults for absent section properties; handle unresolved styles and minimal lists without inventing formatting; track bookmarks; and design a bounded inert embedded-workbook object with source relationship and preview-image preservation, never execute OLE. Unknown or active data must not be silently discarded. Need a true private-file end-to-end acceptance before marking the reported original compatible. Do not change the already-published dev.4 tag.

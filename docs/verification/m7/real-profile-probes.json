@@ -1,0 +1,53 @@
+{
+  "source": "synthetic reduced reproductions, original user document retained outside repository",
+  "results": [
+    {
+      "name": "control",
+      "editable": true,
+      "reason": null,
+      "preview": false
+    },
+    {
+      "name": "embeddedWorkbook",
+      "editable": false,
+      "reason": "DOCX style profile: Unsupported document relationship",
+      "preview": true
+    },
+    {
+      "name": "missingMargins",
+      "editable": false,
+      "reason": "DOCX semantic profile: Explicit section page size and margins required",
+      "preview": true
+    },
+    {
+      "name": "undefinedStyle",
+      "editable": false,
+      "reason": "DOCX style profile: Missing or unsupported paragraph style 2",
+      "preview": true
+    },
+    {
+      "name": "minimalNumbering",
+      "editable": false,
+      "reason": "Missing or unsupported numbering definition",
+      "preview": true
+    },
+    {
+      "name": "strike",
+      "editable": false,
+      "reason": "DOCX semantic profile: Unsupported run property strike",
+      "preview": true
+    },
+    {
+      "name": "shading",
+      "editable": false,
+      "reason": "DOCX semantic profile: Unsupported run property shd",
+      "preview": true
+    },
+    {
+      "name": "bookmark",
+      "editable": false,
+      "reason": "DOCX semantic profile: Expected r",
+      "preview": true
+    }
+  ]
+}
